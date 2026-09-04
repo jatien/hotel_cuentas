@@ -1,0 +1,15 @@
+<!-- nominas/anual.html -->
+{{ chart_labels|json_script:"chart-labels" }}
+{{ chart_datasets|json_script:"chart-datasets" }}
+<canvas id="graficoAnual"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const labels = JSON.parse(document.getElementById('chart-labels').textContent);
+  const datasets = JSON.parse(document.getElementById('chart-datasets').textContent);
+  new Chart(document.getElementById('graficoAnual'), {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true } } },
+  });
+</script>

@@ -1,0 +1,54 @@
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+
+<h2>Nóminas {{ anio }}</h2>
+
+<div id="tabs-container">
+  {% for mes, nombre in meses_tabs %}
+    <button type="button" class="tab-btn" data-mes="{{ mes }}">{{ nombre }}</button>
+  {% endfor %}
+</div>
+
+<div id="grid" class="ag-theme-quartz" style="height: 500px; width: 100%; margin-top: 1rem;"></div>
+
+{{ datos_por_mes|json_script:"datos-mensuales" }}
+
+<script>
+  const datosPorMes = JSON.parse(document.getElementById('datos-mensuales').textContent);
+
+  const gridOptions = {
+    columnDefs: [
+      { field: 'empleado', headerName: 'Empleado' },
+      { field: 'departamento', headerName: 'Departamento' },
+      { field: 'deveng', headerName: 'Devengado' },
+      { field: 'cost_tot', headerName: 'Coste total' },
+      { field: 'importe_extra', headerName: 'Extra', editable: true },
+    ],
+    rowData: [],
+    defaultColDef: { sortable: true, filter: true, resizable: true },
+  };
+
+  const gridApi = agGrid.createGrid(document.getElementById('grid'), gridOptions);
+
+  function mostrarMes(mes) {
+    gridApi.setGridOption('rowData', datosPorMes[mes] || []);
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mes === String(mes));
+    });
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => mostrarMes(btn.dataset.mes));
+  });
+
+  const primerBoton = document.querySelector('.tab-btn');
+  if (primerBoton) mostrarMes(primerBoton.dataset.mes);
+</script>
+
+<style>
+  .tab-btn { padding: 8px 16px; margin-right: 4px; cursor: pointer; border: 1px solid #ccc; background: #f5f5f5; }
+  .tab-btn.active { background: #333; color: white; }
+</style>
+{% endblock %}

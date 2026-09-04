@@ -1,0 +1,12 @@
+<!-- nominas/templates/nominas/importar.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>Importar nómina mensual</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Importar</button>
+</form>
+<p>Si el nombre sigue el patrón <code>COSTES_MM_AAAA.csv</code>, mes y año se detectan solos.</p>
+{% endblock %}

@@ -1,0 +1,22 @@
+<h1>Cuentas — Panel principal</h1>
+
+<div class="menu-inicio">
+  <a href="{% url 'nominas' %}" class="tarjeta">
+    <h3>Nóminas</h3>
+    <p>Costes de personal por mes y departamento</p>
+  </a>
+
+  <a href="{% url 'albaranes' %}" class="tarjeta">
+    <h3>Albaranes</h3>
+    <p>Facturas y proveedores por departamento</p>
+  </a>
+</div>
+
+<style>
+  .menu-inicio { display: flex; gap: 16px; margin-top: 24px; }
+  .tarjeta {
+    display: block; padding: 20px; border: 1px solid #ccc; border-radius: 8px;
+    text-decoration: none; color: inherit; width: 200px;
+  }
+  .tarjeta:hover { background: #f5f5f5; }
+</style>
