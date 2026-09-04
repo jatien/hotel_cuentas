@@ -1,0 +1,10 @@
+.env
+*.csv
+*.sql
+*.xlsx
+*.db
+tablas/
+examples/
+__pycache__/
+*.pyc
+venv/

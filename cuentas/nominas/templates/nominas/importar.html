@@ -1,12 +1,63 @@
-<!-- nominas/templates/nominas/importar.html -->
-{% extends "base.html" %}
-{% block content %}
+<a href="{% url 'nominas' %}" class="btn-volver">← Volver a nóminas</a>
 <h2>Importar nómina mensual</h2>
-{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
-<form method="post" enctype="multipart/form-data">
+{% for message in messages %}
+  <p class="{{ message.tags }}">{{ message }}</p>
+{% endfor %}
+
+<form method="post" enctype="multipart/form-data" id="form-importar">
   {% csrf_token %}
-  {{ form.as_p }}
+  <div id="dropzone" class="dropzone">
+    <p id="dropzone-texto">Arrastra aquí el CSV, o haz clic para seleccionar</p>
+    <input type="file" name="archivo" id="id_archivo" accept=".csv" style="display:none;">
+  </div>
+  <p>
+    <label for="id_anio">Año (opcional):</label> {{ form.anio }}
+    <label for="id_mes">Mes (opcional):</label> {{ form.mes }}
+  </p>
   <button type="submit">Importar</button>
 </form>
-<p>Si el nombre sigue el patrón <code>COSTES_MM_AAAA.csv</code>, mes y año se detectan solos.</p>
-{% endblock %}
+
+<p>Si el archivo sigue el patrón <code>COSTES_MM_AAAA.csv</code>, mes y año se detectan solos.</p>
+
+<style>
+  .dropzone {
+    border: 2px dashed #999; border-radius: 8px; padding: 40px; text-align: center;
+    cursor: pointer; background: #fafafa; transition: background 0.2s, border-color 0.2s;
+  }
+  .btn-volver {
+  color: #2563eb; text-decoration: none; font-size: 14px;
+  }
+  .btn-volver:hover { text-decoration: underline; }
+  .dropzone.dragover { background: #e8f0fe; border-color: #2563eb; }
+</style>
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const inputArchivo = document.getElementById('id_archivo');
+  const textoDropzone = document.getElementById('dropzone-texto');
+
+  dropzone.addEventListener('click', () => inputArchivo.click());
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const archivos = e.dataTransfer.files;
+    if (archivos.length > 0) {
+      inputArchivo.files = archivos;  // asigna el archivo soltado al <input> real
+      textoDropzone.textContent = 'Archivo listo: ' + archivos[0].name;
+    }
+  });
+
+  inputArchivo.addEventListener('change', () => {
+    if (inputArchivo.files.length > 0) {
+      textoDropzone.textContent = 'Archivo listo: ' + inputArchivo.files[0].name;
+    }
+  });
+  
+</script>
