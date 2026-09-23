@@ -32,6 +32,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'invoice_data.apps.InvoiceDataConfig',
     'nominas.apps.NominasConfig',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -69,6 +70,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'mysite.wsgi.application'
+
+# Ruta al ejecutable de Tesseract OCR (necesario en Windows si no esta en el PATH)
+TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 
 
 # Database

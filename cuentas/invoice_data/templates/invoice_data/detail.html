@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>{{ document.original_filename }} - Gestión de Facturas</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; color: #222; background: #f9fafb; }
+  .topbar { padding: 16px 24px; background: white; border-bottom: 1px solid #e5e7eb; }
+  .back-link { color: #2563eb; text-decoration: none; font-size: 14px; }
+  h1 { font-size: 18px; margin: 8px 0 4px; word-break: break-word; }
+  .meta { color: #555; font-size: 13px; }
+  .meta span { display: inline-block; margin-right: 14px; }
+  .messages { padding: 0; margin: 12px 24px 0; }
+  .messages li { padding: 8px 12px; border-radius: 4px; margin-bottom: 6px; list-style: none; font-size: 14px; }
+  .messages .success { background: #dcfce7; color: #166534; }
+  .messages .warning { background: #fef9c3; color: #854d0e; }
+
+  .layout { display: flex; height: calc(100vh - 90px); }
+  .viewer-pane {
+    flex: 1.2;
+    background: #e5e7eb;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .viewer-pane iframe, .viewer-pane img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border: none;
+    background: white;
+  }
+  .data-pane {
+    flex: 1;
+    max-width: 420px;
+    padding: 20px;
+    overflow-y: auto;
+    background: white;
+    border-left: 1px solid #e5e7eb;
+  }
+
+  .actions { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .actions button {
+    padding: 9px 14px;
+    border: none;
+    border-radius: 6px;
+    background: #2563eb;
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .actions button.secondary { background: #6b7280; }
+
+  .card { background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h3 { font-size: 13px; color: #555; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .field { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+  .field:last-child { border-bottom: none; }
+  .field .label { color: #666; }
+  .field .value { font-weight: 600; }
+  .field .value.big { font-size: 18px; }
+
+  .empty-note { color: #888; font-size: 13px; font-style: italic; }
+
+  details { margin-bottom: 16px; }
+  summary { cursor: pointer; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid #eee; }
+  th { color: #666; font-weight: 500; }
+
+  pre {
+    background: #f3f4f6;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a class="back-link" href="{% url 'invoice_data:index' %}">← Volver a Gestión de Facturas</a>
+    <h1>{{ document.original_filename }}</h1>
+    <div class="meta">
+      <span>Departamento: <strong>{{ document.get_departamento_display|default:document.departamento }}</strong></span>
+      <span>Tipo: <strong>{{ document.get_source_type_display }}</strong></span>
+      <span>Estado: <strong>{{ document.get_status_display }}</strong></span>
+    </div>
+  </div>
+
+  {% if messages %}
+  <ul class="messages">
+    {% for message in messages %}
+      <li class="{{ message.tags }}">{{ message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <div class="layout">
+    <div class="viewer-pane">
+      {% if document.source_type == "image" %}
+        <img src="{{ document.file.url }}" alt="{{ document.original_filename }}">
+      {% else %}
+        <iframe src="{{ document.file.url }}" title="{{ document.original_filename }}"></iframe>
+      {% endif %}
+    </div>
+
+    <div class="data-pane">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+            <form method="post" class="actions">
+                {% csrf_token %}
+                {% if document.needs_ocr %}
+                <button type="submit" name="action" value="run_ocr">Ejecutar OCR</button>
+                {% endif %}
+                <button type="submit" name="action" value="extract_data">Extraer datos</button>
+                <button type="submit" name="action" value="extract_lines" class="secondary">Extraer líneas</button>
+            </form>
+    <form method="post" onsubmit="return confirm('¿Eliminar esta factura por completo? Esta acción no se puede deshacer.');">
+      {% csrf_token %}
+      <button type="submit" name="action" value="delete_document" style="background:#991b1b;">Eliminar factura</button>
+    </form>
+  </div>
+      <div class="card">
+        <h3>Datos de la factura {% if extracted_data.confirmado %}<span style="color:#166534;">✓ guardado</span>{% elif extracted_data %}<span style="color:#854d0e;">sin guardar</span>{% endif %}</h3>
+        {% if extracted_data %}
+          <div class="field"><span class="label">Nº factura</span><span class="value">{{ extracted_data.numero_factura|default:"—" }}</span></div>
+          <div class="field"><span class="label">Fecha</span><span class="value">{{ extracted_data.fecha_factura|default:"—" }}</span></div>
+          <div class="field"><span class="label">CIF proveedor</span><span class="value">{{ extracted_data.proveedor_cif|default:"—" }}</span></div>
+          <div class="field"><span class="label">Base imponible</span><span class="value">{{ extracted_data.base_imponible|default:"—" }}</span></div>
+          <div class="field"><span class="label">% IVA</span><span class="value">{{ extracted_data.iva_porcentaje|default:"—" }}</span></div>
+          <div class="field"><span class="label">Total</span><span class="value big">{{ extracted_data.total|default:"—" }} €</span></div>
+          <div class="field"><span class="label">Método</span><span class="value">{{ extracted_data.extraction_method|default:"—" }}</span></div>
+          <form method="post" style="display:flex; gap:8px; margin-top:12px;">
+            {% csrf_token %}
+            {% if not extracted_data.confirmado %}
+              <button type="submit" name="action" value="save_data">Guardar</button>
+            {% endif %}
+            <button type="submit" name="action" value="delete_data" class="secondary">Eliminar</button>
+          </form>
+        {% else %}
+          <p class="empty-note">Todavía no se han extraído los datos. Usa el botón "Extraer datos".</p>
+        {% endif %}
+      </div>
+
+      <details {% if line_items %}open{% endif %}>
+        <summary>
+          Líneas de producto ({{ line_items|length }})
+          {% if line_items.0.confirmado %}<span style="color:#166534;">✓ guardado</span>{% elif line_items %}<span style="color:#854d0e;">sin guardar</span>{% endif %}
+        </summary>
+        {% if line_items %}
+          <table>
+            <thead>
+              <tr>
+                <th>Descripción</th>
+                <th>IVA</th>
+                <th>Cant.</th>
+                <th>Precio</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in line_items %}
+              <tr>
+                <td>{{ item.descripcion }}</td>
+                <td>{{ item.iva_porcentaje|default:"—" }}</td>
+                <td>{{ item.cantidad|default:"—" }}</td>
+                <td>{{ item.precio_unitario|default:"—" }}</td>
+                <td>{{ item.importe|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <form method="post" style="display:flex; gap:8px; margin-top:10px;">
+            {% csrf_token %}
+            {% if not line_items.0.confirmado %}
+              <button type="submit" name="action" value="save_lines">Guardar líneas</button>
+            {% endif %}
+            <button type="submit" name="action" value="delete_lines" class="secondary">Eliminar líneas</button>
+          </form>
+        {% else %}
+          <p class="empty-note">Todavía no se han extraído líneas de producto. Usa el botón "Extraer líneas".</p>
+        {% endif %}
+      </details>
+
+      <details>
+        <summary>Texto extraído (depuración)</summary>
+        <pre>{{ document.get_extracted_text|default:"(vacío)" }}</pre>
+      </details>
+    </div>
+  </div>
+</body>
+</html>

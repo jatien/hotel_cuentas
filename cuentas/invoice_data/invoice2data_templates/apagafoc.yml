@@ -1,0 +1,22 @@
+issuer: APAGAFOC SL
+keywords:
+  - APAGAFOC
+fields:
+  invoice_number: 'NUMERO:\s*([A-Z0-9/-]+)'
+  date: 'FECHA:\s*(\d{2}/\d{2}/\d{4})'
+  # This invoice's totals table collapses empty columns (PORTES, O.GASTOS,
+  # %REC, RECARGO) when the PDF's text layer is extracted, leaving exactly
+  # 5 numbers on the values line in this order:
+  # TOTAL BRUTO | BASE IMP. | %IVA | CUOTA | TOTAL
+  # This column order is specific to APAGAFOC's invoicing software - a
+  # different supplier will need its own template with its own order.
+  amount_untaxed: '(?s)BASE\s*IMP\w*\.?.*?CUOTA.*?\n\s*[\d.,]+\s+([\d.,]+)'
+  vat_rate: '(?s)BASE\s*IMP\w*\.?.*?CUOTA.*?\n\s*[\d.,]+\s+[\d.,]+\s+([\d.,]+)'
+  amount: '(?s)BASE\s*IMP\w*\.?.*?CUOTA.*?\n\s*[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)'
+options:
+  currency: EUR
+  languages:
+    - es
+  date_formats:
+    - '%d/%m/%Y'
+  decimal_separator: '.'

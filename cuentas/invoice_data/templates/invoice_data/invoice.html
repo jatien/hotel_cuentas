@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Gestión de Facturas</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; color: #222; }
+  h1 { margin-bottom: 4px; }
+  .subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
+  .stats { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+  .stat-card {
+    flex: 1;
+    min-width: 140px;
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-card .value { font-size: 28px; font-weight: 700; }
+  .stat-card .label { font-size: 13px; color: #555; margin-top: 4px; }
+  .stat-card.errores .value { color: #991b1b; }
+  .stat-card.pendientes .value { color: #854d0e; }
+  .stat-card.listos .value { color: #166534; }
+  .btn {
+    display: inline-block;
+    padding: 10px 18px;
+    background: #2563eb;
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 15px;
+    margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+  th { color: #555; font-weight: 600; }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .badge.needs_ocr { background: #fef9c3; color: #854d0e; }
+  .badge.ingested { background: #dcfce7; color: #166534; }
+  .badge.error { background: #fee2e2; color: #991b1b; }
+  .badge.duplicate { background: #e5e7eb; color: #374151; }
+</style>
+</head>
+<body>
+  <h1>Gestión de Facturas</h1>
+  <p class="subtitle">Estado del proceso de importación y extracción de facturas</p>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="value">{{ stats.total }}</div>
+      <div class="label">Total importadas</div>
+    </div>
+    <div class="stat-card pendientes">
+      <div class="value">{{ stats.pendientes_ocr }}</div>
+      <div class="label">Pendientes de OCR</div>
+    </div>
+    <div class="stat-card listos">
+      <div class="value">{{ stats.listos }}</div>
+      <div class="label">Listas (texto digital)</div>
+    </div>
+    <div class="stat-card errores">
+      <div class="value">{{ stats.errores }}</div>
+      <div class="label">Con errores</div>
+    </div>
+  </div>
+
+  <a class="btn" href="{% url 'invoice_data:upload' %}">Importar facturas</a>
+
+  <h3>Últimas facturas importadas</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Archivo</th>
+        <th>Departamento</th>
+        <th>Tipo</th>
+        <th>Estado</th>
+        <th>Fecha</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr>
+        <td>{{ doc.original_filename }}</td>
+        <td>{{ doc.get_departamento_display|default:doc.departamento }}</td>
+        <td>{{ doc.get_source_type_display }}</td>
+        <td><span class="badge {{ doc.status }}">{{ doc.get_status_display }}</span></td>
+        <td>{{ doc.imported_at|date:"d/m/Y H:i" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">Todavía no se ha importado ninguna factura.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
