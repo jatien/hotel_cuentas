@@ -1,0 +1,26 @@
+# Instalar con: pip install -r requirements.txt
+
+# Web / base de datos
+Django>=6.1,<6.2
+psycopg[binary]>=3.2
+
+# Lectura de PDFs e imágenes (invoice_data)
+pdfplumber>=0.11
+pypdfium2>=4.30
+Pillow>=11.0
+
+# OCR (invoice_data/services/ocr.py)
+# Requiere tener instalado el programa Tesseract con el idioma español ("spa"):
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki  (si no está en el PATH,
+#            define TESSERACT_CMD en settings.py con la ruta a tesseract.exe)
+#   Linux:   sudo apt install tesseract-ocr tesseract-ocr-spa
+pytesseract>=0.3.13
+
+# Extracción con plantillas (invoice_data/invoice2data_templates)
+# Usa por defecto "pdftotext" de Poppler, que hay que instalar aparte:
+#   Windows: https://github.com/oschwartz10612/poppler-windows (añadir bin/ al PATH)
+#   Linux:   sudo apt install poppler-utils
+invoice2data>=0.4.5
+
+# Solo para los tests (invoice_data/tests/test_ingestion.py)
+reportlab>=4.0
