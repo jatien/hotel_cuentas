@@ -25,9 +25,8 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from django.core.files import File
 from PIL import Image, UnidentifiedImageError
-from invoice_data.models import InvoiceDocument, IngestionStatus, SourceType, TipoEntidad
 
-from invoice_data.models import InvoiceDocument, IngestionStatus, SourceType
+from invoice_data.models import InvoiceDocument, IngestionStatus, SourceType, TipoEntidad
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 PDF_EXTENSIONS = {".pdf"}
@@ -149,3 +148,23 @@ def ingest_file(
         tipo_entidad=tipo_entidad,
         source_path=str(path),
     )
+
+    # A file we can't classify (wrong extension, corrupt PDF/image) is still
+    # registered - with status=ERROR and the reason - instead of raising, so
+    # a batch import keeps going and the problem is visible in the admin.
+    try:
+        result = classify_document(path)
+    except Exception as exc:
+        doc.status = IngestionStatus.ERROR
+        doc.error_message = str(exc)
+    else:
+        doc.source_type = result.source_type
+        doc.page_count = result.page_count
+        doc.needs_ocr = result.needs_ocr
+        doc.raw_text_layer = result.raw_text_layer
+        doc.status = IngestionStatus.NEEDS_OCR if result.needs_ocr else IngestionStatus.INGESTED
+
+    with open(path, "rb") as fh:
+        doc.file.save(display_name, File(fh), save=False)
+    doc.save()
+    return doc, True

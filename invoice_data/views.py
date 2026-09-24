@@ -2,20 +2,17 @@ import tempfile
 from pathlib import Path
 
 from django.contrib import messages
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.shortcuts import get_object_or_404
 
 from invoice_data.services.extraction import extract_document
 from invoice_data.services.line_items import extract_line_items
 from invoice_data.services.ocr import run_ocr
-from invoice_data.models import InvoiceDocument, IngestionStatus, TipoEntidad
 from invoice_data.forms import InvoiceUploadForm
-from invoice_data.models import ExtractedInvoiceData, InvoiceDocument
+from invoice_data.models import ExtractedInvoiceData, IngestionStatus, InvoiceDocument, TipoEntidad
 from invoice_data.services.ingestion import ingest_file, IMAGE_EXTENSIONS, PDF_EXTENSIONS
 
 ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS
-
 
 
 def index(request):
@@ -29,6 +26,7 @@ def index(request):
         "errores": InvoiceDocument.objects.filter(status=IngestionStatus.ERROR).count(),
     }
     return render(request, "invoice_data/index.html", {"documents": documents, "stats": stats})
+
 
 def upload_invoices(request):
     if request.method == "POST":
@@ -87,46 +85,8 @@ def upload_invoices(request):
         form = InvoiceUploadForm()
 
     return render(request, "invoice_data/upload.html", {"form": form})
-def document_detail(request, pk):
-    """
-    Detail page for one InvoiceDocument: shows its metadata, extracted
-    text, header fields (if extracted yet), and line items (if extracted
-    yet). Handles the on-demand action buttons (OCR / extraer datos /
-    extraer lineas) via POST, then redirects back to this same page -
-    redirect-after-post, so reloading the page never re-runs an action
-    by accident.
-    """
-    document = get_object_or_404(InvoiceDocument, pk=pk)
 
-    if request.method == "POST":
-        action = request.POST.get("action")
 
-        if action == "run_ocr" and document.needs_ocr:
-            run_ocr(document)
-            messages.success(request, "OCR ejecutado correctamente.")
-        elif action == "extract_data":
-            extract_document(document)
-            messages.success(request, "Datos de cabecera extraidos.")
-        elif action == "extract_lines":
-            items = extract_line_items(document)
-            if items:
-                messages.success(request, f"{len(items)} linea(s) extraida(s).")
-            else:
-                messages.warning(
-                    request, "No se ha reconocido ningun patron de lineas para este documento."
-                )
-
-        return redirect("invoice_data:detail", pk=document.pk)
-
-    return render(
-        request,
-        "invoice_data/detail.html",
-        {
-            "document": document,
-            "extracted_data": getattr(document, "extracted_data", None),
-            "line_items": document.line_items.all(),
-        },
-    )
 def document_detail(request, pk):
     """
     Detail page for one InvoiceDocument. Extraction results are NOT
