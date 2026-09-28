@@ -74,7 +74,16 @@ WSGI_APPLICATION = 'mysite.wsgi.application'
 # Ruta al ejecutable de Tesseract OCR (necesario en Windows si no esta en el PATH)
 TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+# Datos de la empresa para filtrar facturas propias (NIF y nombres)
+INVOICE_OWN_NIF = "B07794803"
+INVOICE_OWN_NAMES = ("INVENT HOTELES",)
 
+# Prefijos de nombres de archivos de facturas y nóminas para filtrar
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+#Command to not block pdf files of rendering
+X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases

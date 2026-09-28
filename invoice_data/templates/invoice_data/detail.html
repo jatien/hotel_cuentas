@@ -1,194 +1,269 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>{{ document.original_filename }} - Gestión de Facturas</title>
+{# Pantalla de revisión: el documento a la izquierda; a la derecha los datos extraídos y las acciones. #}
+{% extends "invoice_data/base.html" %}
+{% block titulo %}{{ document.original_filename }} · Gestión de Facturas{% endblock %}
+{% block estilos %}
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; margin: 0; color: #222; background: #f9fafb; }
-  .topbar { padding: 16px 24px; background: white; border-bottom: 1px solid #e5e7eb; }
-  .back-link { color: #2563eb; text-decoration: none; font-size: 14px; }
-  h1 { font-size: 18px; margin: 8px 0 4px; word-break: break-word; }
-  .meta { color: #555; font-size: 13px; }
-  .meta span { display: inline-block; margin-right: 14px; }
-  .messages { padding: 0; margin: 12px 24px 0; }
-  .messages li { padding: 8px 12px; border-radius: 4px; margin-bottom: 6px; list-style: none; font-size: 14px; }
-  .messages .success { background: #dcfce7; color: #166534; }
-  .messages .warning { background: #fef9c3; color: #854d0e; }
+  body { background: #fff; }
+  .barra { padding: 12px 20px; border-bottom: 1px solid #e5e7eb; background: #fff; }
+  .barra h1 { font-size: 17px; margin: 6px 0 4px; word-break: break-word; }
+  .meta { color: #6b7280; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .avisos-msg { padding: 8px 20px 0; }
+  .reparto { display: flex; height: calc(100vh - 92px); }
+  .visor { flex: 1.15; background: #e5e7eb; display: flex; flex-direction: column; }
+  .visor iframe, .visor img { width: 100%; flex: 1; border: 0; object-fit: contain; background: #fff; }
+  .abrir-pestana { text-align: center; padding: 8px; background: #fff; border-top: 1px solid #e5e7eb; font-size: 13px; }
+  .datos { flex: 1; max-width: 480px; overflow-y: auto; padding: 16px 18px 40px; border-left: 1px solid #e5e7eb; }
+  .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .acciones form { margin: 0; }
+  .card { background: #f9fafb; border: 1px solid #eef0f3; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+  .fila { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+  .fila:last-child { border-bottom: 0; }
+  .fila .e { color: #6b7280; } .fila .v { font-weight: 600; text-align: right; }
+  .grande { font-size: 20px; }
+  .campo { margin-bottom: 10px; }
+  .campo label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 3px; }
+  .campo input { width: 100%; padding: 7px 9px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+  .campo .errorlist { color: #991b1b; font-size: 12px; list-style: none; padding: 0; margin: 3px 0 0; }
+  .par { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  ul.simple { margin: 0; padding-left: 18px; font-size: 13px; }
+  details { margin-bottom: 12px; }
+  summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; padding: 4px 0; }
+  pre { background: #f3f4f6; padding: 10px; border-radius: 6px; font-size: 11px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+  th { color: #6b7280; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-  .layout { display: flex; height: calc(100vh - 90px); }
-  .viewer-pane {
-    flex: 1.2;
-    background: #e5e7eb;
-    display: flex;
-    align-items: stretch;
-    justify-content: stretch;
+  /* Líneas de producto: tarjetas que siguen el cursor con suavidad al arrastrarlas */
+  .lineas-lista { display: flex; flex-direction: column; gap: 8px; position: relative; }
+  .linea-tarjeta {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 10px 12px; cursor: grab; touch-action: none;
+    transition: transform .2s ease, box-shadow .2s ease;
   }
-  .viewer-pane iframe, .viewer-pane img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    border: none;
-    background: white;
+  .linea-tarjeta.arrastrando {
+    cursor: grabbing; box-shadow: 0 10px 24px rgba(0,0,0,.18);
+    transform: scale(1.02); transition: box-shadow .15s ease;
   }
-  .data-pane {
-    flex: 1;
-    max-width: 420px;
-    padding: 20px;
-    overflow-y: auto;
-    background: white;
-    border-left: 1px solid #e5e7eb;
-  }
-
-  .actions { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-  .actions button {
-    padding: 9px 14px;
-    border: none;
-    border-radius: 6px;
-    background: #2563eb;
-    color: white;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .actions button.secondary { background: #6b7280; }
-
-  .card { background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .card h3 { font-size: 13px; color: #555; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.03em; }
-  .field { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 14px; }
-  .field:last-child { border-bottom: none; }
-  .field .label { color: #666; }
-  .field .value { font-weight: 600; }
-  .field .value.big { font-size: 18px; }
-
-  .empty-note { color: #888; font-size: 13px; font-style: italic; }
-
-  details { margin-bottom: 16px; }
-  summary { cursor: pointer; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
-  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid #eee; }
-  th { color: #666; font-weight: 500; }
-
-  pre {
-    background: #f3f4f6;
-    padding: 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-  }
+  .linea-hueco { border-radius: 8px; background: #eef2ff; border: 1px dashed #c7d2fe; }
+  .linea-agarre { color: #c1c5cc; font-size: 16px; line-height: 1; user-select: none; flex-shrink: 0; }
+  .linea-cuerpo { flex: 1; min-width: 0; }
+  .linea-desc { font-size: 14px; font-weight: 500; color: #1f2937; word-break: break-word; }
+  .linea-sub { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: #6b7280; }
+  .linea-sub .iva { background: #eef2ff; color: #4338ca; padding: 1px 7px; border-radius: 999px; }
+  .linea-importe { flex-shrink: 0; font-weight: 700; font-size: 15px; text-align: right; white-space: nowrap; }
 </style>
-</head>
-<body>
-  <div class="topbar">
-    <a class="back-link" href="{% url 'invoice_data:index' %}">← Volver a Gestión de Facturas</a>
-    <h1>{{ document.original_filename }}</h1>
-    <div class="meta">
-      <span>Departamento: <strong>{{ document.get_departamento_display|default:document.departamento }}</strong></span>
-      <span>Tipo: <strong>{{ document.get_source_type_display }}</strong></span>
-      <span>Estado: <strong>{{ document.get_status_display }}</strong></span>
-    </div>
+{% endblock %}
+{% block contenido %}
+<div class="barra">
+  <a href="{% url 'invoice_data:index' %}">← Volver a Gestión de Facturas</a>
+  <h1>{{ document.original_filename }}</h1>
+  <div class="meta">
+    <span>{{ document.get_tipo_entidad_display }}</span>
+    <span>Departamento: <strong>{{ document.get_departamento_display|default:document.departamento|default:"—" }}</strong></span>
+    <span>Formato: {{ document.get_source_type_display }}</span>
+    {% if not datos %}<span class="pill gris">Sin extraer</span>
+    {% elif datos.confirmado %}<span class="pill azul">✓ Confirmada</span>
+    {% elif datos.estado == "ok" %}<span class="pill verde">Extracción correcta</span>
+    {% else %}<span class="pill ambar">A revisar</span>{% endif %}
+    {% if datos.corregido %}<span class="pill gris">Corregida a mano</span>{% endif %}
+  </div>
+</div>
+{% if messages %}<div class="avisos-msg"><ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="reparto">
+  <div class="visor">
+    {% if document.source_type == "image" %}
+      <img src="{{ document.file.url }}" alt="{{ document.original_filename }}">
+    {% else %}
+      <iframe src="{{ document.file.url }}" title="{{ document.original_filename }}"></iframe>
+      <div class="abrir-pestana"><a href="{{ document.file.url }}" target="_blank" rel="noopener">Abrir el PDF en una pestaña nueva ↗</a></div>
+    {% endif %}
   </div>
 
-  {% if messages %}
-  <ul class="messages">
-    {% for message in messages %}
-      <li class="{{ message.tags }}">{{ message }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <div class="datos">
+    <div class="acciones">
+      <form method="post">{% csrf_token %}
+        <button class="btn" name="action" value="extract" type="submit">{% if datos %}Volver a extraer{% else %}Extraer datos{% endif %}</button>
+      </form>
+      <form method="post" onsubmit="return confirm('¿Eliminar esta factura por completo (archivo incluido)? No se puede deshacer.');">{% csrf_token %}
+        <button class="btn danger" name="action" value="delete_document" type="submit">Eliminar factura</button>
+      </form>
+    </div>
 
-  <div class="layout">
-    <div class="viewer-pane">
-      {% if document.source_type == "image" %}
-        <img src="{{ document.file.url }}" alt="{{ document.original_filename }}">
-      {% else %}
-        <iframe src="{{ document.file.url }}" title="{{ document.original_filename }}"></iframe>
+    {% if not datos %}
+      <div class="card"><p style="margin:0;color:#6b7280;font-size:14px">Todavía no se han extraído los datos de esta factura. Pulsa «Extraer datos».</p></div>
+    {% else %}
+
+      {% if verificacion.avisos %}
+      <div class="card" style="border-color:#fde68a;background:#fffbeb">
+        <h3>Avisos</h3>
+        <ul class="simple">{% for aviso in verificacion.avisos %}<li>{{ aviso }}</li>{% endfor %}</ul>
+      </div>
       {% endif %}
-    </div>
 
-    <div class="data-pane">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
-            <form method="post" class="actions">
-                {% csrf_token %}
-                {% if document.needs_ocr %}
-                <button type="submit" name="action" value="run_ocr">Ejecutar OCR</button>
-                {% endif %}
-                <button type="submit" name="action" value="extract_data">Extraer datos</button>
-                <button type="submit" name="action" value="extract_lines" class="secondary">Extraer líneas</button>
-            </form>
-    <form method="post" onsubmit="return confirm('¿Eliminar esta factura por completo? Esta acción no se puede deshacer.');">
-      {% csrf_token %}
-      <button type="submit" name="action" value="delete_document" style="background:#991b1b;">Eliminar factura</button>
-    </form>
-  </div>
       <div class="card">
-        <h3>Datos de la factura {% if extracted_data.confirmado %}<span style="color:#166534;">✓ guardado</span>{% elif extracted_data %}<span style="color:#854d0e;">sin guardar</span>{% endif %}</h3>
-        {% if extracted_data %}
-          <div class="field"><span class="label">Nº factura</span><span class="value">{{ extracted_data.numero_factura|default:"—" }}</span></div>
-          <div class="field"><span class="label">Fecha</span><span class="value">{{ extracted_data.fecha_factura|default:"—" }}</span></div>
-          <div class="field"><span class="label">CIF proveedor</span><span class="value">{{ extracted_data.proveedor_cif|default:"—" }}</span></div>
-          <div class="field"><span class="label">Base imponible</span><span class="value">{{ extracted_data.base_imponible|default:"—" }}</span></div>
-          <div class="field"><span class="label">% IVA</span><span class="value">{{ extracted_data.iva_porcentaje|default:"—" }}</span></div>
-          <div class="field"><span class="label">Total</span><span class="value big">{{ extracted_data.total|default:"—" }} €</span></div>
-          <div class="field"><span class="label">Método</span><span class="value">{{ extracted_data.extraction_method|default:"—" }}</span></div>
-          <form method="post" style="display:flex; gap:8px; margin-top:12px;">
-            {% csrf_token %}
-            {% if not extracted_data.confirmado %}
-              <button type="submit" name="action" value="save_data">Guardar</button>
-            {% endif %}
-            <button type="submit" name="action" value="delete_data" class="secondary">Eliminar</button>
+        <h3>Datos de la factura</h3>
+        {% if datos.confirmado %}
+          <div class="fila"><span class="e">Proveedor</span><span class="v">{{ datos.proveedor_nombre|default:"—" }}</span></div>
+          <div class="fila"><span class="e">CIF / NIF</span><span class="v">{{ datos.proveedor_cif|default:"—" }}</span></div>
+          <div class="fila"><span class="e">Nº de factura</span><span class="v">{{ datos.numero_factura|default:"—" }}</span></div>
+          <div class="fila"><span class="e">Fecha</span><span class="v">{{ datos.fecha_factura|date:"d/m/Y"|default:"—" }}</span></div>
+          <div class="fila"><span class="e">Total sin IVA</span><span class="v">{% if datos.base_imponible is not None %}{{ datos.base_imponible }} €{% else %}—{% endif %}</span></div>
+          <div class="fila"><span class="e">IVA</span><span class="v">{% if datos.iva_total is not None %}{{ datos.iva_total }} €{% else %}—{% endif %}</span></div>
+          <div class="fila"><span class="e">Total con IVA</span><span class="v grande">{% if datos.total is not None %}{{ datos.total }} €{% else %}—{% endif %}</span></div>
+          <form method="post" style="margin-top:12px">{% csrf_token %}
+            <button class="btn warn" name="action" value="unconfirm" type="submit">Quitar confirmación para editar</button>
           </form>
         {% else %}
-          <p class="empty-note">Todavía no se han extraído los datos. Usa el botón "Extraer datos".</p>
+          <form method="post">{% csrf_token %}
+            {% for field in form %}
+              {% if field.name == "base_imponible" %}<div class="par">{% endif %}
+              <div class="campo">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}{{ field.errors }}
+              </div>
+              {% if field.name == "iva_total" %}</div>{% endif %}
+            {% endfor %}
+            <button class="btn" name="action" value="save" type="submit">Guardar y confirmar</button>
+          </form>
+          <form method="post" style="margin-top:8px" onsubmit="return confirm('¿Eliminar los datos extraídos? El archivo se conserva.');">{% csrf_token %}
+            <button class="btn light" name="action" value="delete_data" type="submit">Eliminar datos extraídos</button>
+          </form>
         {% endif %}
       </div>
 
-      <details {% if line_items %}open{% endif %}>
-        <summary>
-          Líneas de producto ({{ line_items|length }})
-          {% if line_items.0.confirmado %}<span style="color:#166534;">✓ guardado</span>{% elif line_items %}<span style="color:#854d0e;">sin guardar</span>{% endif %}
-        </summary>
-        {% if line_items %}
+      <div class="card">
+        <h3>Desglose de IVA</h3>
+        {% if impuestos %}
           <table>
-            <thead>
-              <tr>
-                <th>Descripción</th>
-                <th>IVA</th>
-                <th>Cant.</th>
-                <th>Precio</th>
-                <th>Importe</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for item in line_items %}
-              <tr>
-                <td>{{ item.descripcion }}</td>
-                <td>{{ item.iva_porcentaje|default:"—" }}</td>
-                <td>{{ item.cantidad|default:"—" }}</td>
-                <td>{{ item.precio_unitario|default:"—" }}</td>
-                <td>{{ item.importe|default:"—" }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
+            <thead><tr><th>Tipo</th><th class="num">Base</th><th class="num">Cuota</th></tr></thead>
+            <tbody>{% for i in impuestos %}<tr><td>{{ i.tipo|floatformat:"-2" }} %</td><td class="num">{{ i.base }} €</td><td class="num">{{ i.cuota }} €</td></tr>{% endfor %}</tbody>
           </table>
-          <form method="post" style="display:flex; gap:8px; margin-top:10px;">
-            {% csrf_token %}
-            {% if not line_items.0.confirmado %}
-              <button type="submit" name="action" value="save_lines">Guardar líneas</button>
-            {% endif %}
-            <button type="submit" name="action" value="delete_lines" class="secondary">Eliminar líneas</button>
-          </form>
-        {% else %}
-          <p class="empty-note">Todavía no se han extraído líneas de producto. Usa el botón "Extraer líneas".</p>
-        {% endif %}
-      </details>
+        {% else %}<p style="margin:0;color:#6b7280;font-size:14px">No se ha podido determinar el desglose.</p>{% endif %}
+      </div>
 
-      <details>
-        <summary>Texto extraído (depuración)</summary>
-        <pre>{{ document.get_extracted_text|default:"(vacío)" }}</pre>
+      <details open>
+        <summary>Líneas de producto ({{ lineas|length }}) · arrastra para reordenar</summary>
+        {% if lineas %}
+        <div class="lineas-lista" id="lineas-lista">
+          {% for l in lineas %}
+          <div class="linea-tarjeta">
+            <span class="linea-agarre">⠿</span>
+            <div class="linea-cuerpo">
+              <div class="linea-desc">{{ l.descripcion|default:"—" }}</div>
+              <div class="linea-sub">
+                <span>{{ l.cantidad|default_if_none:"—" }} ud. × {{ l.precio_unitario|default_if_none:"—" }} €</span>
+                {% if l.iva_porcentaje is not None %}<span class="iva">IVA {{ l.iva_porcentaje|floatformat:"-2" }}%</span>{% endif %}
+              </div>
+            </div>
+            <div class="linea-importe">{{ l.importe|default_if_none:"—" }} €</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}<p style="color:#6b7280;font-size:14px">No se reconoció ninguna línea de producto.</p>{% endif %}
       </details>
-    </div>
+    {% endif %}
+
+    {% if document.ocr_text %}
+    <details><summary>Texto leído por OCR (página completa)</summary><pre>{{ document.ocr_text }}</pre></details>
+    {% endif %}
+    {% if datos %}<p style="font-size:11px;color:#9ca3af">Motor de extracción {{ datos.motor_version }}</p>{% endif %}
   </div>
-</body>
-</html>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Arrastrar líneas de producto: la tarjeta sigue el cursor con suavidad;
+  // las demás se desplazan animadas para hacerle sitio (técnica FLIP).
+  function habilitarArrastreSuave(lista) {
+    let card = null, placeholder = null, startY = 0, startTop = 0, startLeft = 0, startWidth = 0;
+
+    function onPointerMove(e) {
+      if (!card) return;
+      card.style.top = (startTop + (e.clientY - startY)) + "px";
+
+      const pointerY = e.clientY;
+      const siblings = [...lista.children].filter((el) => el !== card && el !== placeholder);
+      let target = null;
+      for (const sib of siblings) {
+        const r = sib.getBoundingClientRect();
+        if (pointerY < r.top + r.height / 2) { target = sib; break; }
+      }
+
+      const yaAhi = target ? placeholder.nextElementSibling === target : placeholder.nextElementSibling === null;
+      if (!yaAhi) {
+        const antes = new Map(siblings.map((el) => [el, el.getBoundingClientRect()]));
+        if (target) lista.insertBefore(placeholder, target);
+        else lista.appendChild(placeholder);
+        siblings.forEach((el) => {
+          const prev = antes.get(el);
+          const ahora = el.getBoundingClientRect();
+          const dy = prev.top - ahora.top;
+          if (dy) {
+            el.style.transition = "none";
+            el.style.transform = `translateY(${dy}px)`;
+            requestAnimationFrame(() => {
+              el.style.transition = "transform .2s ease";
+              el.style.transform = "";
+            });
+          }
+        });
+      }
+    }
+
+    function onPointerUp() {
+      if (!card) return;
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+
+      const draggedRect = card.getBoundingClientRect();
+      lista.insertBefore(card, placeholder);
+      placeholder.remove();
+      card.style.position = ""; card.style.left = ""; card.style.top = ""; card.style.width = "";
+      card.classList.remove("arrastrando");
+
+      const asentando = card;  // 'card' se pone a null antes de que corra el requestAnimationFrame
+      const restRect = asentando.getBoundingClientRect();
+      const dx = draggedRect.left - restRect.left;
+      const dy = draggedRect.top - restRect.top;
+      asentando.style.transition = "none";
+      asentando.style.transform = `translate(${dx}px, ${dy}px)`;
+      requestAnimationFrame(() => {
+        asentando.style.transition = "transform .2s ease";
+        asentando.style.transform = "";
+        asentando.addEventListener("transitionend", () => { asentando.style.transition = ""; }, { once: true });
+      });
+      card = null; placeholder = null;
+    }
+
+    lista.addEventListener("pointerdown", (e) => {
+      const tarjeta = e.target.closest(".linea-tarjeta");
+      if (!tarjeta) return;
+      card = tarjeta;
+      const rect = card.getBoundingClientRect();
+      startY = e.clientY; startTop = rect.top; startLeft = rect.left; startWidth = rect.width;
+
+      placeholder = document.createElement("div");
+      placeholder.className = "linea-hueco";
+      placeholder.style.height = rect.height + "px";
+      lista.insertBefore(placeholder, card);
+
+      card.style.position = "fixed";
+      card.style.left = startLeft + "px";
+      card.style.top = startTop + "px";
+      card.style.width = startWidth + "px";
+      card.style.zIndex = 999;
+      card.classList.add("arrastrando");
+
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", onPointerUp);
+    });
+  }
+
+  const listaLineas = document.getElementById("lineas-lista");
+  if (listaLineas) habilitarArrastreSuave(listaLineas);
+</script>
+{% endblock %}

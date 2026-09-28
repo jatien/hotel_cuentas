@@ -4,16 +4,10 @@ Batch-imports invoices from a folder structured as:
     <source>/proveedores/<departamento>/archivo.pdf
     <source>/acreedores/archivo.pdf
 
-Proveedores get their departamento from the immediate subfolder name under
-proveedores/ (nesting deeper than one level still uses that first subfolder
-name, not the file's direct parent - so proveedores/cocina/2026/factura.pdf
-still resolves to departamento=cocina). Acreedores never get a departamento -
-that's the whole point of the distinction, so nothing under acreedores/ is
-inspected for folder structure at all, everything there is just ingested
-with departamento="".
-
-Either top-level folder can be absent (e.g. a batch that's all proveedores),
-but at least one of them must exist.
+Proveedores take their departamento from the first subfolder under
+proveedores/ (however deeply the file is nested). Acreedores never get a
+departamento. Either top-level folder may be absent, but one must exist.
+Importing does not extract; run `process_invoices` afterwards.
 """
 
 from pathlib import Path
@@ -21,96 +15,66 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from invoice_data.models import TipoEntidad
-from invoice_data.services.ingestion import (
-    IMAGE_EXTENSIONS,
-    PDF_EXTENSIONS,
-    ingest_file,
-)
+from invoice_data.services.ingestion import IMAGE_EXTENSIONS, PDF_EXTENSIONS, ingest_file
 
 ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS
 
 
 class Command(BaseCommand):
-    help = "Import invoices from a folder split into proveedores/<departamento>/ and acreedores/ subfolders."
+    """Registers every invoice file found under proveedores/ and acreedores/."""
+
+    help = "Importa facturas desde una carpeta con subcarpetas proveedores/<departamento>/ y acreedores/."
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "source",
-            type=str,
-            help="Path to the folder containing proveedores/ and/or acreedores/ subfolders.",
-        )
+        """Only argument: the folder that contains proveedores/ and/or acreedores/."""
+        parser.add_argument("source", type=str, help="Carpeta que contiene proveedores/ y/o acreedores/.")
 
-    def _collect_proveedores(self, proveedores_dir: Path) -> list[tuple[Path, str]]:
-        """Returns (file_path, departamento) pairs for every file under proveedores/<departamento>/..."""
-        results = []
-        for path in sorted(proveedores_dir.rglob("*")):
+    def _collect_proveedores(self, base: Path) -> list[tuple[Path, str]]:
+        """(file, departamento) for every file under proveedores/<departamento>/..."""
+        found = []
+        for path in sorted(base.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTENSIONS:
                 continue
-            relative_parts = path.relative_to(proveedores_dir).parts
-            # relative_parts[0] is always the departamento folder, regardless
-            # of how deeply the actual file is nested underneath it.
-            departamento = relative_parts[0] if len(relative_parts) > 1 else path.parent.name
-            results.append((path, departamento))
-        return results
+            parts = path.relative_to(base).parts
+            found.append((path, parts[0] if len(parts) > 1 else path.parent.name))
+        return found
 
-    def _collect_acreedores(self, acreedores_dir: Path) -> list[Path]:
-        """Returns every file under acreedores/, regardless of any subfolder structure - departamento never applies here."""
-        return [
-            path
-            for path in sorted(acreedores_dir.rglob("*"))
-            if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS
-        ]
+    def _collect_acreedores(self, base: Path) -> list[Path]:
+        """Every file under acreedores/, whatever its subfolders (a creditor has no department)."""
+        return [p for p in sorted(base.rglob("*")) if p.is_file() and p.suffix.lower() in ALLOWED_EXTENSIONS]
+
+    def _report(self, document, created, path, counts):
+        """Prints one line for a file and updates the running counters."""
+        if not created:
+            counts["duplicadas"] += 1
+            self.stdout.write(f"  omitida (duplicada): {path.name}")
+        elif document.status == "error":
+            counts["errores"] += 1
+            self.stdout.write(self.style.ERROR(f"  error: {path.name} - {document.error_message}"))
+        else:
+            counts["importadas"] += 1
+            self.stdout.write(self.style.SUCCESS(f"  importada: {path.name} [{document.tipo_entidad}]"))
 
     def handle(self, *args, **options):
+        """Imports both branches and prints a summary."""
         source = Path(options["source"])
-        if not source.exists() or not source.is_dir():
-            raise CommandError(f"Source folder does not exist: {source}")
+        if not source.is_dir():
+            raise CommandError(f"No existe la carpeta: {source}")
+        proveedores, acreedores = source / "proveedores", source / "acreedores"
+        if not proveedores.exists() and not acreedores.exists():
+            raise CommandError(f"No se encontró 'proveedores' ni 'acreedores' dentro de {source}.")
 
-        proveedores_dir = source / "proveedores"
-        acreedores_dir = source / "acreedores"
-
-        if not proveedores_dir.exists() and not acreedores_dir.exists():
-            raise CommandError(
-                f"No se encontro ni 'proveedores' ni 'acreedores' dentro de {source}. "
-                "La carpeta debe contener al menos una de las dos."
-            )
-
-        created_count = 0
-        duplicate_count = 0
-        error_count = 0
-
-        if proveedores_dir.exists():
-            for path, departamento in self._collect_proveedores(proveedores_dir):
-                doc, created = ingest_file(path, departamento=departamento, tipo_entidad=TipoEntidad.PROVEEDOR)
-                created_count, duplicate_count, error_count = self._report(
-                    doc, created, path, created_count, duplicate_count, error_count
-                )
-
-        if acreedores_dir.exists():
-            for path in self._collect_acreedores(acreedores_dir):
-                doc, created = ingest_file(path, departamento="", tipo_entidad=TipoEntidad.ACREEDOR)
-                created_count, duplicate_count, error_count = self._report(
-                    doc, created, path, created_count, duplicate_count, error_count
-                )
+        counts = {"importadas": 0, "duplicadas": 0, "errores": 0}
+        if proveedores.exists():
+            for path, departamento in self._collect_proveedores(proveedores):
+                document, created = ingest_file(path, departamento=departamento, tipo_entidad=TipoEntidad.PROVEEDOR)
+                self._report(document, created, path, counts)
+        if acreedores.exists():
+            for path in self._collect_acreedores(acreedores):
+                document, created = ingest_file(path, departamento="", tipo_entidad=TipoEntidad.ACREEDOR)
+                self._report(document, created, path, counts)
 
         self.stdout.write("")
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Done. {created_count} ingested, {duplicate_count} duplicates skipped, "
-                f"{error_count} errors."
-            )
-        )
-
-    def _report(self, doc, created, path, created_count, duplicate_count, error_count):
-        """Prints one line for this file's result and returns updated running counts."""
-        if not created:
-            duplicate_count += 1
-            self.stdout.write(f"  skip (duplicate): {path.name}")
-        elif doc.status == "error":
-            error_count += 1
-            self.stdout.write(self.style.ERROR(f"  error: {path.name} - {doc.error_message}"))
-        else:
-            created_count += 1
-            label = "needs OCR" if doc.needs_ocr else "digital text layer OK"
-            self.stdout.write(self.style.SUCCESS(f"  ingested: {path.name} [{doc.tipo_entidad}, {label}]"))
-        return created_count, duplicate_count, error_count
+        self.stdout.write(self.style.SUCCESS(
+            f"Listo. {counts['importadas']} importadas, {counts['duplicadas']} duplicadas, {counts['errores']} con error."
+        ))

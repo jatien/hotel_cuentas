@@ -1,0 +1,47 @@
+{# Shared layout of Gestión de Facturas: styles, messages, and the blocks each page fills. #}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Gestión de Facturas{% endblock %}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; color: #1f2937; background: #f9fafb; }
+  a { color: #2563eb; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .subtitle { color: #6b7280; margin: 0 0 22px; }
+  .btn, button.btn {
+    display: inline-block; padding: 9px 16px; border: 0; border-radius: 6px; cursor: pointer;
+    background: #2563eb; color: #fff; font-size: 14px; text-decoration: none;
+  }
+  .btn.sec { background: #6b7280; }
+  .btn.warn { background: #b45309; }
+  .btn.danger { background: #991b1b; }
+  .btn.light { background: #e5e7eb; color: #1f2937; }
+  .messages { padding: 0; margin: 0 0 16px; list-style: none; }
+  .messages li { padding: 9px 13px; border-radius: 6px; margin-bottom: 6px; font-size: 14px; }
+  .messages .success { background: #dcfce7; color: #166534; }
+  .messages .error { background: #fee2e2; color: #991b1b; }
+  .messages .warning { background: #fef9c3; color: #854d0e; }
+  .messages .info { background: #dbeafe; color: #1e40af; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+  .pill.gris { background: #e5e7eb; color: #374151; }
+  .pill.verde { background: #dcfce7; color: #166534; }
+  .pill.ambar { background: #fef9c3; color: #854d0e; }
+  .pill.azul { background: #dbeafe; color: #1e40af; }
+  .pill.rojo { background: #fee2e2; color: #991b1b; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+  th { color: #6b7280; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.nw { white-space: nowrap; }
+</style>
+{% block estilos %}{% endblock %}
+</head>
+<body>
+{% block contenido %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

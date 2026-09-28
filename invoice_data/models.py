@@ -1,31 +1,49 @@
+"""
+Models for the invoice_data app (Gestión de Facturas).
+
+Layout:
+    Proveedor               one row per supplier, identified by CIF
+    InvoiceDocument         one row per file that entered the pipeline
+    ExtractedInvoiceData    header + totals extracted from a document (1:1)
+    InvoiceTaxBreakdown     one row per IVA rate of a document (base, cuota)
+    InvoiceLineItem         one row per product line of a document
+    InvoicePage             cleaned page images (reserved for preprocessing)
+
+Money is always a Decimal, never a float. The JSON produced by the engine
+("factura/1") maps one-to-one onto these tables.
+"""
+
 import os
 
 from django.db import models
 from django.utils import timezone
-from django.core.validators import FileExtensionValidator
-from django.conf import settings
-from django.core.exceptions import ValidationError
 
 
 def invoice_upload_path(instance: "InvoiceDocument", filename: str) -> str:
     """
-    Organize stored files as:
+    Storage path of an uploaded invoice:
     invoices/<departamento>/<year>/<month>/<original_filename>
 
-    Keeping the original filename (not a random hash) makes it much easier
-    to eyeball the media folder and cross-check against the source scans.
-
-    Note: we use timezone.now() here rather than instance.imported_at.
-    auto_now_add fields are only populated during save(), in field-definition
-    order, and FileField's upload_to runs before that assignment happens -
-    reading instance.imported_at here would always see None.
+    Uses timezone.now() rather than instance.imported_at because
+    auto_now_add fields are only filled during save(), after upload_to runs.
     """
     departamento = instance.departamento or "sin_departamento"
     now = timezone.now()
     return os.path.join("invoices", departamento, now.strftime("%Y"), now.strftime("%m"), filename)
 
 
+def invoice_page_upload_path(instance: "InvoicePage", filename: str) -> str:
+    """Storage path of a cleaned page image (reserved for the preprocessing stage)."""
+    departamento = instance.document.departamento or "sin_departamento"
+    now = timezone.now()
+    return os.path.join(
+        "invoices_preprocessed", departamento, now.strftime("%Y"), now.strftime("%m"), filename
+    )
+
+
 class SourceType(models.TextChoices):
+    """What kind of file this is, decided at ingestion time."""
+
     DIGITAL_PDF = "digital_pdf", "PDF digital (con capa de texto)"
     SCANNED_PDF = "scanned_pdf", "PDF escaneado (solo imagen)"
     IMAGE = "image", "Imagen (foto o escaneo suelto)"
@@ -33,20 +51,14 @@ class SourceType(models.TextChoices):
 
 
 class TipoEntidad(models.TextChoices):
-    """Whether a document is from a supplier (tied to a department) or a creditor (not)."""
+    """Whether a document comes from a supplier (tied to a department) or a creditor (not)."""
 
     PROVEEDOR = "proveedor", "Proveedor"
     ACREEDOR = "acreedor", "Acreedor"
 
 
 class IngestionStatus(models.TextChoices):
-    """
-    Single source of truth for InvoiceDocument.status - previously defined
-    twice in this file (once before InvoiceDocument with only 4 values,
-    once after with 2 more added). Since Django captures choices/default
-    at class-body-execution time, InvoiceDocument's status field had
-    silently locked onto the incomplete first version. Consolidated here.
-    """
+    """Where a document sits in the file-handling part of the pipeline."""
 
     INGESTED = "ingested", "Ingerido"
     NEEDS_OCR = "needs_ocr", "Pendiente de OCR"
@@ -56,12 +68,36 @@ class IngestionStatus(models.TextChoices):
     DUPLICATE = "duplicate", "Duplicado (ya existia)"
 
 
+class EstadoExtraccion(models.TextChoices):
+    """Outcome of an extraction: fully consistent, or in need of a human look."""
+
+    OK = "ok", "Correcta"
+    REVISAR = "revisar", "Necesita revisión"
+
+
+class Proveedor(models.Model):
+    """
+    A supplier or creditor, identified by its tax id (CIF/NIF). The CIF is
+    the reliable key; the name is for display and may be corrected by hand.
+    """
+
+    cif = models.CharField(max_length=20, unique=True)
+    nombre = models.CharField(max_length=200, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nombre", "cif"]
+        verbose_name_plural = "proveedores"
+
+    def __str__(self) -> str:
+        return f"{self.nombre or 'Sin nombre'} ({self.cif})"
+
+
 class InvoiceDocument(models.Model):
     """
-    One row per physical invoice file that has entered the pipeline.
-    This is intentionally 'dumb' at this stage: it only records *what*
-    came in and *what kind of thing it is*. OCR text, extracted fields,
-    and validation happen in later pipeline stages / related models.
+    One row per invoice file that has entered the pipeline: what came in,
+    what kind of file it is, and the text obtained by OCR when it was a scan.
+    The extracted invoice data lives in ExtractedInvoiceData and its children.
     """
 
     file = models.FileField(upload_to=invoice_upload_path, max_length=500)
@@ -69,22 +105,21 @@ class InvoiceDocument(models.Model):
     checksum = models.CharField(
         max_length=64,
         unique=True,
-        help_text="SHA-256 of the file contents, used to avoid re-importing the same file twice.",
+        help_text="SHA-256 del contenido: evita importar dos veces el mismo archivo.",
     )
 
     tipo_entidad = models.CharField(
         max_length=20, choices=TipoEntidad.choices, default=TipoEntidad.PROVEEDOR
     )
     departamento = models.CharField(max_length=100, blank=True)
+    proveedor = models.ForeignKey(
+        Proveedor, null=True, blank=True, on_delete=models.SET_NULL, related_name="documentos"
+    )
     source_path = models.CharField(
-        max_length=1000,
-        blank=True,
-        help_text="Original path this file was ingested from, kept for audit purposes.",
+        max_length=1000, blank=True, help_text="Ruta original desde la que se importó (auditoría)."
     )
 
-    source_type = models.CharField(
-        max_length=20, choices=SourceType.choices, default=SourceType.UNKNOWN
-    )
+    source_type = models.CharField(max_length=20, choices=SourceType.choices, default=SourceType.UNKNOWN)
     page_count = models.PositiveIntegerField(default=1)
     needs_ocr = models.BooleanField(default=False)
 
@@ -93,15 +128,11 @@ class InvoiceDocument(models.Model):
     )
     error_message = models.TextField(blank=True)
 
-    # Populated at ingestion time for digital PDFs only. Cheap to grab now,
-    # saves re-opening the PDF in the next pipeline stage.
     raw_text_layer = models.TextField(
-        blank=True,
-        help_text="Extracted text layer for digital PDFs (empty for scans/images).",
+        blank=True, help_text="Capa de texto de PDFs digitales (vacío en escaneos/imágenes)."
     )
     ocr_text = models.TextField(
-        blank=True,
-        help_text="Texto extraido por OCR para documentos escaneados/imagenes (vacio para PDFs digitales).",
+        blank=True, help_text="Texto por OCR de página completa (solo escaneos/imágenes)."
     )
 
     imported_at = models.DateTimeField(auto_now_add=True)
@@ -116,24 +147,19 @@ class InvoiceDocument(models.Model):
         """Unified accessor: text layer for digital PDFs, OCR output for scans/images."""
         return self.ocr_text if self.needs_ocr else self.raw_text_layer
 
-
-def invoice_page_upload_path(instance: "InvoicePage", filename: str) -> str:
-    departamento = instance.document.departamento or "sin_departamento"
-    now = timezone.now()
-    return os.path.join(
-        "invoices_preprocessed", departamento, now.strftime("%Y"), now.strftime("%m"), filename
-    )
+    @property
+    def nombre_proveedor(self) -> str:
+        """Supplier name to display: the (possibly corrected) extracted one, else the linked supplier's, else ''."""
+        datos = getattr(self, "datos", None)
+        if datos is not None and datos.proveedor_nombre:
+            return datos.proveedor_nombre
+        return self.proveedor.nombre if self.proveedor else ""
 
 
 class InvoicePage(models.Model):
-    """
-    One cleaned page image, ready for OCR. Only created for documents that
-    needed preprocessing (needs_ocr=True) - digital PDFs never get one of these.
-    """
+    """One cleaned page image, reserved for the (optional) preprocessing stage of scans."""
 
-    document = models.ForeignKey(
-        InvoiceDocument, related_name="pages", on_delete=models.CASCADE
-    )
+    document = models.ForeignKey(InvoiceDocument, related_name="pages", on_delete=models.CASCADE)
     page_number = models.PositiveIntegerField()
     processed_image = models.ImageField(upload_to=invoice_page_upload_path)
     width = models.PositiveIntegerField(default=0)
@@ -145,71 +171,89 @@ class InvoicePage(models.Model):
         unique_together = ("document", "page_number")
 
     def __str__(self) -> str:
-        return f"{self.document.original_filename} - pagina {self.page_number}"
-
-
-class ExtractionStatus(models.TextChoices):
-    """Whether field extraction found what it needed, or needs a human to check it."""
-
-    EXTRACTED = "extracted", "Extraido correctamente"
-    NEEDS_REVIEW = "needs_review", "Necesita revision manual"
+        return f"{self.document.original_filename} - página {self.page_number}"
 
 
 class ExtractedInvoiceData(models.Model):
     """
-    Structured fields pulled from one InvoiceDocument's text (either its
-    digital text layer or its OCR output - see get_extracted_text()).
-    One row per document, created/refreshed by
-    invoice_data.services.extraction.extract_document().
+    Header and totals of one document, as extracted and then (optionally)
+    corrected and confirmed by a person. `verificacion` keeps the engine's
+    checks (which comparisons passed, per-albarán sums, warnings) so the
+    review screen and the JSON export can show why a result is trusted.
     """
 
-    document = models.OneToOneField(
-        InvoiceDocument, related_name="extracted_data", on_delete=models.CASCADE
+    document = models.OneToOneField(InvoiceDocument, related_name="datos", on_delete=models.CASCADE)
+
+    numero_factura = models.CharField(max_length=100, blank=True)
+    fecha_factura = models.DateField(null=True, blank=True)
+    fecha_texto = models.CharField(max_length=30, blank=True, help_text="La fecha tal como está impresa.")
+    proveedor_nombre = models.CharField(max_length=200, blank=True)
+    proveedor_cif = models.CharField(max_length=20, blank=True)
+
+    base_imponible = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, help_text="Total sin IVA."
     )
-    numero_factura = models.CharField(max_length=100, blank=True, null=True)
-    fecha_factura = models.DateField(blank=True, null=True)
-    proveedor_cif = models.CharField(max_length=20, blank=True, null=True)
-    base_imponible = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-    iva_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    total = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-    status = models.CharField(
-        max_length=20, choices=ExtractionStatus.choices, default=ExtractionStatus.NEEDS_REVIEW
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    extraction_method = models.CharField(
-        max_length=30,
-        blank=True,
-        help_text="Que metodo genero estos datos: invoice2data_template, regex_fallback, etc.",
-    )
-    confirmado = models.BooleanField(
-        default=False,
-        help_text="Si el usuario ha revisado y aceptado estos datos como correctos.",
-    )
+    iva_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Total con IVA.")
+
+    cuadra = models.BooleanField(default=False, help_text="Las líneas cuadran con el bloque de impuestos y el total.")
+    metodo = models.CharField(max_length=40, blank=True)
+    estado = models.CharField(max_length=10, choices=EstadoExtraccion.choices, default=EstadoExtraccion.REVISAR)
+    verificacion = models.JSONField(default=dict, blank=True)
+    motor_version = models.CharField(max_length=30, blank=True)
+
+    confirmado = models.BooleanField(default=False, help_text="Revisada y aceptada por una persona.")
+    corregido = models.BooleanField(default=False, help_text="Se modificó a mano algún campo tras la extracción.")
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "datos de factura"
+        verbose_name_plural = "datos de facturas"
 
     def __str__(self) -> str:
-        return f"Datos extraidos de {self.document.original_filename}"
+        return f"Datos de {self.document.original_filename}"
+
+
+class InvoiceTaxBreakdown(models.Model):
+    """One IVA rate of an invoice with its taxable base and tax amount (cuota)."""
+
+    document = models.ForeignKey(InvoiceDocument, related_name="impuestos", on_delete=models.CASCADE)
+    tipo = models.DecimalField(max_digits=5, decimal_places=2, help_text="Tipo de IVA en %.")
+    base = models.DecimalField(max_digits=12, decimal_places=2)
+    cuota = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        ordering = ["document", "-tipo"]
+        verbose_name = "desglose de IVA"
+        verbose_name_plural = "desgloses de IVA"
+
+    def __str__(self) -> str:
+        return f"{self.tipo}% sobre {self.base}"
 
 
 class InvoiceLineItem(models.Model):
     """
-    One product/service line from an invoice's itemized table. Categorization
-    into spend groups (e.g. 'Comida', 'Mantenimiento') is intentionally not
-    modeled yet - a naive keyword match breaks down against cryptic real
-    product codes, and needs a smarter approach to be designed separately.
+    One product or service line. `codigo_articulo` (the supplier's article
+    code) is the stable key for counting the same product across invoices;
+    descriptions can be cryptic and vary.
     """
 
-    document = models.ForeignKey(InvoiceDocument, related_name="line_items", on_delete=models.CASCADE)
+    document = models.ForeignKey(InvoiceDocument, related_name="lineas", on_delete=models.CASCADE)
     codigo_articulo = models.CharField(max_length=50, blank=True)
-    descripcion = models.CharField(max_length=255)
+    descripcion = models.CharField(max_length=500, blank=True)
+    cantidad = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     iva_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    cantidad = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
-    precio_unitario = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
     importe = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    confirmado = models.BooleanField(default=False)
+    albaran = models.CharField(max_length=100, blank=True)
+    albaran_fecha = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["document", "id"]
+        verbose_name = "línea de factura"
+        verbose_name_plural = "líneas de factura"
 
     def __str__(self) -> str:
-        return f"{self.descripcion} ({self.document.original_filename})"
+        return f"{self.descripcion or self.codigo_articulo} ({self.document.original_filename})"

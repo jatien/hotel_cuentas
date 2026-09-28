@@ -1,8 +1,4 @@
-"""
-Admin registration for the invoice_data app. Lets us visually inspect
-ingested documents, their preprocessed pages, extracted fields, and
-line items - all without writing any queries.
-"""
+"""Django admin for Gestión de Facturas: inspect and, if needed, fix any stored record."""
 
 from django.contrib import admin
 from django.utils.html import format_html
@@ -12,81 +8,80 @@ from invoice_data.models import (
     InvoiceDocument,
     InvoiceLineItem,
     InvoicePage,
+    InvoiceTaxBreakdown,
+    Proveedor,
 )
 
 
-class InvoicePageInline(admin.TabularInline):
-    """Shows each preprocessed page image inline on the InvoiceDocument admin page."""
+class DatosInline(admin.StackedInline):
+    """The extracted header of a document, shown inside the document's page."""
 
-    model = InvoicePage
+    model = ExtractedInvoiceData
     extra = 0
-    readonly_fields = ("page_number", "thumbnail", "width", "height")
-    fields = ("page_number", "thumbnail", "width", "height")
-
-    def thumbnail(self, obj):
-        """Renders a small preview image so preprocessing quality can be checked visually."""
-        if obj.processed_image:
-            return format_html('<img src="{}" style="max-height: 150px;">', obj.processed_image.url)
-        return "-"
+    can_delete = True
+    readonly_fields = ("verificacion", "motor_version", "creado", "actualizado")
 
 
-class InvoiceLineItemInline(admin.TabularInline):
-    """Shows each extracted line item inline on the InvoiceDocument admin page."""
+class ImpuestosInline(admin.TabularInline):
+    """IVA breakdown rows of a document."""
+
+    model = InvoiceTaxBreakdown
+    extra = 0
+
+
+class LineasInline(admin.TabularInline):
+    """Product lines of a document."""
 
     model = InvoiceLineItem
     extra = 0
-    readonly_fields = ("codigo_articulo", "descripcion", "iva_porcentaje", "cantidad", "precio_unitario", "importe", "confirmado")
-    fields = readonly_fields
+
+
+class PaginasInline(admin.TabularInline):
+    """Cleaned page images (reserved for the preprocessing stage), with a thumbnail."""
+
+    model = InvoicePage
+    extra = 0
+    readonly_fields = ("page_number", "miniatura", "width", "height")
+    fields = ("page_number", "miniatura", "width", "height")
+
+    def miniatura(self, obj):
+        """Small preview of the processed page."""
+        if obj.processed_image:
+            return format_html('<img src="{}" style="max-height:120px">', obj.processed_image.url)
+        return "-"
+
+
+@admin.register(Proveedor)
+class ProveedorAdmin(admin.ModelAdmin):
+    """Suppliers and creditors, keyed by CIF; the name can be corrected here."""
+
+    list_display = ("nombre", "cif", "creado")
+    search_fields = ("nombre", "cif")
 
 
 @admin.register(InvoiceDocument)
 class InvoiceDocumentAdmin(admin.ModelAdmin):
-    """Admin list/detail view for every invoice that has entered the pipeline."""
+    """Every file that entered the pipeline, with its extraction underneath."""
 
-    list_display = (
-        "original_filename",
-        "tipo_entidad",
-        "departamento",
-        "source_type",
-        "page_count",
-        "needs_ocr",
-        "status",
-        "imported_at",
-    )
-    list_filter = ("tipo_entidad", "departamento", "source_type", "status", "needs_ocr")
-    search_fields = ("original_filename", "checksum", "source_path")
+    list_display = ("original_filename", "tipo_entidad", "departamento", "proveedor", "source_type", "status", "imported_at")
+    list_filter = ("tipo_entidad", "departamento", "source_type", "status")
+    search_fields = ("original_filename", "checksum", "proveedor__nombre", "proveedor__cif")
     readonly_fields = ("checksum", "imported_at", "raw_text_layer", "ocr_text")
-    inlines = [InvoicePageInline, InvoiceLineItemInline]
-
-
-@admin.register(InvoicePage)
-class InvoicePageAdmin(admin.ModelAdmin):
-    """Admin list view for individual preprocessed pages, useful for spot-checking."""
-
-    list_display = ("document", "page_number", "width", "height", "created_at")
+    inlines = [DatosInline, ImpuestosInline, LineasInline, PaginasInline]
 
 
 @admin.register(ExtractedInvoiceData)
 class ExtractedInvoiceDataAdmin(admin.ModelAdmin):
-    """Admin view for the structured header fields pulled out of each invoice."""
+    """Header and totals of every extracted invoice."""
 
-    list_display = (
-        "document",
-        "numero_factura",
-        "fecha_factura",
-        "total",
-        "extraction_method",
-        "confirmado",
-        "status",
-    )
-    list_filter = ("status", "confirmado", "extraction_method")
-    search_fields = ("numero_factura", "proveedor_cif")
+    list_display = ("document", "numero_factura", "fecha_factura", "proveedor_nombre", "total", "cuadra", "estado", "confirmado")
+    list_filter = ("estado", "cuadra", "confirmado", "corregido")
+    search_fields = ("numero_factura", "proveedor_nombre", "proveedor_cif", "document__original_filename")
 
 
 @admin.register(InvoiceLineItem)
 class InvoiceLineItemAdmin(admin.ModelAdmin):
-    """Admin list/detail view for individual line items across all invoices."""
+    """Product lines across all invoices (useful to count the same article over time)."""
 
-    list_display = ("descripcion", "document", "iva_porcentaje", "importe", "confirmado")
-    list_filter = ("confirmado",)
+    list_display = ("descripcion", "codigo_articulo", "document", "cantidad", "importe")
     search_fields = ("descripcion", "codigo_articulo")

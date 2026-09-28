@@ -1,39 +1,89 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Gestión de Facturas</title>
+{# Lista principal de Gestión de Facturas: contadores, filtros, tabla paginada y exportaciones. #}
+{% extends "invoice_data/base.html" %}
+{% block estilos %}
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; color: #222; }
-  h1 { margin-bottom: 4px; }
-  .subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
-  .stats { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
-  .stat-card {
-    flex: 1;
-    min-width: 140px;
-    background: #f3f4f6;
-    border-radius: 8px;
-    padding: 16px;
-    text-align: center;
-  }
-  .stat-card .value { font-size: 28px; font-weight: 700; }
-  .stat-card .label { font-size: 13px; color: #555; margin-top: 4px; }
-  .stat-card.errores .value { color: #991b1b; }
-  .stat-card.pendientes .value { color: #854d0e; }
-  .stat-card.listos .value { color: #166534; }
-  .btn {
-    display: inline-block;
-    padding: 10px 18px;
-    background: #2563eb;
-    color: white;
-    text-decoration: none;
-    border-radius: 6px;
-    font-size: 15px;
-    margin-bottom: 24px;
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
-  th { color: #555; font-weight: 600; }
-  .badge {
-    padding: 2px 8px;
-    border-radius: 10px;
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+  .stat { flex: 1; min-width: 140px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; text-align: center; }
+  .stat .v { font-size: 26px; font-weight: 700; }
+  .stat .l { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .stat.verde .v { color: #166534; } .stat.ambar .v { color: #854d0e; } .stat.azul .v { color: #1e40af; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; align-items: center; }
+  .filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  .filtros label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 3px; }
+  .filtros input, .filtros select { padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+  .tabla { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto; }
+  .paginacion { margin-top: 14px; display: flex; gap: 14px; align-items: center; font-size: 14px; }
+  .vacio { padding: 24px; text-align: center; color: #6b7280; }
+</style>
+{% endblock %}
+{% block contenido %}
+<div class="wrap">
+  <h1>Gestión de Facturas</h1>
+  <p class="subtitle">Importación, extracción, revisión y exportación de facturas de proveedores y acreedores</p>
+
+  {% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+
+  <div class="stats">
+    <div class="stat"><div class="v">{{ stats.total }}</div><div class="l">Facturas importadas</div></div>
+    <div class="stat ambar"><div class="v">{{ stats.sin_extraer }}</div><div class="l">Sin extraer</div></div>
+    <div class="stat verde"><div class="v">{{ stats.correctas }}</div><div class="l">Extracción correcta</div></div>
+    <div class="stat ambar"><div class="v">{{ stats.a_revisar }}</div><div class="l">A revisar</div></div>
+    <div class="stat azul"><div class="v">{{ stats.confirmadas }}</div><div class="l">Confirmadas</div></div>
+  </div>
+
+  <div class="toolbar">
+    <a class="btn" href="{% url 'invoice_data:upload' %}">Importar facturas</a>
+    <a class="btn light" href="{% url 'invoice_data:export_facturas' %}?confirmadas=1">Exportar facturas confirmadas (CSV)</a>
+    <a class="btn light" href="{% url 'invoice_data:export_lineas' %}?confirmadas=1">Exportar líneas confirmadas (CSV)</a>
+    <a class="btn light" href="{% url 'invoice_data:export_facturas' %}">Exportar todas (CSV)</a>
+  </div>
+
+  <form method="get" class="filtros">
+    {% for field in filtro %}
+      <div><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+    {% endfor %}
+    <button class="btn sec" type="submit">Filtrar</button>
+    <a class="btn light" href="{% url 'invoice_data:index' %}">Limpiar</a>
+  </form>
+
+  <div class="tabla">
+    <table>
+      <thead>
+        <tr>
+          <th>Archivo</th><th>Tipo</th><th>Departamento</th><th>Proveedor</th>
+          <th>Nº factura</th><th>Fecha</th><th class="num">Total</th><th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in page %}
+        <tr>
+          <td><a href="{% url 'invoice_data:detail' d.pk %}">{{ d.original_filename }}</a></td>
+          <td>{{ d.get_tipo_entidad_display }}</td>
+          <td>{{ d.get_departamento_display|default:d.departamento|default:"—" }}</td>
+          <td>{{ d.nombre_proveedor|default:"—" }}</td>
+          <td class="nw">{{ d.datos.numero_factura|default:"—" }}</td>
+          <td class="nw">{{ d.datos.fecha_factura|date:"d/m/Y"|default:"—" }}</td>
+          <td class="num">{% if d.datos.total is not None %}{{ d.datos.total }} €{% else %}—{% endif %}</td>
+          <td>
+            {% if not d.datos %}<span class="pill gris">Sin extraer</span>
+            {% elif d.datos.confirmado %}<span class="pill azul">✓ Confirmada</span>
+            {% elif d.datos.estado == "ok" %}<span class="pill verde">Correcta</span>
+            {% else %}<span class="pill ambar">A revisar</span>{% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="vacio">No hay facturas que mostrar.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page.paginator.num_pages > 1 %}
+  <div class="paginacion">
+    {% if page.has_previous %}<a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.previous_page_number }}">← Anterior</a>{% endif %}
+    <span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page.next_page_number }}">Siguiente →</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
