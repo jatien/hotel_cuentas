@@ -5,6 +5,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from .models import NominaMensual
 from .forms import ImportarNominaForm
+from .services import importar_nomina_mensual, ImportacionInvalida
+
 from .services import importar_nomina_mensual
 import json
 
@@ -22,12 +24,13 @@ def nominas_view(request, anio=2026):
     datos_por_mes = {}
     totales_mes = {}
     for n in nominas:
-        total = float(n.cost_tot) + float(n.importe_extra)
+        total = float(n.s_neto) + float(n.importe_extra)  # antes era cost_tot + importe_extra
         datos_por_mes.setdefault(n.mes, []).append({
             'id': n.id,
             'empleado': n.empleado.nombre,
             'departamento': n.departamento,
             'deveng': float(n.deveng),
+            's_neto': float(n.s_neto),
             'cost_tot': float(n.cost_tot),
             'importe_extra': float(n.importe_extra),
             'total': round(total, 2),
@@ -66,8 +69,9 @@ def actualizar_campo(request):
     setattr(nomina, campo, valor)
     nomina.save(update_fields=[campo])
 
-    total = float(nomina.cost_tot) + float(nomina.importe_extra)
+    total = float(nomina.s_neto) + float(nomina.importe_extra)  # antes era cost_tot + importe_extra
     return JsonResponse({'ok': True, 'total': round(total, 2)})
+
 
 
 def importar_nomina(request):
@@ -88,8 +92,10 @@ def importar_nomina(request):
                 if resultado['sin_departamento']:
                     messages.warning(request, 'Sin departamento asignado: ' + ', '.join(resultado['sin_departamento']))
                 return redirect('nominas')
+            except ImportacionInvalida as e:
+                messages.error(request, str(e))  # error esperado, mensaje claro, sin página de crash
             except Exception as e:
-                messages.error(request, f'Error al importar: {e}')
+                messages.error(request, f'Error inesperado al importar: {e}')  # red de seguridad para lo no previsto
     else:
         form = ImportarNominaForm()
     return render(request, 'nominas/importar.html', {'form': form})

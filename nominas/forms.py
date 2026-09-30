@@ -1,5 +1,6 @@
-# nominas/forms.py (añadir)
 from django import forms
+
+EXTENSIONES_PERMITIDAS = ('.csv',)
 
 class ImportarNominaForm(forms.Form):
     archivo = forms.FileField(label='Archivo CSV')
@@ -8,6 +9,11 @@ class ImportarNominaForm(forms.Form):
 
     def clean_archivo(self):
         archivo = self.cleaned_data['archivo']
-        if not archivo.name.lower().endswith('.csv'):
-            raise forms.ValidationError('El archivo debe ser un .csv')
+        nombre = archivo.name.lower()
+        if not nombre.endswith(EXTENSIONES_PERMITIDAS):
+            raise forms.ValidationError(
+                f"'{archivo.name}' no es un archivo .csv. Si viene de Excel, usa 'Guardar como' → CSV (delimitado por comas)."
+            )
+        if archivo.size == 0:
+            raise forms.ValidationError('El archivo está vacío.')
         return archivo

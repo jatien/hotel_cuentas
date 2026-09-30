@@ -1,121 +1,71 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Importar facturas</title>
+{# Página de importación con zona de arrastrar y soltar. #}
+{% extends "invoice_data/base.html" %}
+{% block titulo %}Importar facturas{% endblock %}
+{% block estilos %}
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; color: #222; }
-  .dropzone {
-    border: 2px dashed #888;
-    border-radius: 8px;
-    padding: 48px 24px;
-    text-align: center;
-    color: #666;
-    cursor: pointer;
-    transition: border-color .15s, background-color .15s;
-  }
-  .dropzone.dragover {
-    border-color: #2563eb;
-    background-color: #eff6ff;
-    color: #2563eb;
-  }
-  #file-list { margin-top: 16px; list-style: none; padding: 0; }
-  #file-list li {
-    padding: 6px 10px;
-    background: #f3f4f6;
-    border-radius: 4px;
-    margin-bottom: 4px;
-    font-size: 14px;
-  }
-  select, button {
-    margin-top: 16px;
-    padding: 8px 12px;
-    font-size: 15px;
-  }
-  .messages { padding: 0; margin-bottom: 16px; }
-  .messages li { padding: 8px 12px; border-radius: 4px; margin-bottom: 6px; list-style: none; }
-  .messages .success { background: #dcfce7; color: #166534; }
-  .messages .error { background: #fee2e2; color: #991b1b; }
-  .messages .warning { background: #fef9c3; color: #854d0e; }
+  .wrap { max-width: 680px; }
+  .dropzone { border: 2px dashed #9ca3af; border-radius: 8px; padding: 48px 24px; text-align: center; color: #6b7280; cursor: pointer; margin: 16px 0; transition: .15s; background: #fff; }
+  .dropzone.dragover { border-color: #2563eb; background: #eff6ff; color: #2563eb; }
+  #lista-archivos { list-style: none; padding: 0; }
+  #lista-archivos li { padding: 6px 10px; background: #f3f4f6; border-radius: 4px; margin-bottom: 4px; font-size: 14px; }
+  .campo { margin-bottom: 14px; }
+  .campo label { font-weight: 600; font-size: 14px; }
+  .campo ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; gap: 18px; }
+  select { padding: 8px; font-size: 15px; margin-top: 4px; }
+  .errorlist { color: #991b1b; list-style: none; padding: 0; margin: 4px 0 0; font-size: 13px; }
 </style>
-</head>
-<body>
-  <h1>Importar facturas</h1>
+{% endblock %}
+{% block contenido %}
+<div class="wrap">
   <p><a href="{% url 'invoice_data:index' %}">← Volver a Gestión de Facturas</a></p>
+  <h1>Importar facturas</h1>
+  {% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
 
-  {% if messages %}
-  <ul class="messages">
-    {% for message in messages %}
-      <li class="{{ message.tags }}">{{ message }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-
-  <form method="post" enctype="multipart/form-data" id="upload-form">
+  <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-
-    <label>Tipo</label>
-    {{ form.tipo_entidad }}
-
-    <div id="departamento-field">
-      <label for="id_departamento">Departamento</label>
-      {{ form.departamento }}
+    <div class="campo"><label>Tipo</label>{{ form.tipo_entidad }}</div>
+    <div class="campo" id="campo-departamento">
+      <label for="{{ form.departamento.id_for_label }}">Departamento</label><br>
+      {{ form.departamento }}{{ form.departamento.errors }}
     </div>
+    <div class="campo"><label>{{ form.extraer }} {{ form.extraer.label }}</label></div>
 
-    <div id="dropzone" class="dropzone">
-      Arrastra aquí tus facturas (PDF o fotos), o haz clic para seleccionarlas
-    </div>
-    <input type="file" id="file-input" name="files" multiple
-           accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp" style="display: none;">
-
-    <ul id="file-list"></ul>
-
-    <button type="submit">Importar</button>
+    <div id="zona" class="dropzone">Arrastra aquí tus facturas (PDF o fotos), o haz clic para seleccionarlas</div>
+    <input type="file" id="archivos" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp" style="display:none">
+    <ul id="lista-archivos"></ul>
+    <button class="btn" type="submit">Importar</button>
   </form>
-
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-  function toggleDepartamentoField() {
-    const acreedorSelected = document.querySelector('input[name="tipo_entidad"][value="acreedor"]')?.checked;
-    document.getElementById("departamento-field").style.display = acreedorSelected ? "none" : "block";
-  }
-  document.querySelectorAll('input[name="tipo_entidad"]').forEach((el) => {
-    el.addEventListener("change", toggleDepartamentoField);
-  });
-  toggleDepartamentoField();
-  const dropzone = document.getElementById("dropzone");
-  const fileInput = document.getElementById("file-input");
-  const fileList = document.getElementById("file-list");
+  const zona = document.getElementById("zona");
+  const entrada = document.getElementById("archivos");
+  const lista = document.getElementById("lista-archivos");
 
-  function renderFileList(files) {
-    fileList.innerHTML = "";
+  function mostrar(files) {
+    lista.innerHTML = "";
     Array.from(files).forEach((f) => {
       const li = document.createElement("li");
       li.textContent = `${f.name} (${(f.size / 1024).toFixed(0)} KB)`;
-      fileList.appendChild(li);
+      lista.appendChild(li);
     });
   }
-
-  dropzone.addEventListener("click", () => fileInput.click());
-
-  dropzone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropzone.classList.add("dragover");
+  zona.addEventListener("click", () => entrada.click());
+  zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("dragover"); });
+  zona.addEventListener("dragleave", () => zona.classList.remove("dragover"));
+  zona.addEventListener("drop", (e) => {
+    e.preventDefault(); zona.classList.remove("dragover");
+    entrada.files = e.dataTransfer.files; mostrar(entrada.files);
   });
+  entrada.addEventListener("change", () => mostrar(entrada.files));
 
-  dropzone.addEventListener("dragleave", () => {
-    dropzone.classList.remove("dragover");
-  });
-
-  dropzone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropzone.classList.remove("dragover");
-    fileInput.files = e.dataTransfer.files;
-    renderFileList(fileInput.files);
-  });
-
-  fileInput.addEventListener("change", () => {
-    renderFileList(fileInput.files);
-  });
+  // Un acreedor no tiene departamento: se oculta el selector.
+  function alternarDepartamento() {
+    const acreedor = document.querySelector('input[name="tipo_entidad"][value="acreedor"]');
+    document.getElementById("campo-departamento").style.display = acreedor && acreedor.checked ? "none" : "block";
+  }
+  document.querySelectorAll('input[name="tipo_entidad"]').forEach((el) => el.addEventListener("change", alternarDepartamento));
+  alternarDepartamento();
 </script>
-</body>
-</html>
+{% endblock %}

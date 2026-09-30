@@ -1,124 +1,83 @@
+"""Tests of step 1: classifying and registering files."""
+
 import shutil
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw
-from reportlab.pdfgen import canvas
-
-from invoice_data.models import InvoiceDocument, SourceType, TipoEntidad
+from invoice_data.models import InvoiceDocument, IngestionStatus, SourceType, TipoEntidad
 from invoice_data.services.ingestion import ingest_file
 from invoice_data.tests.base import MediaIsolatedTestCase
-
-
-def make_digital_pdf(path: Path, text: str = "FACTURA DE PRUEBA NUMERO 123"):
-    """A real digitally-authored PDF with a genuine, selectable text layer."""
-    c = canvas.Canvas(str(path))
-    c.drawString(100, 750, text)
-    c.save()
-
-
-def make_scanned_pdf(path: Path):
-    """A PDF containing only an embedded image - simulates a scan, no text layer."""
-    img = Image.new("RGB", (600, 800), color="white")
-    draw = ImageDraw.Draw(img)
-    draw.text((50, 50), "texto dentro de una imagen, no seleccionable", fill="black")
-    img.save(path, "PDF")
-
-
-def make_test_image(path: Path):
-    img = Image.new("RGB", (400, 300), color="white")
-    draw = ImageDraw.Draw(img)
-    draw.text((20, 20), "FACTURA FOTO PRUEBA", fill="black")
-    img.save(path, "JPEG")
+from invoice_data.tests.fixtures import make_image, make_invoice_pdf, make_scanned_pdf
 
 
 class IngestionTests(MediaIsolatedTestCase):
-    """
-    Uses MediaIsolatedTestCase (not plain TestCase) because ingest_file()
-    writes real files via doc.file.save() - Django's TestCase only rolls
-    back the database between tests, not file storage, so without this
-    every run would leave test files behind in the real media folder.
-    """
+    """Uses generated fixtures in a temp folder; file writes go to the isolated MEDIA_ROOT."""
 
     def setUp(self):
+        """A private scratch folder for the source files."""
         self.tmp_dir = Path(tempfile.mkdtemp())
 
     def tearDown(self):
+        """Remove the scratch folder."""
         shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
     def test_digital_pdf_is_classified_correctly(self):
-        pdf_path = self.tmp_dir / "digital.pdf"
-        make_digital_pdf(pdf_path)
-
-        doc, created = ingest_file(pdf_path, departamento="recepcion")
-
+        document, created = ingest_file(make_invoice_pdf(self.tmp_dir / "digital.pdf"), departamento="recepcion")
         self.assertTrue(created)
-        self.assertEqual(doc.source_type, SourceType.DIGITAL_PDF)
-        self.assertFalse(doc.needs_ocr)
-        self.assertIn("FACTURA", doc.raw_text_layer)
+        self.assertEqual(document.source_type, SourceType.DIGITAL_PDF)
+        self.assertFalse(document.needs_ocr)
+        self.assertIn("FACTURA", document.raw_text_layer)
 
     def test_scanned_pdf_is_classified_correctly(self):
-        pdf_path = self.tmp_dir / "scanned.pdf"
-        make_scanned_pdf(pdf_path)
-
-        doc, created = ingest_file(pdf_path, departamento="cocina")
-
-        self.assertTrue(created)
-        self.assertEqual(doc.source_type, SourceType.SCANNED_PDF)
-        self.assertTrue(doc.needs_ocr)
-        self.assertEqual(doc.raw_text_layer, "")
+        document, _ = ingest_file(make_scanned_pdf(self.tmp_dir / "scan.pdf"), departamento="cocina")
+        self.assertEqual(document.source_type, SourceType.SCANNED_PDF)
+        self.assertTrue(document.needs_ocr)
+        self.assertEqual(document.status, IngestionStatus.NEEDS_OCR)
 
     def test_image_is_classified_correctly(self):
-        img_path = self.tmp_dir / "foto.jpg"
-        make_test_image(img_path)
-
-        doc, created = ingest_file(img_path, departamento="mantenimiento")
-
-        self.assertTrue(created)
-        self.assertEqual(doc.source_type, SourceType.IMAGE)
-        self.assertTrue(doc.needs_ocr)
+        document, _ = ingest_file(make_image(self.tmp_dir / "foto.jpg"), departamento="mantenimiento")
+        self.assertEqual(document.source_type, SourceType.IMAGE)
+        self.assertTrue(document.needs_ocr)
 
     def test_duplicate_file_is_not_reimported(self):
-        pdf_path = self.tmp_dir / "digital.pdf"
-        make_digital_pdf(pdf_path)
-
-        doc1, created1 = ingest_file(pdf_path, departamento="recepcion")
-        doc2, created2 = ingest_file(pdf_path, departamento="recepcion")
-
-        self.assertTrue(created1)
-        self.assertFalse(created2)
-        self.assertEqual(doc1.pk, doc2.pk)
+        path = make_invoice_pdf(self.tmp_dir / "digital.pdf")
+        first, created_first = ingest_file(path, departamento="recepcion")
+        second, created_second = ingest_file(path, departamento="recepcion")
+        self.assertTrue(created_first)
+        self.assertFalse(created_second)
+        self.assertEqual(first.pk, second.pk)
         self.assertEqual(InvoiceDocument.objects.count(), 1)
 
-    def test_unsupported_extension_is_flagged_as_error(self):
-        bad_path = self.tmp_dir / "nota.txt"
-        bad_path.write_text("esto no es una factura")
-
-        doc, created = ingest_file(bad_path, departamento="comedor")
-
+    def test_unsupported_extension_is_stored_as_error(self):
+        bad = self.tmp_dir / "nota.txt"
+        bad.write_text("esto no es una factura")
+        document, created = ingest_file(bad, departamento="comedor")
         self.assertTrue(created)
-        self.assertEqual(doc.status, "error")
+        self.assertEqual(document.status, IngestionStatus.ERROR)
 
-    def test_acreedor_has_no_departamento(self):
-        """
-        Regression test for the departamento-fallback bug: passing an
-        explicit empty string must NOT be overridden by the parent folder
-        name - that's exactly what an acreedor needs.
-        """
-        pdf_path = self.tmp_dir / "acreedor.pdf"
-        make_digital_pdf(pdf_path)
-
-        doc, created = ingest_file(pdf_path, departamento="", tipo_entidad=TipoEntidad.ACREEDOR)
-
+    def test_corrupt_pdf_is_stored_as_error_instead_of_crashing(self):
+        """A file that claims to be a PDF but is not must not abort an import."""
+        bad = self.tmp_dir / "rota.pdf"
+        bad.write_text("no soy un pdf")
+        document, created = ingest_file(bad, departamento="comedor")
         self.assertTrue(created)
-        self.assertEqual(doc.tipo_entidad, TipoEntidad.ACREEDOR)
-        self.assertEqual(doc.departamento, "")
+        self.assertEqual(document.status, IngestionStatus.ERROR)
+        self.assertTrue(document.error_message)
 
-    def test_proveedor_is_default_tipo_entidad(self):
-        """Backward compatibility: not passing tipo_entidad at all still defaults to proveedor."""
-        pdf_path = self.tmp_dir / "proveedor.pdf"
-        make_digital_pdf(pdf_path)
+    def test_creditor_keeps_an_empty_departamento(self):
+        """An explicit empty string must NOT fall back to the folder name."""
+        document, _ = ingest_file(
+            make_invoice_pdf(self.tmp_dir / "acreedor.pdf"), departamento="", tipo_entidad=TipoEntidad.ACREEDOR
+        )
+        self.assertEqual(document.tipo_entidad, TipoEntidad.ACREEDOR)
+        self.assertEqual(document.departamento, "")
 
-        doc, _ = ingest_file(pdf_path, departamento="cocina")
+    def test_supplier_is_the_default_type(self):
+        document, _ = ingest_file(make_invoice_pdf(self.tmp_dir / "p.pdf"), departamento="cocina")
+        self.assertEqual(document.tipo_entidad, TipoEntidad.PROVEEDOR)
 
-        self.assertEqual(doc.tipo_entidad, TipoEntidad.PROVEEDOR)
+    def test_departamento_falls_back_to_the_parent_folder(self):
+        folder = self.tmp_dir / "bar"
+        folder.mkdir()
+        document, _ = ingest_file(make_invoice_pdf(folder / "f.pdf"))
+        self.assertEqual(document.departamento, "bar")

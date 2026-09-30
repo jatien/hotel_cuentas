@@ -1,15 +1,9 @@
-
+{% extends "base.html" %}
+{% block content %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
 
-<div style="display: flex; justify-content: space-between; align-items: center;">
-  <div>
-    <a href="{% url 'home' %}" class="btn-volver">← Volver</a>
-    <h2 style="display:inline; margin-left: 12px;">Nóminas {{ anio }}</h2>
-  </div>
-  <a href="{% url 'importar_nomina' %}" class="btn-importar">+ Importar CSV</a>
-</div>
 <div style="display: flex; justify-content: space-between; align-items: center;">
   <div>
     <a href="{% url 'home' %}" class="btn-volver">← Volver</a>
@@ -24,6 +18,12 @@
 {% for mes, nombre, total in meses_tabs %}
 <details class="mes-desplegable" data-mes="{{ mes }}">
   <summary>{{ nombre }} — Total (con extras): {{ total }} €</summary>
+
+  <label class="toggle-agrupar">
+    <input type="checkbox" class="chk-agrupar" data-mes="{{ mes }}">
+    Agrupar por departamento (con rollup)
+  </label>
+
   <div id="grid-{{ mes }}" class="ag-theme-quartz grid-mes" style="height: 500px; width: 100%; margin-top: 1rem;"></div>
 </details>
 {% endfor %}
@@ -36,7 +36,7 @@
 
 <script>
   const datosPorMes = JSON.parse(document.getElementById('datos-mensuales').textContent);
-  const gridsCreados = {};
+  const gridApisPorMes = {};
 
   function getCookie(name) {
     const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -58,35 +58,116 @@
       .catch(() => alert('Error de conexión al guardar el cambio'));
   }
 
-  const columnDefs = [
-    { field: 'id', hide: true },
-    { field: 'empleado', headerName: 'Empleado', editable: false },
-    { field: 'departamento', headerName: 'Departamento', editable: true },
-    { field: 'deveng', headerName: 'Devengado', editable: false },
-    { field: 'cost_tot', headerName: 'Coste total', editable: false },
-    { field: 'importe_extra', headerName: 'Extra', editable: true },
-    { field: 'total', headerName: 'Total + Extra', editable: false },
-  ];
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  // Construye una vista agrupada: filas originales ordenadas por departamento,
+  // con una fila de subtotal (rollup) insertada al final de cada grupo.
+function agruparPorDepartamento(datos) {
+  const grupos = {};
+  datos.forEach(fila => {
+    const depto = fila.departamento || 'Sin departamento';
+    if (!grupos[depto]) grupos[depto] = [];
+    grupos[depto].push(fila);
+  });
+
+  const resultado = [];
+  Object.keys(grupos).sort().forEach(depto => {
+    const filas = grupos[depto];
+    resultado.push(...filas);
+
+    const subtotal = filas.reduce((acc, f) => ({
+      deveng: acc.deveng + f.deveng,
+      s_neto: acc.s_neto + f.s_neto,
+      cost_tot: acc.cost_tot + f.cost_tot,
+      importe_extra: acc.importe_extra + f.importe_extra,
+      total: acc.total + f.total,
+    }), { deveng: 0, s_neto: 0, cost_tot: 0, importe_extra: 0, total: 0 });
+
+    resultado.push({
+      id: null,
+      empleado: `Total ${depto} (${filas.length} empleados)`,
+      departamento: depto,
+      deveng: round2(subtotal.deveng),
+      s_neto: round2(subtotal.s_neto),
+      cost_tot: round2(subtotal.cost_tot),
+      importe_extra: round2(subtotal.importe_extra),
+      total: round2(subtotal.total),
+      esTotal: true,
+    });
+  });
+  return resultado;
+}
+
+ const columnDefs = [
+  { field: 'id', hide: true },
+  { field: 'empleado', headerName: 'Empleado', editable: false },
+  {
+    field: 'departamento', headerName: 'Departamento',
+    editable: (params) => !params.data.esTotal,
+  },
+  { field: 'deveng', headerName: 'Devengado', editable: false },
+  { field: 's_neto', headerName: 'S. Neto', editable: false },
+  { field: 'cost_tot', headerName: 'Coste total', editable: false },
+  {
+    field: 'importe_extra', headerName: 'Extra',
+    editable: (params) => !params.data.esTotal,
+  },
+  { field: 'total', headerName: 'Total (S.Neto + Extra)', editable: false },
+];
+
+  function crearGrid(mes) {
+    const gridApi = agGrid.createGrid(document.getElementById('grid-' + mes), {
+      columnDefs: columnDefs,
+      rowData: datosPorMes[mes] || [],
+      defaultColDef: { sortable: true, filter: true, resizable: true },
+      getRowStyle: (params) => {
+        if (params.data.esTotal) {
+          return { fontWeight: 'bold', background: '#f0f4ff' };
+        }
+      },
+      onCellValueChanged: (event) => {
+        if (event.data.esTotal) return; // no se edita una fila de rollup
+        const campo = event.colDef.field;
+        guardarCambio(event.data.id, campo, event.newValue, (respuesta) => {
+          // sincroniza el dato original para que el rollup se recalcule bien si se reagrupa
+          const filaOriginal = datosPorMes[mes].find(f => f.id === event.data.id);
+          if (filaOriginal) {
+            filaOriginal[campo] = event.newValue;
+            if (campo === 'importe_extra') filaOriginal.total = respuesta.total;
+          }
+          if (campo === 'importe_extra') {
+            event.node.setDataValue('total', respuesta.total);
+          }
+          // si está agrupado, refresca para que el subtotal quede al día
+          const checkbox = document.querySelector(`.chk-agrupar[data-mes="${mes}"]`);
+          if (checkbox && checkbox.checked) {
+            gridApi.setGridOption('rowData', agruparPorDepartamento(datosPorMes[mes]));
+          }
+        });
+      },
+    });
+    gridApisPorMes[mes] = gridApi;
+  }
 
   document.querySelectorAll('.mes-desplegable').forEach(detalle => {
     detalle.addEventListener('toggle', () => {
       const mes = detalle.dataset.mes;
-      if (detalle.open && !gridsCreados[mes]) {
-        const gridApi = agGrid.createGrid(document.getElementById('grid-' + mes), {
-          columnDefs: columnDefs,
-          rowData: datosPorMes[mes] || [],
-          defaultColDef: { sortable: true, filter: true, resizable: true },
-          onCellValueChanged: (event) => {
-            const campo = event.colDef.field;
-            guardarCambio(event.data.id, campo, event.newValue, (respuesta) => {
-              if (campo === 'importe_extra') {
-                event.node.setDataValue('total', respuesta.total);
-              }
-            });
-          },
-        });
-        gridsCreados[mes] = true;
+      if (detalle.open && !gridApisPorMes[mes]) {
+        crearGrid(mes);
       }
+    });
+  });
+
+  document.querySelectorAll('.chk-agrupar').forEach(checkbox => {
+    checkbox.addEventListener('change', () => {
+      const mes = checkbox.dataset.mes;
+      const gridApi = gridApisPorMes[mes];
+      if (!gridApi) return;
+      gridApi.setGridOption('rowData', checkbox.checked
+        ? agruparPorDepartamento(datosPorMes[mes])
+        : datosPorMes[mes]);
     });
   });
 </script>
@@ -94,12 +175,13 @@
 <style>
   .btn-importar { padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; }
   .btn-importar:hover { background: #1d4ed8; }
+  .btn-analisis { padding: 8px 16px; background: #16a34a; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; margin-right: 8px; }
+  .btn-analisis:hover { background: #15803d; }
   .btn-volver { color: #2563eb; text-decoration: none; font-size: 14px; }
   .btn-volver:hover { text-decoration: underline; }
   .mes-desplegable { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 8px; padding: 8px 12px; }
   .mes-desplegable summary { cursor: pointer; font-weight: bold; font-size: 16px; padding: 4px 0; }
+  .toggle-agrupar { display: block; margin-top: 8px; font-size: 14px; cursor: pointer; }
   .resumen-anual { margin-top: 24px; padding: 16px; background: #f0f4ff; border-radius: 8px; text-align: right; font-size: 18px; }
-  .btn-analisis {padding: 8px 16px; background: #16a34a; color: white;
-    text-decoration: none; border-radius: 6px; font-size: 14px; margin-right: 8px;}
-  .btn-analisis:hover { background: #15803d; }
 </style>
+{% endblock %}
