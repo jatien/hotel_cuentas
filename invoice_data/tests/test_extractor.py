@@ -24,6 +24,7 @@ from invoice_data.services.extractor import (
     header_from_cells,
     is_kerning_gap,
     parse_line,
+    parse_simple_line,
     result_to_dict,
     review_problems,
 )
@@ -604,3 +605,192 @@ class HotelIdentityTests(EngineTestCase):
         """With no hotel identity configured nothing is excluded, and an empty NIF must not match every line."""
         text = "Suministros Ejemplo, S.L. CIF B12345674"
         self.assertEqual(find_supplier_name(text, "B12345674"), "Suministros Ejemplo S.L.")
+
+
+class MultipleOwnEntitiesTests(EngineTestCase):
+    """A hotel may operate under more than one legal entity (e.g. a separate C.B. billed for utilities)."""
+
+    @override_settings(
+        INVOICE_OWN_NIF=("B99999999", "E11111112"),
+        INVOICE_OWN_NAMES=("HOTEL DEMO", "SOCIOS DEMO"),
+    )
+    def test_either_configured_nif_is_recognised_as_the_hotels_own(self):
+        result = Result()
+        find_header("Cliente NIF E11111112\nProveedor Ejemplo, S.L. CIF B12345674", result)
+        self.assertEqual(result.proveedor_cif, "B12345674")
+
+    @override_settings(
+        INVOICE_OWN_NIF=("B99999999", "E11111112"),
+        INVOICE_OWN_NAMES=("HOTEL DEMO", "SOCIOS DEMO"),
+    )
+    def test_either_configured_name_is_excluded_from_being_the_supplier(self):
+        text = "Socios Demo, C.B.\nCIF E11111112\nSuministros Ejemplo, S.L. CIF B12345674"
+        self.assertEqual(find_supplier_name(text, "B12345674"), "Suministros Ejemplo S.L.")
+
+    def test_a_single_string_still_works_as_before(self):
+        """Backward compatibility: INVOICE_OWN_NIF as a plain string (not a tuple) must still work."""
+        result = Result()
+        find_header("Cliente NIF B99999999\nProveedor Ejemplo, S.L. CIF B12345674", result)
+        self.assertEqual(result.proveedor_cif, "B12345674")
+
+
+class OcrMisreadLabelTests(EngineTestCase):
+    """Regression: OCR commonly misreads 'º' as '?', and utility-bill date labels carry extra words."""
+
+    def test_ocr_misread_degree_symbol_in_number_label(self):
+        """'N? de factura: X' (OCR turned 'Nº' into 'N?')."""
+        result = Result()
+        find_header("N? de factura: PNR001N0284492\nFecha: 28/08/2020", result)
+        self.assertEqual(result.numero, "PNR001N0284492")
+
+    def test_date_label_with_two_extra_words(self):
+        """'Fecha emisión factura: X' - a label longer than the plain 'FECHA:' case."""
+        result = Result()
+        find_header("Fecha emisión factura: 28/08/2020", result)
+        self.assertEqual(result.fecha, "28/08/2020")
+
+    def test_date_label_with_one_extra_word_still_works(self):
+        result = Result()
+        find_header("Fecha de cargo: 28/08/2020", result)
+        self.assertEqual(result.fecha, "28/08/2020")
+
+    def test_real_utility_bill_ocr_text_recovers_header_fields(self):
+        """
+        The actual (garbled) Tesseract output from a real scanned ENDESA gas
+        bill. Only the header fields are expected to be recovered - this
+        document has no product lines and no per-line IVA breakdown (see
+        UtilityBillLimitationTests below), so total/lineas stay empty.
+        """
+        text = (
+            "ya E DATOS DE LA FACTURA\n"
+            "'G R G S ( ' IMPORTE FACTURA: 1.602,16 \u20ac\n"
+            "ES \" y : N? de factura: PNRO01N0284492\n"
+            "dd ; Referencia: 086163232988/0432\n"
+            "a A Fecha emisi\u00f3n factura: 28/08/2020\n"
+            "al gas E Fecha de cargo: 28/08/2020\n"
+            "Endesa Energ\u00eda, S.A.U.\n"
+            "CIF A81948077.\n"
+        )
+        result = extract_text(text)
+        self.assertEqual(result.numero, "PNRO01N0284492")
+        self.assertEqual(result.fecha, "28/08/2020")
+        self.assertEqual(result.proveedor_nombre, "Endesa Energía S.A.U.")
+        self.assertEqual(result.proveedor_cif, "A81948077")
+
+
+class UtilityBillLimitationTests(EngineTestCase):
+    """
+    Documents actual, known behaviour: a utility-bill-shaped total
+    (Fijo + Variable - Descuentos + Otros + Impuestos = Total, no base x
+    rate = cuota relationship printed) is correctly left unrecovered rather
+    than guessed. This is what should change if/when a dedicated
+    utility-bill path is built.
+    """
+
+    def test_category_sum_total_is_not_recovered(self):
+        text = (
+            "Fijo 71,68 \u20ac\n"
+            "Variable 1.416,99 \u20ac\n"
+            "Descuentos -255,06 \u20ac\n"
+            "Otros 17,67 \u20ac\n"
+            "Impuestos 350,88 \u20ac\n"
+            "Total 1.602,16 \u20ac\n"
+        )
+        result = extract_text(text)
+        self.assertIsNone(result.total)
+        self.assertEqual(result.lines, [])
+
+
+class ThousandsSeparatorMoneyTests(EngineTestCase):
+    """
+    Regression: MONEY_TOKEN used to only match the tail of an amount over
+    999 (e.g. 'X.234,56' -> only '234,56' was found), so any invoice
+    totalling 1.000 EUR or more was invisible to totals detection.
+    """
+
+    def test_spanish_thousands_amount_is_found_whole(self):
+        self.assertIn(Decimal("2266.85"), e_money_tokens("Subtotal 2.266,85 \u20ac"))
+
+    def test_multiple_thousands_groups(self):
+        self.assertIn(Decimal("12345.67"), e_money_tokens("Total 12.345,67 \u20ac"))
+
+    def test_plain_dot_decimal_under_1000_still_works(self):
+        """Same-shaped amounts under 1000 (no thousands separator) must be unaffected."""
+        self.assertIn(Decimal("852.51"), e_money_tokens("TOTAL 852.51"))
+
+    def test_plain_comma_decimal_under_1000_still_works(self):
+        self.assertIn(Decimal("476.04"), e_money_tokens("21% IVA 476,04 \u20ac"))
+
+    def test_a_reference_number_is_not_mistaken_for_an_amount(self):
+        """'123.456' (three digits after the dot, no comma) is not a 2-decimal amount."""
+        self.assertEqual(e_money_tokens("Referencia 123.456"), set())
+
+
+class ServiceLineTests(EngineTestCase):
+    """Single-charge service lines (description + one trailing amount, no quantity/unit price)."""
+
+    def test_simple_line_is_recognised(self):
+        line = parse_simple_line("Servicios mes marzo, temporada baja 2.266,85 \u20ac")
+        self.assertIsNotNone(line)
+        self.assertEqual(line.descripcion, "Servicios mes marzo, temporada baja")
+        self.assertEqual(line.importe, Decimal("2266.85"))
+        self.assertIsNone(line.cantidad)
+        self.assertIsNone(line.precio)
+
+    def test_subtotal_row_is_not_a_service_line(self):
+        self.assertIsNone(parse_simple_line("Subtotal 2.266,85 \u20ac"))
+
+    def test_total_row_is_not_a_service_line(self):
+        self.assertIsNone(parse_simple_line("TOTAL 2.742,89 \u20ac"))
+
+    def test_inline_iva_rate_row_is_not_a_service_line(self):
+        self.assertIsNone(parse_simple_line("21% IVA 476,04 \u20ac"))
+
+    def test_stopword_anywhere_in_the_description_is_caught_not_just_first_word(self):
+        """Regression: 'Notas: Subtotal 2.266,85 \u20ac' (an empty notes field fused onto the
+        subtotal row by the PDF's layout) was wrongly accepted when only the first word
+        ('Notas') was checked; 'Subtotal' as the second word must also be caught."""
+        self.assertIsNone(parse_simple_line("Notas: Subtotal 2.266,85 \u20ac"))
+
+    def test_utility_bill_category_rows_are_not_service_lines(self):
+        for row in ["Fijo 71,68 \u20ac", "Variable 1.416,99 \u20ac", "Otros 17,67 \u20ac", "Impuestos 350,88 \u20ac"]:
+            self.assertIsNone(parse_simple_line(row), row)
+
+    def test_a_bare_reference_with_no_description_is_rejected(self):
+        self.assertIsNone(parse_simple_line("086163232988/0432"))
+
+    def test_real_service_invoice_reconciles_end_to_end(self):
+        """The actual (clean, digital-text) layout of a real single-charge agency invoice."""
+        text = "\n".join([
+            "Factura n\u00ba 9001",
+            "Fecha:1/3/2026",
+            "Proveedor Servicios Digitales, S.L. CIF B99988877",
+            "Descripci\u00f3n Precio total",
+            "Servicios mes marzo, temporada baja 2.266,85 \u20ac",
+            "Notas: Subtotal 2.266,85 \u20ac",
+            "21% IVA 476,04 \u20ac",
+            "TOTAL 2.742,89 \u20ac",
+        ])
+        result = extract_text(text)
+        self.assertEqual(len(result.lines), 1)
+        self.assertEqual(result.lines[0].descripcion, "Servicios mes marzo, temporada baja")
+        self.assertTrue(result.reconciled)
+        self.assertEqual(result.total, Decimal("2742.89"))
+
+    def test_product_invoices_are_unaffected_by_the_service_line_fallback(self):
+        """A document WITH real product lines must never also pick up service-line charges."""
+        text = "\n".join([
+            "REFERENCIA DESCRIPCION UDS. PRECIO NETO",
+            "AB1234 TORNILLO GALVANIZADO 10,00 2,5000 25,00",
+            "Notas: alguna anotacion 99,00 \u20ac",  # would look like a service line on its own
+            "BASE 25,00 CUOTA 5,25 TOTAL 30,25",
+        ])
+        result = extract_text(text)
+        self.assertEqual(len(result.lines), 1)
+        self.assertEqual(result.lines[0].descripcion, "TORNILLO GALVANIZADO")
+
+
+def e_money_tokens(text):
+    """Local alias so tests read naturally (money_tokens_in is already imported at module load via extract_text's module)."""
+    from invoice_data.services.extractor import money_tokens_in
+    return money_tokens_in(text)

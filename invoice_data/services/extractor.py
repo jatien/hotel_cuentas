@@ -12,8 +12,12 @@ Nothing here is specific to any supplier. The only configuration is the
 hotel's own identity (so the customer is never mistaken for the
 supplier), read from Django settings at call time:
 
-    INVOICE_OWN_NIF    = "B12345678"          # the hotel's tax id
-    INVOICE_OWN_NAMES  = ("MI HOTEL",)        # fragments of its legal name
+    INVOICE_OWN_NIF    = "B12345678"          # the hotel's tax id(s): one string,
+                                               # or a tuple for more than one legal
+                                               # entity, e.g. ("B12345678", "E87654321")
+                                               # when a separate C.B. or partnership
+                                               # receives some bills (utilities, etc.)
+    INVOICE_OWN_NAMES  = ("MI HOTEL",)        # fragments of each entity's legal name
     TESSERACT_CMD      = r"C:\Program Files\Tesseract-OCR\tesseract.exe"   # optional
     INVOICE_OCR_LANG   = "spa"                # optional
 """
@@ -39,9 +43,16 @@ VERSION = "2026-09-28-g"  # stored with every extraction so results can be trace
 KERN_GAP_RATIO = 0.45  # a synthetic space between glyphs closer than this x glyph height is a kerning artefact
 
 
-def own_nif() -> str:
-    """The hotel's own tax id (settings.INVOICE_OWN_NIF), normalised; '' when not configured."""
-    return re.sub(r"[\s-]", "", str(getattr(settings, "INVOICE_OWN_NIF", "") or "")).upper()
+def own_nifs() -> tuple[str, ...]:
+    """
+    The hotel's own tax id(s) (settings.INVOICE_OWN_NIF), normalised.
+    Accepts either a single string or a list/tuple, so more than one legal
+    entity (e.g. the main company plus a separate C.B. that utilities are
+    billed to) can all be recognised as "us", never as the supplier.
+    """
+    raw = getattr(settings, "INVOICE_OWN_NIF", "") or ""
+    values = (raw,) if isinstance(raw, str) else tuple(raw)
+    return tuple(re.sub(r"[\s-]", "", str(v)).upper() for v in values if v)
 
 
 def own_names() -> tuple[str, ...]:
@@ -65,7 +76,17 @@ CENT = Decimal("0.01")
 LINE_TOLERANCE = Decimal("0.011")  # qty x price may differ from amount by rounding
 
 NUMERIC_TOKEN = re.compile(r"^\d[\d.,]*$")
-MONEY_TOKEN = re.compile(r"(?<![\d.,])\d+[.,]\d{2}(?!\d)")
+# Amount-shaped numbers, largest/most-specific form first so a thousands
+# group is captured whole (e.g. '2.266,85') instead of only its tail
+# ('266,85') slipping through on a later, wrongly-anchored attempt.
+MONEY_TOKEN = re.compile(
+    r"(?<![\d.,])(?:"
+    r"\d{1,3}(?:\.\d{3})+,\d{2}"  # Spanish thousands + decimal: 2.266,85 / 12.345,67
+    r"|\d{1,3}(?:,\d{3})+\.\d{2}"  # thousands + decimal, dot-decimal style: 2,266.85
+    r"|\d+,\d{2}"  # comma-decimal, no thousands separator: 476,04
+    r"|\d+\.\d{2}"  # dot-decimal, no thousands separator: 852.51
+    r")(?!\d)"
+)
 DATE = r"\d{1,2}/\d{1,2}/\d{2,4}"
 CIF_RE = re.compile(r"\b([A-HJ-NP-SUVW])[- ]?(\d{7}[0-9A-J])\b")
 # Personal tax ids (freelancers): 8 digits + letter (NIF) or X/Y/Z + 7 digits + letter (NIE).
@@ -85,8 +106,8 @@ TOTAL_ALBARAN_RE = re.compile(r"TOTAL\s+ALBAR[ÁA]N\s*:\s*([\d.,]+)", re.IGNOREC
 # Header labels, matched against a whole cell (not free text), so only a
 # cell that IS the label counts. 'Fecha albaran:' / 'Vencimientos' never match.
 NUMBER_LABEL_RE = re.compile(
-    r"^(?:(?:N[ÚU]M(?:ERO)?|N[ºO°])\.?\s*(?:DE\s+)?)?FACTURA(?:\s*(?:N[ÚU]M(?:ERO)?|N[ºO°])\.?)?\s*:?$"
-    r"|^N[ÚU]MERO\s*:?$|^N[ºO°]\.?\s*:?$|^INVOICE(?:\s*N[OU]\.?)?\s*:?$",
+    r"^(?:(?:N[ÚU]M(?:ERO)?|N[ºO°?])\.?\s*(?:DE\s+)?)?FACTURA(?:\s*(?:N[ÚU]M(?:ERO)?|N[ºO°?])\.?)?\s*:?$"
+    r"|^N[ÚU]MERO\s*:?$|^N[ºO°?]\.?\s*:?$|^INVOICE(?:\s*N[OU]\.?)?\s*:?$",
     re.IGNORECASE,
 )
 DATE_LABEL_RE = re.compile(
@@ -242,13 +263,19 @@ def read_pdf_text_repaired(path: Path) -> str:
 
 @dataclass
 class Line:
-    """One parsed product line."""
+    """
+    One parsed invoice line. Two kinds: a PRODUCT line (cantidad and precio
+    both set, importe = cantidad x precio) from parse_line(), or a SERVICE
+    line (cantidad and precio both None - a single named charge with no
+    unit breakdown, e.g. 'Servicios mes marzo ... 2.266,85 €') from
+    parse_simple_line(). Never a mix of one set and one None.
+    """
 
     codigo: str
     descripcion: str
     iva: Decimal | None
-    cantidad: Decimal
-    precio: Decimal
+    cantidad: Decimal | None
+    precio: Decimal | None
     importe: Decimal
     albaran: str = ""
     albaran_fecha: str = ""
@@ -367,8 +394,85 @@ def parse_line(text: str, iva_column: bool) -> Line | None:
     return Line(codigo, " ".join(leading), iva, cantidad, precio, importe)
 
 
+# Words that mean a line is part of the totals block itself (a summary
+# row), never a real charge - even though 'Subtotal 2.266,85 €' or
+# '21% IVA 476,04 €' are shaped exactly like a description + amount line.
+SIMPLE_LINE_STOPWORDS = {
+    "SUBTOTAL", "TOTAL", "BASE", "BASES", "CUOTA", "IVA", "DTO", "DESCUENTO",
+    "DESCUENTOS", "RETENCION", "RETENCIÓN", "RECARGO", "IMPORTE", "SUMA",
+    "SUMAS", "PORTES", "GASTOS", "NETO",
+    # Utility-bill category words (Fijo/Variable/Otros/Impuestos...): these are
+    # summary categories of a category-sum bill, not named services - that
+    # document shape isn't supported yet (see UtilityBillLimitationTests) and
+    # must keep coming back with zero lines, not a guessed one.
+    "FIJO", "VARIABLE", "OTROS", "IMPUESTO", "IMPUESTOS", "CONSUMO",
+}
+
+SIMPLE_LINE_RE = re.compile(
+    rf"^(?P<desc>.+?)\s+(?P<amount>{MONEY_TOKEN.pattern})\s*(?:€|EUR|\$)?\s*$", re.IGNORECASE
+)
+
+
+def is_valid_charge_description(desc: str) -> bool:
+    """
+    True if desc looks like a real named charge, not: a totals-block
+    label ('Subtotal', 'TOTAL', ... - SIMPLE_LINE_STOPWORDS), a row with
+    an inline IVA rate ('21% IVA'), or text with no real word in it (a
+    bare reference number, a heading fragment). Shared by
+    parse_simple_line() (description + amount on the same text line) and
+    the two-column table reconstruction (description and amount read
+    from separate columns) in pipeline.py, so both apply the identical rule.
+    """
+    if not desc or "%" in desc:
+        return False
+    if not re.search(r"[A-Za-zÁÉÍÓÚÑ]{3,}", desc):
+        return False
+    words_upper = [w for w in re.split(r"[\s,:.]+", desc.upper()) if w]
+    return not any(w in SIMPLE_LINE_STOPWORDS for w in words_upper)
+
+
+def parse_simple_line(text: str) -> "Line | None":
+    """
+    A SERVICE line: a description followed by one trailing amount, with no
+    quantity or unit price at all - e.g. 'Servicios mes marzo, temporada
+    baja   2.266,85 €'. Common on agency/consulting/subscription invoices
+    that charge a flat fee per item instead of unit x quantity.
+    """
+    stripped = text.strip()
+    if not stripped or "%" in stripped:
+        return None
+    match = SIMPLE_LINE_RE.match(stripped)
+    if not match:
+        return None
+
+    desc = match.group("desc").strip(" :.-")
+    if not is_valid_charge_description(desc):
+        return None
+
+    amount = parse_number(match.group("amount"))
+    if amount is None:
+        return None
+
+    codigo = ""
+    words = desc.split()
+    if words and detect_code(words[0]) and len(words) > 1:
+        codigo, desc = words[0], " ".join(words[1:])
+    if not desc:
+        return None
+    return Line(codigo, desc, None, None, None, amount)
+
+
 def parse_lines(text: str) -> list[Line]:
-    """Parses every product line in the text and tags each with the albaran it follows."""
+    """
+    Parses every line item in the text, tagging each with the albaran it
+    follows. Two passes: first PRODUCT lines (quantity x price rows, via
+    parse_line). If the document has none of those anywhere - a service
+    invoice charging flat fees instead of unit pricing - a second pass
+    looks for SERVICE lines instead (description + one trailing amount,
+    via parse_simple_line). The two kinds are not mixed within one
+    document in this version: a document with real product rows never
+    also picks up service-line charges from e.g. its notes section.
+    """
     raw_lines = [l.strip() for l in text.split("\n")]
     iva_column = has_iva_column(raw_lines)
     albaran, albaran_fecha = "", ""
@@ -381,6 +485,14 @@ def parse_lines(text: str) -> list[Line]:
         line = parse_line(raw, iva_column)
         if line:
             line.albaran, line.albaran_fecha = albaran, albaran_fecha
+            parsed.append(line)
+
+    if parsed:
+        return parsed
+
+    for raw in raw_lines:
+        line = parse_simple_line(raw)
+        if line:
             parsed.append(line)
     return parsed
 
@@ -526,9 +638,9 @@ def find_header(text: str, result: Result) -> None:
     Supplier CIF = first CIF/NIF that is not the hotel's own.
     """
     numero = re.search(
-        r"(?:N[ÚU]MERO|FACTURA\s*N[ºO°]\.?|N[ºO°]\.?\s*FACTURA)[ \t]*:[ \t]*([A-Z0-9][A-Z0-9/\-]*)", text, re.I
+        r"(?:N[ÚU]MERO|FACTURA\s*N[ºO°?]\.?|N[ºO°?]\.?\s*(?:DE\s+)?FACTURA)[ \t]*:[ \t]*([A-Z0-9][A-Z0-9/\-]*)", text, re.I
     )
-    fecha = re.search(rf"FECHA[ \t]*:[ \t]*({DATE})", text, re.I)
+    fecha = re.search(rf"FECHA(?:\s+(?:DE\s+)?[A-ZÁÉÍÓÚÑ]+){{0,2}}[ \t]*:[ \t]*({DATE})", text, re.I)
     if numero and as_invoice_number(numero.group(1)):
         result.numero = as_invoice_number(numero.group(1))
     if fecha:
@@ -541,7 +653,7 @@ def find_header(text: str, result: Result) -> None:
             result.fecha = result.fecha or bare.group(2)
 
     for _, tax_id in iter_tax_ids(text):
-        if tax_id != own_nif():
+        if tax_id not in own_nifs():
             result.proveedor_cif = tax_id
             break
 
@@ -562,7 +674,7 @@ def as_invoice_number(text: str) -> str | None:
     a date, an amount, a CIF or another label. Otherwise None. This type
     check is what stops 'FECHA' or a client code from being taken as a number.
     """
-    text = re.sub(r"^(?:factura\s*)?(?:n[úu]m(?:ero)?|n[ºo°])\.?\s*[:.]?\s*", "", text.strip(), flags=re.I)
+    text = re.sub(r"^(?:factura\s*)?(?:n[úu]m(?:ero)?|n[ºo°?])\.?\s*[:.]?\s*", "", text.strip(), flags=re.I)
     if not (2 <= len(text) <= 25) or not re.search(r"\d", text):
         return None
     if re.fullmatch(DATE, text) or re.fullmatch(r"\d+[.,]\d{2}", text) or CIF_RE.fullmatch(text):
@@ -675,7 +787,7 @@ def find_supplier_name(text: str, supplier_cif: str | None) -> str | None:
     breaks ties. No supplier-specific layout is assumed.
     """
     own_keys = [normalise_name(n) for n in own_names()]
-    hotel_nif = own_nif()
+    hotel_nifs = own_nifs()
     cif_positions = []
     if supplier_cif:
         cif_positions = [start for start, tax_id in iter_tax_ids(text) if tax_id == supplier_cif]
@@ -693,7 +805,7 @@ def find_supplier_name(text: str, supplier_cif: str | None) -> str | None:
         line_start = text.rfind("\n", 0, match.start()) + 1
         line_end = text.find("\n", match.end())
         line = text[line_start: line_end if line_end != -1 else len(text)]
-        is_hotel_line = bool(hotel_nif) and hotel_nif in line.replace("-", "").replace(" ", "").upper()
+        is_hotel_line = any(nif in line.replace("-", "").replace(" ", "").upper() for nif in hotel_nifs)
         if any(own in key for own in own_keys) or is_hotel_line:
             continue
         distance = min((abs(match.start() - p) for p in cif_positions), default=10**9)
@@ -1095,9 +1207,13 @@ def report(path: Path, result: Result) -> None:
     print(f"  {len(result.lines)} lineas:")
     for l in result.lines:
         iva = f"{l.iva}%" if l.iva is not None else "  - "
+        if l.cantidad is None or l.precio is None:
+            cantidad_precio = "     (servicio, sin cantidad/precio unitario)"
+        else:
+            cantidad_precio = f"{l.cantidad:>7} x {l.precio:>9}"
         print(
             f"    {l.codigo:>13} {l.descripcion[:34]:<34} IVA {iva:>4} "
-            f"{l.cantidad:>7} x {l.precio:>9} = {l.importe:>8}   [alb {l.albaran}]"
+            f"{cantidad_precio} = {l.importe:>8}   [alb {l.albaran}]"
         )
     for rate in result.bases:
         print(f"  IVA {rate}%: base {result.bases[rate]}  cuota {result.cuotas[rate]}")

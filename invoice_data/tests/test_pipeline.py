@@ -18,7 +18,7 @@ from unittest import mock
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 
 from invoice_data.models import (
@@ -30,7 +30,12 @@ from invoice_data.models import (
     Proveedor,
 )
 from invoice_data.services.ingestion import ingest_file
-from invoice_data.services.pipeline import DatosConfirmados, document_to_dict, process_document
+from invoice_data.services.pipeline import (
+    DatosConfirmados,
+    document_to_dict,
+    process_document,
+    reconstruct_column_table,
+)
 from invoice_data.tests.base import MediaIsolatedTestCase
 from invoice_data.tests.fixtures import invoice_text, make_image, make_invoice_pdf, make_scanned_pdf
 
@@ -128,13 +133,25 @@ class PipelineTests(PipelineTestCase):
         self.assertIn("totales", data)
 
     def test_a_scan_goes_through_full_page_ocr_then_the_same_extraction(self):
-        """Routing test: the OCR step is replaced by a stub returning the invoice text."""
+        """Routing test: the OCR step is replaced by a stub returning the invoice text (raw attempt reconciles)."""
         document, _ = ingest_file(make_image(self.tmp_dir / "foto.png"), departamento="cocina")
-        with mock.patch("invoice_data.services.pipeline.run_ocr", return_value=invoice_text()) as stub:
+        with mock.patch("invoice_data.services.pipeline.ocr_pages", return_value=(invoice_text(), [])) as stub:
             datos = process_document(document)
-        stub.assert_called_once()
+        stub.assert_called_once()  # raw attempt reconciled: no escalation to preprocessing needed
         self.assertEqual(datos.total, Decimal("121.00"))
         self.assertEqual(document.lineas.count(), 2)
+
+    def test_a_scan_whose_raw_ocr_does_not_reconcile_escalates_to_preprocessing(self):
+        """When the raw OCR attempt does not reconcile, a cleaned-up attempt is tried and the better one kept."""
+        document, _ = ingest_file(make_image(self.tmp_dir / "foto.png"), departamento="cocina")
+        bad_text = "esto no se parece a una factura en absoluto"
+        with mock.patch("invoice_data.services.pipeline.ocr_pages", return_value=(invoice_text(), [])) as stub, \
+             mock.patch("invoice_data.services.pipeline.get_raw_pages", return_value=[]), \
+             mock.patch("invoice_data.services.pipeline.preprocess_document"):
+            stub.side_effect = [(bad_text, []), (invoice_text(), [])]  # raw fails, cleaned attempt succeeds
+            datos = process_document(document)
+        self.assertEqual(stub.call_count, 2)  # raw attempt, then the cleaned-up escalation
+        self.assertEqual(datos.total, Decimal("121.00"))
 
 
 class DatabaseSafetyTests(PipelineTestCase):
@@ -473,3 +490,84 @@ class CommandTests(PipelineTestCase):
     def test_check_invoices_needs_an_existing_folder(self):
         with self.assertRaises(CommandError):
             self.run_command("check_invoices", str(self.tmp_dir / "no-existe"))
+
+
+def ocr_word(text, x, y, page=0, height=25, confidence=90):
+    """Shorthand for building one OcrWord in the column-table tests below."""
+    from invoice_data.services.ocr import OcrWord
+
+    return OcrWord(page, text, x, y, width=len(text) * 15, height=height, confidence=confidence)
+
+
+class ReconstructColumnTableTests(SimpleTestCase):
+    """
+    reconstruct_column_table(): pairing descriptions and amounts that sit
+    in separate columns (not on the same printed line). Pure logic, no
+    database needed.
+    """
+
+    def test_real_invoice_shape_is_reconstructed_correctly(self):
+        """
+        Synthetic data matching a real supplier's actual layout (a typed
+        accounting invoice): 5 description rows on the left, 5 amounts in
+        their own column on the right, NOT y-aligned per row - plus a
+        Subtotal row sharing the amount column, which must be excluded
+        entirely rather than counted as a 6th charge.
+        """
+        words = [
+            ocr_word("COTIZACION", 456, 1337), ocr_word("FUNDACION", 730, 1333),
+            ocr_word("HONORARIOS", 455, 1382), ocr_word("3T", 731, 1380),
+            ocr_word("BAJA", 456, 1429), ocr_word("EN", 580, 1428), ocr_word("TGSS", 654, 1422),
+            ocr_word("MOD.111", 454, 1470), ocr_word("IRPF", 657, 1470),
+            ocr_word("MOD.190", 455, 1515), ocr_word("RESUMEN", 656, 1514),
+            ocr_word("0,63", 1855, 1313), ocr_word("79,75", 1851, 1358),
+            ocr_word("30,00", 1852, 1403), ocr_word("150,00", 1828, 1448), ocr_word("200,00", 1827, 1493),
+            ocr_word("SUBTOTAL", 456, 1600), ocr_word("2.266,85", 1850, 1600),
+        ]
+        lines = reconstruct_column_table(words)
+        self.assertIsNotNone(lines)
+        self.assertEqual(len(lines), 5)
+        self.assertEqual(
+            [str(l.importe) for l in lines], ["0.63", "79.75", "30.00", "150.00", "200.00"]
+        )
+        self.assertEqual(lines[1].descripcion, "HONORARIOS 3T")
+        for line in lines:
+            self.assertIsNone(line.cantidad)
+            self.assertIsNone(line.precio)
+
+    def test_count_mismatch_returns_none_rather_than_a_guess(self):
+        """4 descriptions but 5 amounts: the pairing can't be trusted, so nothing is returned."""
+        words = [
+            ocr_word("COTIZACION", 456, 1337), ocr_word("HONORARIOS", 455, 1382),
+            ocr_word("BAJA", 456, 1429), ocr_word("MOD.111", 454, 1470),
+            ocr_word("0,63", 1855, 1313), ocr_word("79,75", 1851, 1358), ocr_word("30,00", 1852, 1403),
+            ocr_word("150,00", 1828, 1448), ocr_word("200,00", 1827, 1493),
+        ]
+        self.assertIsNone(reconstruct_column_table(words))
+
+    def test_ordinary_invoice_with_almost_no_numbers_does_not_fire(self):
+        words = [ocr_word("FACTURA", 50, 100), ocr_word("TOTAL", 50, 200), ocr_word("125,00", 400, 200)]
+        self.assertIsNone(reconstruct_column_table(words))
+
+    def test_scattered_numbers_are_not_mistaken_for_a_column(self):
+        """Amounts spread across the whole page width, not clustered - no real column exists."""
+        words = [
+            ocr_word("10,00", 100, 100), ocr_word("20,00", 900, 300),
+            ocr_word("30,00", 1700, 500), ocr_word("40,00", 300, 700),
+        ]
+        self.assertIsNone(reconstruct_column_table(words))
+
+    def test_empty_input(self):
+        self.assertIsNone(reconstruct_column_table([]))
+
+    def test_a_heading_row_with_no_real_words_is_excluded_from_descriptions(self):
+        """A pure-digits row (e.g. a year/month heading) has no letters, so it correctly never becomes a description."""
+        words = [
+            ocr_word("2019", 456, 1290),  # heading, no real word - must not become description #1
+            ocr_word("HONORARIOS", 455, 1382), ocr_word("BAJA", 456, 1429),
+            ocr_word("30,00", 1852, 1403), ocr_word("150,00", 1828, 1448),
+        ]
+        lines = reconstruct_column_table(words)
+        self.assertIsNotNone(lines)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].descripcion, "HONORARIOS")

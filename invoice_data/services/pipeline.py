@@ -9,6 +9,7 @@ The JSON is always rebuilt from the database, never cached, so a manual
 correction made on the review screen is reflected in every export.
 """
 
+import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -18,17 +19,131 @@ from django.db import transaction
 from invoice_data.models import (
     EstadoExtraccion,
     ExtractedInvoiceData,
+    IngestionStatus,
     InvoiceDocument,
     InvoiceLineItem,
     InvoiceTaxBreakdown,
     Proveedor,
 )
 from invoice_data.services import extractor
-from invoice_data.services.ocr import run_ocr
+from invoice_data.services.ocr import OcrWord, get_pages_for_ocr, get_raw_pages, group_words_into_rows, ocr_pages
+from invoice_data.services.preprocessing import preprocess_document
+
+AMOUNT_COLUMN_X_TOLERANCE = 150  # px: amount-shaped words within this x-gap of each other are one column
+AMOUNT_COLUMN_MARGIN = 20  # px: description text must end at least this far left of the amount column
 
 
 class DatosConfirmados(Exception):
     """The document already has confirmed data; re-extracting would overwrite a person's review."""
+
+
+def _ocr_quality(result: extractor.Result) -> tuple[bool, int]:
+    """
+    Sort key for comparing two OCR attempts on the same document:
+    reconciled beats not-reconciled; among two reconciled (or two
+    not-reconciled) results, fewer review problems is better.
+    """
+    return (result.reconciled, -len(extractor.review_problems(result)))
+
+
+def _cluster_amount_column_x(amount_words: list[OcrWord]) -> float | None:
+    """
+    The left edge of the amount column, or None if the amount-shaped
+    words on the page don't form a clear column. Finds the LARGEST group
+    of amount-words whose x-positions sit within AMOUNT_COLUMN_X_TOLERANCE
+    of each other (simple 1D clustering on sorted x); requires that group
+    to have at least 2 members and cover at least half of all amount-shaped
+    words found, so a couple of incidental numbers scattered across
+    ordinary text don't get mistaken for a real column.
+    """
+    if len(amount_words) < 2:
+        return None
+    xs = sorted(w.x for w in amount_words)
+    best_group, current = [], [xs[0]]
+    for x in xs[1:]:
+        if x - current[-1] <= AMOUNT_COLUMN_X_TOLERANCE:
+            current.append(x)
+        else:
+            if len(current) > len(best_group):
+                best_group = current
+            current = [x]
+    if len(current) > len(best_group):
+        best_group = current
+    if len(best_group) < 2 or len(best_group) < len(amount_words) / 2:
+        return None
+    return min(best_group)
+
+
+def reconstruct_column_table(words: list[OcrWord]) -> list[extractor.Line] | None:
+    """
+    Reads a two-column table (descriptions in one column, amounts in a
+    separate column - NOT on the same printed line) from OCR'd words.
+    Tried only as a last-resort fallback, after normal same-line parsing
+    has already failed - see build_result().
+
+    Column detection: any word whose text is a whole, valid money amount
+    is a candidate; _cluster_amount_column_x finds whether enough of them
+    sit in a tight x-band to call it a real column. No document-specific
+    pixel position is assumed - it's derived fresh from each page.
+
+    Pairing: NOT by matching y-position. Testing against a real invoice
+    showed its two columns are not pixel-aligned row by row (the amount
+    column is laid out independently of how the, sometimes multi-line,
+    description text wraps). Instead, valid description rows (outside
+    the amount column, with totals-block/heading noise filtered out via
+    extractor.is_valid_charge_description - the same rule parse_simple_line
+    uses) and amount values are each sorted top-to-bottom on their own,
+    then paired by RANK (1st description with 1st amount, and so on).
+
+    This only returns lines when the two counts match EXACTLY. A
+    mismatch (OCR dropped a token, misread something into looking like
+    a heading, etc.) means the pairing can't be trusted - guessing a
+    misaligned pairing would be worse than reporting nothing, so this
+    returns None rather than a wrong result whenever the counts differ.
+    """
+    # Rows (across the WHOLE page width) that contain a totals-block word -
+    # e.g. a 'Subtotal 2.266,85' row where the label and its own amount
+    # happen to share a row. Any money-word in one of these rows is a
+    # summary figure, not a charge, and must not be counted as one - even
+    # though it sits in the same x-column as the real charge amounts.
+    stopword_rows = {
+        id(w)
+        for row in group_words_into_rows(words)
+        if any(
+            t in extractor.SIMPLE_LINE_STOPWORDS
+            for t in re.split(r"[\s,:.]+", " ".join(x.text for x in row).upper())
+        )
+        for w in row
+    }
+
+    amount_words = [w for w in words if extractor.MONEY_TOKEN.fullmatch(w.text) and id(w) not in stopword_rows]
+    column_x = _cluster_amount_column_x(amount_words)
+    if column_x is None:
+        return None
+
+    amounts = sorted((w for w in amount_words if w.x >= column_x - 5), key=lambda w: w.y)
+    description_words = [w for w in words if w.x < column_x - AMOUNT_COLUMN_MARGIN]
+
+    descriptions = []
+    for row in group_words_into_rows(description_words):
+        text = " ".join(w.text for w in sorted(row, key=lambda w: w.x))
+        if extractor.is_valid_charge_description(text):
+            descriptions.append(text)
+
+    if not descriptions or len(descriptions) != len(amounts):
+        return None
+
+    return [
+        extractor.Line("", desc, None, None, None, extractor.parse_number(amount.text))
+        for desc, amount in zip(descriptions, amounts)
+    ]
+
+
+def _store_ocr_text(document: InvoiceDocument, text: str) -> None:
+    """Saves OCR text on the document (same fields run_ocr() would set), without re-running OCR."""
+    document.ocr_text = text
+    document.status = IngestionStatus.OCR_DONE
+    document.save(update_fields=["ocr_text", "status"])
 
 
 def build_result(document: InvoiceDocument) -> extractor.Result:
@@ -36,12 +151,72 @@ def build_result(document: InvoiceDocument) -> extractor.Result:
     Runs the right extraction path for a document:
     - digital PDF (with or without embedded images): the engine reads the
       text layer and OCRs embedded images only if the first pass is incomplete;
-    - scan or photo (no text layer): full-page OCR first, then the same
-      arithmetic-based extraction over the OCR text.
+    - scan or photo (no text layer): OCRs the RAW page first (cheap - no
+      image cleanup cost). Only if that doesn't reconcile does it ALSO
+      try a cleaned-up version (preprocess_document) and keep whichever
+      result is genuinely better.
+
+      This two-tier approach exists because testing against real scans
+      showed preprocessing is NOT a safe default: on one real document it
+      fixed a badly-garbled amount, but on the SAME document it also
+      broke a different amount and part of a CIF that the raw scan had
+      read correctly. Applying it unconditionally would sometimes make a
+      good result worse, so it is only used when the raw attempt already
+      failed, and only kept if it demonstrably improves on it.
+
+      If the best attempt still has no lines and doesn't reconcile, a
+      last-resort tier tries reconstruct_column_table() on that attempt's
+      OCR words - for invoices whose descriptions and amounts sit in
+      separate columns rather than on the same text line (see that
+      function's docstring). This only ever fills in .lines when it is
+      confident (an exact description/amount count match); otherwise the
+      result is left exactly as the OCR attempts already produced it.
     """
-    if document.needs_ocr:
-        return extractor.extract_text(run_ocr(document))
-    return extractor.extract(Path(document.file.path))
+    if not document.needs_ocr:
+        return extractor.extract(Path(document.file.path))
+
+    raw_text, raw_words = ocr_pages(get_raw_pages(document))
+    raw_result = extractor.extract_text(raw_text)
+    if raw_result.reconciled:
+        _store_ocr_text(document, raw_text)
+        return raw_result
+
+    preprocess_document(document, force=True)
+    cleaned_text, cleaned_words = ocr_pages(get_pages_for_ocr(document))  # prefers the just-saved InvoicePage rows
+    cleaned_result = extractor.extract_text(cleaned_text)
+
+    if _ocr_quality(cleaned_result) > _ocr_quality(raw_result):
+        best_result, best_text, best_words = cleaned_result, cleaned_text, cleaned_words
+    else:
+        best_result, best_text, best_words = raw_result, raw_text, raw_words  # cleaning did not help (or hurt)
+    _store_ocr_text(document, best_text)
+
+    if not best_result.reconciled:
+        # Tried whenever the invoice hasn't reconciled, even if same-line
+        # parsing already produced SOME lines: on a genuine two-column
+        # table, OCR's flattened reading order can accidentally fuse an
+        # unrelated description and amount onto one output row, giving
+        # parse_line/parse_simple_line a non-empty but wrong result that
+        # would otherwise block this fallback from ever being tried.
+        table_lines = reconstruct_column_table(best_words)
+        if table_lines:
+            best_result.lines = table_lines
+            extractor.solve_totals(
+                table_lines, extractor.money_tokens_in(best_text), extractor.all_numbers_in(best_text), best_result
+            )
+            # The exact-count safety gate in reconstruct_column_table rules out an
+            # obviously wrong pairing, but not a heading row that happens to read as
+            # a plausible description - a real test document showed this can shift
+            # every pairing by one position while the count still matches. Flag it
+            # explicitly so a reviewer knows to check line-by-line against the
+            # document, not just trust that the reconciliation check would catch it.
+            best_result.notes.append(
+                "Líneas obtenidas emparejando dos columnas (descripción e importe en "
+                "columnas separadas): verificar manualmente que cada importe corresponde "
+                "a la línea correcta."
+            )
+
+    return best_result
 
 
 MAX_AMOUNT = Decimal("9999999")  # largest amount that fits every DecimalField (max_digits=12, up to 4 places)

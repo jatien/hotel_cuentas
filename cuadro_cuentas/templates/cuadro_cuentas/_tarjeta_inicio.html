@@ -1,0 +1,8 @@
+<a href="{% url 'cuadro_cuentas:libro_diario' %}" class="tarjeta">
+  <h3>Cuadro de cuentas</h3>
+  <p>Libro diario{% if ejercicio %} del ejercicio {{ ejercicio.anio }}{% endif %}</p>
+  <span class="tarjeta-datos">
+    <span><strong>{{ total }}</strong> asientos</span>
+    {% if borradores %}<span class="pendientes"><strong>{{ borradores }}</strong> en borrador</span>{% endif %}
+  </span>
+</a>

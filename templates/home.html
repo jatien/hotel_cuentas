@@ -1,18 +1,87 @@
-<h1>Cuentas — Panel principal</h1>
+{% load cuadro_cuentas_tags %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cuentas, panel principal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fondo: #E9EDF2;
+      --tarjeta: #FFFFFF;
+      --acento: #2D4FC4;
+      --acento-tinte: #EEF2FC;
+      --tinta: #1C2733;
+      --tinta-suave: #5B6878;
+      --aviso: #9B3D5B;
+    }
+    body {
+      margin: 0;
+      padding: 2rem;
+      font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+      background: var(--fondo);
+      color: var(--tinta);
+    }
+    h1 { margin: 0; font-size: 1.8rem; font-weight: 600; letter-spacing: -.01em; }
 
-<div class="menu-inicio">
-  <a href="{% url 'nominas' %}" class="tarjeta">
-    <h3>Nóminas</h3>
-    <p>Costes de personal por mes y departamento</p>
-  </a>
-  <a href="{% url 'invoice_data:index' %}">Gestión de Facturas</a>
-</div>
+    .menu-inicio {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+      max-width: 1100px;
+    }
+    .tarjeta {
+      display: flex;
+      flex-direction: column;
+      gap: .35rem;
+      padding: 1.25rem 1.4rem;
+      border-radius: 24px;
+      border: 2px solid transparent;
+      border-top: 6px solid var(--acento);
+      background: var(--tarjeta);
+      color: inherit;
+      text-decoration: none;
+      box-shadow: 0 1px 2px rgb(28 39 51 / .06), 0 10px 28px -14px rgb(28 39 51 / .28);
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .tarjeta:hover, .tarjeta:focus-visible {
+      border-color: var(--acento);
+      background: var(--acento-tinte);
+      transform: translateY(-2px);
+      outline: none;
+    }
+    .tarjeta h3 { margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--acento); }
+    .tarjeta p { margin: 0; color: var(--tinta-suave); font-size: .92rem; line-height: 1.4; }
+    .tarjeta-datos {
+      display: flex; gap: 1rem; margin-top: .5rem;
+      font-size: .9rem; font-variant-numeric: tabular-nums;
+    }
+    .tarjeta-datos .pendientes { color: var(--aviso); }
 
-<style>
-  .menu-inicio { display: flex; gap: 16px; margin-top: 24px; }
-  .tarjeta {
-    display: block; padding: 20px; border: 1px solid #ccc; border-radius: 8px;
-    text-decoration: none; color: inherit; width: 200px;
-  }
-  .tarjeta:hover { background: #f5f5f5; }
-</style>
+    @media (prefers-reduced-motion: reduce) {
+      .tarjeta { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Cuentas, panel principal</h1>
+
+  <div class="menu-inicio">
+    <a href="{% url 'nominas' %}" class="tarjeta">
+      <h3>Nóminas</h3>
+      <p>Costes de personal por mes y departamento</p>
+    </a>
+
+    <a href="{% url 'invoice_data:index' %}" class="tarjeta">
+      <h3>Gestión de Facturas</h3>
+      <p>Facturas de proveedores y acreedores</p>
+    </a>
+
+    {% tarjeta_contabilidad %}
+  </div>
+</body>
+</html>

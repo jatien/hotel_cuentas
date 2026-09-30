@@ -34,6 +34,7 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'invoice_data.apps.InvoiceDataConfig',
     'nominas.apps.NominasConfig',
+    'cuadro_cuentas.apps.CuadroCuentasConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -75,8 +76,8 @@ WSGI_APPLICATION = 'mysite.wsgi.application'
 TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Datos de la empresa para filtrar facturas propias (NIF y nombres)
-INVOICE_OWN_NIF = "B07794803"
-INVOICE_OWN_NAMES = ("INVENT HOTELES",)
+INVOICE_OWN_NIF = ("B07794803", "E07575970")
+INVOICE_OWN_NAMES = ("INVENT HOTELES", "CATALINA Y JUAN TORRES ROSELLO")
 
 # Prefijos de nombres de archivos de facturas y nóminas para filtrar
 MEDIA_URL = "/media/"
@@ -85,6 +86,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 #Command to not block pdf files of rendering
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
+#Allowed hosts in LAN 
+ALLOWED_HOSTS = ["*"]
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 

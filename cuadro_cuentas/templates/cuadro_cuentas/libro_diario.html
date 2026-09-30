@@ -1,0 +1,61 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Libro diario {{ ejercicio|default:"" }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+</head>
+
+<body>
+  <header class="barra">
+    <a href="/" class="volver">Inicio</a>
+    <h1>Libro diario</h1>
+    <form method="get" class="filtros">
+      <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
+        {% for e in ejercicios %}
+          <option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>Ejercicio {{ e.anio }}</option>
+        {% empty %}
+          <option>Sin ejercicios</option>
+        {% endfor %}
+      </select>
+      <select name="mes" aria-label="Mes" onchange="this.form.submit()">
+        <option value="">Todo el ejercicio</option>
+        {% for num, nombre in meses %}
+          <option value="{{ num }}" {% if num|stringformat:"s" == mes %}selected{% endif %}>{{ nombre }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button id="nuevo-asiento" class="btn-primario">Nuevo asiento</button>
+  </header>
+
+  <main class="libro">
+    <section id="lista-asientos" class="lista" aria-label="Asientos"></section>
+    <aside id="panel" class="panel" aria-live="polite">
+      <p class="panel-vacio">Selecciona un asiento para ver sus totales y el saldo de sus cuentas.</p>
+    </aside>
+  </main>
+
+  <datalist id="lista-cuentas">
+    {% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}
+  </datalist>
+  <div id="aviso" class="aviso" role="status" hidden></div>
+
+  {{ asientos|json_script:"datos-asientos" }}
+  {{ departamentos|json_script:"datos-departamentos" }}
+  <script>
+    window.LIBRO = {
+      nuevoUrl: "{% url 'cuadro_cuentas:api_crear_asiento' %}",
+      asientoUrl: "{% url 'cuadro_cuentas:api_asiento' 0 %}",
+      apunteUrl: "{% url 'cuadro_cuentas:api_apunte' 0 %}",
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="{% static 'cuadro_cuentas/libro.js' %}"></script>
+</body>
+</html>
