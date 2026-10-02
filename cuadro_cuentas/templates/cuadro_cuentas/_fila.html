@@ -1,0 +1,11 @@
+<span class="flecha" aria-hidden="true">{% if nodo.hijos %}›{% endif %}</span>
+<span class="codigo">{{ c.codigo }}</span>
+<span class="nombre">
+  <button type="button" class="enlace-ficha" data-ficha="{{ c.codigo }}">{{ c.nombre }}</button>
+  {% if c.nif %}<small class="nif">{{ c.nif }}</small>{% endif %}
+</span>
+{% if c.codigo|length >= 3 and c.codigo|length <= 5 %}
+  <button type="button" class="btn-mini" data-base="{{ c.codigo }}">Dar de alta</button>
+{% else %}
+  <span></span>
+{% endif %}

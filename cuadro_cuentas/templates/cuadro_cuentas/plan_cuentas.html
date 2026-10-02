@@ -1,0 +1,94 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cuadro de cuentas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/cuentas.css' %}">
+</head>
+<body>
+  <header class="barra">
+    <a href="/" class="volver">Inicio</a>
+    <h1>Cuadro de cuentas</h1>
+    <a href="{% url 'cuadro_cuentas:libro_diario' %}" class="volver">Libro diario</a>
+  </header>
+
+  <main class="libro">
+    <section class="arbol" aria-label="Plan de cuentas">
+      <input type="search" id="buscador" class="buscador" placeholder="Buscar por código, nombre o NIF" aria-label="Buscar cuenta">
+      <div id="arbol">
+        {% for nodo in arbol %}{% include "cuadro_cuentas/_nodo.html" %}{% endfor %}
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2>Dar de alta</h2>
+      <p class="panel-sub">Elige qué es y el código de {{ longitud }} dígitos se genera solo.</p>
+
+      {% for m in messages %}<p class="mensaje">{{ m }}</p>{% endfor %}
+
+      <form method="post" class="formulario" id="form-alta"
+            data-siguiente-url="{% url 'cuadro_cuentas:api_siguiente_codigo' %}"
+            data-ficha-url="{% url 'cuadro_cuentas:api_ficha_cuenta' '0' %}">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="errores">{{ form.non_field_errors }}</div>{% endif %}
+
+        <fieldset class="tipos">
+          <legend>¿Qué quieres dar de alta?</legend>
+          {% for t in tipos %}
+            <label class="chip">
+              <input type="radio" name="tipo" value="{{ t.clave }}" {% if t.clave == tipo_inicial %}checked{% endif %}>
+              <span>{{ t.etiqueta }}</span>
+            </label>
+          {% endfor %}
+        </fieldset>
+        <p id="tipo-ayuda" class="ayuda-tipo"></p>
+
+        <label for="id_base">Cuenta del plan</label>
+        <select id="id_base" name="base" data-inicial="{{ base_inicial }}"></select>
+        <p id="base-resumen" class="ayuda"></p>
+        {{ form.base.errors }}
+
+        <label for="id_nombre">Nombre</label>
+        {{ form.nombre }}
+        {{ form.nombre.errors }}
+
+        <div id="bloque-nif">
+          <label for="id_nif">NIF/CIF <span id="nif-marca" class="marca"></span></label>
+          {{ form.nif }}
+          {{ form.nif.errors }}
+        </div>
+
+        <details class="avanzado" {% if form.codigo.value %}open{% endif %}>
+          <summary>Elegir el código a mano</summary>
+          <label for="id_codigo">Código</label>
+          {{ form.codigo }}
+          <p class="ayuda">Déjalo vacío para usar el siguiente número libre.</p>
+          {{ form.codigo.errors }}
+        </details>
+
+        <div id="vista-previa" class="vista-previa" hidden></div>
+        <button type="submit" class="btn-primario">Dar de alta</button>
+      </form>
+
+      <dl class="datos resumen-plan">
+        <dt>Cuentas del plan</dt><dd>{{ total_plan }}</dd>
+        <dt>Subcuentas</dt><dd>{{ total_subcuentas }}</dd>
+      </dl>
+    </aside>
+  </main>
+
+  <dialog id="ficha" class="ficha" aria-labelledby="ficha-titulo">
+    <div id="ficha-contenido"></div>
+    <form method="dialog" class="ficha-pie"><button class="btn-sec">Cerrar</button></form>
+  </dialog>
+
+  {{ tipos|json_script:"datos-tipos" }}
+  <script src="{% static 'cuadro_cuentas/cuentas.js' %}"></script>
+</body>
+</html>

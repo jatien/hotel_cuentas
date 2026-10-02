@@ -1,70 +1,58 @@
+import json
+from pathlib import Path
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models.functions import Length
 
 from cuadro_cuentas.models import CuentaContable
 
-PLAN_BASE = [
-    ("1", "Financiación básica"),
-    ("10", "Capital"), ("100", "Capital social"),
-    ("12", "Resultados pendientes de aplicación"), ("129", "Resultado del ejercicio"),
-    ("2", "Activo no corriente"),
-    ("21", "Inmovilizaciones materiales"), ("211", "Construcciones"), ("216", "Mobiliario"),
-    ("217", "Equipos para procesos de información"),
-    ("28", "Amortización acumulada del inmovilizado"),
-    ("281", "Amortización acumulada del inmovilizado material"),
-    ("3", "Existencias"),
-    ("30", "Comerciales"), ("300", "Mercaderías"),
-    ("4", "Acreedores y deudores por operaciones comerciales"),
-    ("40", "Proveedores"), ("400", "Proveedores"),
-    ("41", "Acreedores varios"), ("410", "Acreedores por prestaciones de servicios"),
-    ("43", "Clientes"), ("430", "Clientes"),
-    ("46", "Personal"), ("465", "Remuneraciones pendientes de pago"),
-    ("47", "Administraciones públicas"),
-    ("472", "Hacienda Pública, IVA soportado"),
-    ("475", "Hacienda Pública, acreedora por conceptos fiscales"),
-    ("4751", "Hacienda Pública, acreedora por retenciones practicadas"),
-    ("476", "Organismos de la Seguridad Social, acreedores"),
-    ("477", "Hacienda Pública, IVA repercutido"),
-    ("5", "Cuentas financieras"),
-    ("52", "Deudas a corto plazo por préstamos recibidos y otros conceptos"),
-    ("520", "Deudas a corto plazo con entidades de crédito"),
-    ("57", "Tesorería"), ("570", "Caja, euros"),
-    ("572", "Bancos e instituciones de crédito c/c vista, euros"),
-    ("6", "Compras y gastos"),
-    ("60", "Compras"), ("600", "Compras de mercaderías"),
-    ("602", "Compras de otros aprovisionamientos"),
-    ("61", "Variación de existencias"), ("610", "Variación de existencias de mercaderías"),
-    ("62", "Servicios exteriores"), ("621", "Arrendamientos y cánones"),
-    ("622", "Reparaciones y conservación"), ("623", "Servicios de profesionales independientes"),
-    ("625", "Primas de seguros"), ("626", "Servicios bancarios y similares"),
-    ("627", "Publicidad, propaganda y relaciones públicas"), ("628", "Suministros"),
-    ("629", "Otros servicios"),
-    ("63", "Tributos"), ("631", "Otros tributos"),
-    ("64", "Gastos de personal"), ("640", "Sueldos y salarios"),
-    ("642", "Seguridad Social a cargo de la empresa"),
-    ("66", "Gastos financieros"), ("662", "Intereses de deudas"),
-    ("68", "Dotaciones para amortizaciones"), ("681", "Amortización del inmovilizado material"),
-    ("7", "Ventas e ingresos"),
-    ("70", "Ventas de mercaderías, de producción propia, de servicios, etc."),
-    ("700", "Ventas de mercaderías"), ("705", "Prestaciones de servicios"),
-    ("75", "Otros ingresos de gestión"), ("759", "Ingresos por servicios diversos"),
-]
+ARCHIVO_POR_DEFECTO = Path(__file__).resolve().parents[2] / "data" / "pgc_2007.json"
 
 
 class Command(BaseCommand):
-    help = "Carga (o actualiza) el plan de cuentas base del PGC."
+    help = "Carga o actualiza el cuadro de cuentas, con definiciones, desde un archivo JSON."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--archivo", default=str(ARCHIVO_POR_DEFECTO))
+        parser.add_argument(
+            "--limpiar", action="store_true",
+            help="Elimina cuentas de 1 a 5 dígitos que no estén en el plan y no tengan apuntes ni subcuentas.",
+        )
 
     @transaction.atomic
-    def handle(self, *args, **options):
-        codigos = [c for c, _ in PLAN_BASE]
+    def handle(self, *args, **opciones):
+        datos = json.loads(Path(opciones["archivo"]).read_text(encoding="utf-8"))
+        cuentas = datos["cuentas"]
+        codigos = {c["codigo"] for c in cuentas}
+
         creadas = 0
-        for codigo, nombre in sorted(PLAN_BASE, key=lambda x: (len(x[0]), x[0])):
-            tiene_hijas = any(o != codigo and o.startswith(codigo) for o in codigos)
+        # por longitud: los padres existen antes que sus hijas
+        for c in sorted(cuentas, key=lambda x: (len(x["codigo"]), x["codigo"])):
             _, creada = CuentaContable.objects.update_or_create(
-                codigo=codigo,
-                defaults={"nombre": nombre, "imputable": not tiene_hijas},
+                codigo=c["codigo"],
+                defaults={
+                    "nombre": c["nombre"],
+                    "definicion": c.get("definicion", ""),
+                    "ubicacion": c.get("ubicacion", ""),
+                    "imputable": False,
+                    "padre": None,  # save() lo recalcula por prefijo
+                },
             )
             creadas += creada
+
+        borradas = 0
+        if opciones["limpiar"]:
+            sobrantes = (CuentaContable.objects.annotate(largo=Length("codigo"))
+                         .filter(largo__lte=5).exclude(codigo__in=codigos).order_by("-largo"))
+            for cuenta in sobrantes:
+                if cuenta.apuntes.exists() or cuenta.hijas.exists():
+                    self.stdout.write(self.style.WARNING(f"Se conserva {cuenta}: tiene apuntes o subcuentas."))
+                else:
+                    cuenta.delete()
+                    borradas += 1
+
         self.stdout.write(self.style.SUCCESS(
-            f"Plan de cuentas cargado: {creadas} nuevas, {len(PLAN_BASE) - creadas} actualizadas."
+            f"{datos.get('plan', 'Plan')}: {creadas} nuevas, {len(cuentas) - creadas} actualizadas, "
+            f"{borradas} eliminadas."
         ))

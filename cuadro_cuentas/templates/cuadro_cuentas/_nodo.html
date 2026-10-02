@@ -1,0 +1,16 @@
+{% with c=nodo.cuenta %}
+{% if nodo.hijos %}
+  <details class="nodo nivel-{{ c.codigo|length }}" {% if c.codigo|length == 1 %}open{% endif %}
+           data-texto="{{ c.codigo }} {{ c.nombre }} {{ c.nif }}">
+    <summary class="fila" id="c{{ c.codigo }}">{% include "cuadro_cuentas/_fila.html" %}</summary>
+    <div class="hijos">
+      {% for hijo in nodo.hijos %}{% include "cuadro_cuentas/_nodo.html" with nodo=hijo %}{% endfor %}
+    </div>
+  </details>
+{% else %}
+  <div class="fila nodo nivel-{{ c.codigo|length }}" id="c{{ c.codigo }}"
+       data-texto="{{ c.codigo }} {{ c.nombre }} {{ c.nif }}">
+    {% include "cuadro_cuentas/_fila.html" %}
+  </div>
+{% endif %}
+{% endwith %}

@@ -11,10 +11,10 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
 </head>
-
 <body>
   <header class="barra">
     <a href="/" class="volver">Inicio</a>
+    <a href="{% url 'cuadro_cuentas:plan_cuentas' %}" class="volver">Cuadro de cuentas</a>
     <h1>Libro diario</h1>
     <form method="get" class="filtros">
       <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
@@ -41,6 +41,37 @@
     </aside>
   </main>
 
+  <!-- Nuevo asiento a partir de un asiento modelo -->
+  <dialog id="dialogo-modelo" class="dialogo" aria-labelledby="dm-titulo">
+    <div class="dialogo-cuerpo">
+      <section id="dm-paso1">
+        <h2 id="dm-titulo">Nuevo asiento</h2>
+        <p class="panel-sub">Elige un asiento modelo. Rellenas los datos y la contrapartida se calcula sola.</p>
+        <div id="dm-modelos"></div>
+      </section>
+      <section id="dm-paso2" hidden>
+        <button type="button" class="volver" id="dm-atras">‹ Asientos modelo</button>
+        <h2 id="dm-nombre"></h2>
+        <p id="dm-descripcion" class="panel-sub"></p>
+        <form id="dm-form" class="dm-form" autocomplete="off">
+          <div class="dm-fila">
+            <label>Fecha <input type="date" name="fecha" required></label>
+            <label id="dm-documento">Nº de factura o documento <input name="documento"></label>
+          </div>
+          <div id="dm-campos" class="dm-campos"></div>
+          <label>Concepto <span class="opcional">(si lo dejas vacío se escribe solo)</span>
+            <input name="concepto" id="dm-concepto">
+          </label>
+        </form>
+        <div id="dm-vista" class="dm-vista" aria-live="polite"></div>
+      </section>
+    </div>
+    <div class="dialogo-pie">
+      <button type="button" class="btn-sec" id="dm-cancelar">Cancelar</button>
+      <button type="button" class="btn-primario" id="dm-crear" hidden disabled>Crear asiento</button>
+    </div>
+  </dialog>
+
   <datalist id="lista-cuentas">
     {% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}
   </datalist>
@@ -48,14 +79,20 @@
 
   {{ asientos|json_script:"datos-asientos" }}
   {{ departamentos|json_script:"datos-departamentos" }}
+  {{ modelos|json_script:"datos-modelos" }}
+  {{ ejercicio_info|json_script:"datos-ejercicio" }}
   <script>
     window.LIBRO = {
       nuevoUrl: "{% url 'cuadro_cuentas:api_crear_asiento' %}",
       asientoUrl: "{% url 'cuadro_cuentas:api_asiento' 0 %}",
       apunteUrl: "{% url 'cuadro_cuentas:api_apunte' 0 %}",
+      previsualizarUrl: "{% url 'cuadro_cuentas:api_modelo_previsualizar' 'x' %}",
+      crearModeloUrl: "{% url 'cuadro_cuentas:api_modelo_crear' 'x' %}",
+      planUrl: "{% url 'cuadro_cuentas:plan_cuentas' %}",
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="{% static 'cuadro_cuentas/libro.js' %}"></script>
+  <script src="{% static 'cuadro_cuentas/modelos.js' %}"></script>
 </body>
 </html>

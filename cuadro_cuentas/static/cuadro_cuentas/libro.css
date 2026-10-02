@@ -185,3 +185,93 @@ button, select, input { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+/* ===================== Tipos de asiento y lados Debe / Haber ===================== */
+.etiqueta {
+  font-size: .75rem; padding: .15rem .6rem; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--linea); color: var(--tinta-suave);
+}
+.etiqueta-apertura { background: var(--debe-tinte); border-color: transparent; color: var(--debe); }
+.etiqueta-ajuste { background: #FFF3D6; border-color: transparent; color: #8A5A00; }
+.etiqueta-regularizacion, .etiqueta-cierre { background: var(--haber-tinte); border-color: transparent; color: var(--haber); }
+@media (prefers-color-scheme: dark) {
+  .etiqueta-ajuste { background: #3A2E12; color: #F2C66D; }
+}
+.asiento[data-tipo="apertura"] .asiento-num { background: var(--debe); }
+.asiento[data-tipo="regularizacion"] .asiento-num,
+.asiento[data-tipo="cierre"] .asiento-num { background: var(--haber); }
+
+.celda-cuenta { display: flex; align-items: center; gap: .25rem; min-width: 0; }
+.celda-cuenta .a { color: var(--haber); font-style: italic; font-size: .85rem; }
+/* las cuentas del Haber van sangradas, como en el libro diario tradicional */
+.apunte.lado-haber .celda-cuenta { padding-left: .9rem; }
+.apunte.lado-haber { background: color-mix(in srgb, var(--haber-tinte) 45%, var(--fondo)); }
+.apunte.lado-debe { background: color-mix(in srgb, var(--debe-tinte) 45%, var(--fondo)); }
+
+/* ===================== Diálogo "Nuevo asiento" ===================== */
+.dialogo {
+  width: min(860px, calc(100vw - 2rem)); max-height: calc(100vh - 3rem);
+  padding: 0; border: 0; border-radius: 28px;
+  background: var(--papel); color: var(--tinta);
+  box-shadow: 0 24px 60px -20px rgb(28 39 51 / .45);
+}
+.dialogo[open] { display: flex; flex-direction: column; animation: aparecer .25s cubic-bezier(.2, .9, .3, 1.2); }
+.dialogo::backdrop { background: rgb(28 39 51 / .35); backdrop-filter: blur(2px); }
+.dialogo-cuerpo { overflow: auto; padding: 1.5rem 1.75rem .5rem; }
+.dialogo-pie { display: flex; justify-content: flex-end; gap: .6rem; padding: .75rem 1.75rem 1.25rem; }
+.dialogo h2 { margin: .4rem 0 .2rem; font-size: 1.3rem; }
+.dialogo .volver { background: none; cursor: pointer; font: inherit; }
+
+.dm-grupo { margin: 1.1rem 0 .5rem; font-size: .85rem; color: var(--tinta-suave); font-weight: 500; }
+.dm-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .6rem; }
+.dm-modelo {
+  display: flex; flex-direction: column; align-items: flex-start; gap: .3rem; text-align: left;
+  padding: .85rem 1rem; border-radius: 20px; border: 2px solid transparent;
+  background: var(--fondo); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color .15s, transform .15s;
+}
+.dm-modelo:hover, .dm-modelo:focus-visible { border-color: var(--foco); transform: translateY(-1px); outline: none; }
+.dm-modelo span:last-child { font-size: .82rem; color: var(--tinta-suave); line-height: 1.4; }
+
+.dm-form { display: flex; flex-direction: column; gap: .2rem; }
+.dm-fila { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.dm-campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .2rem .75rem; }
+.dm-form label, .dm-campo { display: flex; flex-direction: column; gap: .25rem; margin-top: .6rem;
+  font-size: .85rem; color: var(--tinta-suave); }
+.dm-form input, .dm-form select {
+  font: inherit; color: var(--tinta); padding: .5rem .8rem; border: 1px solid var(--linea);
+  border-radius: 12px; background: var(--papel);
+}
+.dm-form input:focus, .dm-form select:focus { outline: none; border-color: var(--foco); }
+.dm-form input.num { text-align: right; font-variant-numeric: tabular-nums; }
+.opcional { font-size: .8em; }
+.dm-falta p { margin: 0; padding: .5rem .8rem; border-radius: 12px; background: var(--haber-tinte); color: var(--haber); }
+.dm-falta a { color: inherit; }
+
+/* asiento en forma de T */
+.dm-vista { margin-top: 1.25rem; }
+.t { border-radius: 20px; overflow: hidden; border: 1px solid var(--linea); }
+.t-cab, .t-pie, .t-cuerpo { display: grid; grid-template-columns: 1fr 1fr; }
+.t-cab span { padding: .45rem 1rem; font-weight: 600; font-size: .85rem; }
+.t-cab span:first-child { background: var(--debe-tinte); color: var(--debe); }
+.t-cab span:last-child { background: var(--haber-tinte); color: var(--haber); }
+.t-lado { list-style: none; margin: 0; padding: .4rem 0; min-height: 3rem; }
+.t-debe { border-right: 2px solid var(--tinta); }
+.t-lado li { display: grid; grid-template-columns: auto 1fr auto; gap: .5rem; padding: .3rem 1rem; font-size: .9rem; }
+.t-lado .codigo { color: var(--tinta-suave); font-variant-numeric: tabular-nums; }
+.t-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-lado strong { font-variant-numeric: tabular-nums; }
+.t-pie { border-top: 2px solid var(--tinta); }
+.t-pie strong { padding: .5rem 1rem; text-align: right; font-variant-numeric: tabular-nums; }
+.t-pie strong:first-child { border-right: 2px solid var(--tinta); }
+.dm-estado { margin: .75rem 0 0; padding: .6rem .9rem; border-radius: 14px; background: var(--fondo); font-size: .9rem; }
+.dm-estado span { display: block; margin-top: .2rem; color: var(--tinta-suave); font-size: .85rem; }
+.dm-estado.ok { background: var(--debe-tinte); color: var(--debe); }
+.dm-estado.mal { background: var(--haber-tinte); color: var(--error); }
+
+@media (max-width: 640px) {
+  .dm-fila { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialogo[open] { animation: none; }
+  .dm-modelo { transition: none; }
+}

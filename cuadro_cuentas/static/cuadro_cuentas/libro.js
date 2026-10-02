@@ -37,19 +37,31 @@
     avisar.t = setTimeout(() => (aviso.hidden = true), 4000);
   }
 
+  // Si el servidor ha renumerado asientos, se recarga para ver los números nuevos
+  function recargarSiRenumerado(datos, id) {
+    if (!datos.renumerado) return false;
+    location.hash = id ? `a${id}` : "";
+    location.reload();
+    return true;
+  }
+
   // ---------- pintado ----------
   function filaHTML(ap, bloq) {
     const d = Number(ap.debe), h = Number(ap.haber);
     const nuevo = ap.id === "nuevo";
+    const lado = nuevo ? "" : h > 0 ? "lado-haber" : "lado-debe";
     const opciones = ['<option value="">Sin dpto.</option>']
       .concat(departamentos.map(([v, n]) =>
         `<option value="${v}" ${v === ap.departamento ? "selected" : ""}>${esc(n)}</option>`))
       .join("");
     return `
-      <li class="apunte" data-id="${ap.id}">
+      <li class="apunte ${lado}" data-id="${ap.id}">
         <span class="asa" title="Arrastra para reordenar" aria-hidden="true">⠿</span>
-        <input class="campo" data-campo="cuenta" list="lista-cuentas" value="${esc(ap.cuenta)}"
-               title="${esc(ap.cuenta_nombre)}" placeholder="Cuenta" aria-label="Cuenta" ${bloq}>
+        <span class="celda-cuenta">
+          ${lado === "lado-haber" ? '<span class="a" aria-hidden="true">a</span>' : ""}
+          <input class="campo" data-campo="cuenta" list="lista-cuentas" value="${esc(ap.cuenta)}"
+                 title="${esc(ap.cuenta_nombre)}" placeholder="Cuenta" aria-label="Cuenta" ${bloq}>
+        </span>
         <input class="campo" data-campo="concepto" value="${esc(ap.concepto)}" aria-label="Concepto" ${bloq}>
         <input class="campo num importe ${d ? "lleno-debe" : ""}" data-campo="debe" inputmode="decimal"
                value="${d ? eur.format(d) : ""}" aria-label="Debe" ${bloq}>
@@ -66,13 +78,17 @@
     const dif = Number(a.debe) - Number(a.haber);
     const el = document.createElement("article");
     el.className = "asiento";
+    el.id = `a${a.id}`;
     el.dataset.id = a.id;
     el.dataset.estado = a.estado;
+    el.dataset.tipo = a.tipo;
     el.innerHTML = `
       <header class="asiento-cab">
         <span class="asiento-num" title="Número de asiento">${a.numero}</span>
         <input class="campo campo-fecha" type="date" data-campo="fecha" value="${a.fecha}" aria-label="Fecha" ${bloq}>
         <input class="campo campo-concepto" data-campo="concepto" value="${esc(a.concepto)}" aria-label="Concepto del asiento" ${bloq}>
+        ${a.tipo !== "operacion" ? `<span class="etiqueta etiqueta-${a.tipo}">${esc(a.tipo_label)}</span>` : ""}
+        <span class="etiqueta etiqueta-clase" title="Simple: dos cuentas. Compuesto: tres o más.">${esc(a.clase)}</span>
         <span class="estado">${esc(a.estado_label)}</span>
       </header>
       <div class="columnas" aria-hidden="true">
@@ -187,9 +203,10 @@
         <div class="cuadre ${dif ? "mal" : ""}">${cuadre}</div>
       </div>
       <dl class="datos">
+        <dt>Tipo</dt><dd>${esc(a.tipo_label)}, ${esc(a.clase.toLowerCase())}</dd>
         <dt>Estado</dt><dd>${esc(a.estado_label)}</dd>
         <dt>Origen</dt><dd>${esc(a.origen_label)}</dd>
-        ${a.referencia_origen ? `<dt>Referencia</dt><dd>${esc(a.referencia_origen)}</dd>` : ""}
+        ${a.referencia_origen ? `<dt>Documento</dt><dd>${esc(a.referencia_origen)}</dd>` : ""}
         <dt>Ejercicio</dt><dd>${a.ejercicio}${a.cerrado ? " (cerrado)" : ""}</dd>
         <dt>Líneas</dt><dd>${a.apuntes.length}</dd>
       </dl>
@@ -200,7 +217,7 @@
   }
 
   async function cargarResumen(id) {
-    const mia = ++peticion;  // descarta respuestas de selecciones anteriores
+    const mia = ++peticion;
     try {
       const r = await api("GET", url(cfg.asientoUrl, id, "resumen/"));
       if (mia === peticion) pintarPanel(r);
@@ -229,7 +246,7 @@
   lista.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && ev.target.matches("input.campo")) {
       ev.preventDefault();
-      ev.target.blur();  // dispara "change" y guarda
+      ev.target.blur();
     }
   });
 
@@ -242,7 +259,7 @@
 
     if (fila?.dataset.id === "nuevo") {
       const valores = leerFila(fila);
-      if (!valores.cuenta || !(valores.debe || valores.haber)) return;  // aún incompleta
+      if (!valores.cuenta || !(valores.debe || valores.haber)) return;
       try {
         actualizar(await api("POST", url(cfg.asientoUrl, id, "apuntes/"), valores));
       } catch (e) {
@@ -254,10 +271,11 @@
 
     try {
       const destino = fila ? url(cfg.apunteUrl, fila.dataset.id) : url(cfg.asientoUrl, id);
-      actualizar(await api("PATCH", destino, { [campo]: ev.target.value }));
+      const datos = await api("PATCH", destino, { [campo]: ev.target.value });
+      if (!recargarSiRenumerado(datos, id)) actualizar(datos);
     } catch (e) {
       avisar(e.message);
-      actualizar(asientos.get(id));  // vuelve al último estado guardado
+      actualizar(asientos.get(id));
     }
   });
 
@@ -300,7 +318,8 @@
         }
         case "borrar": {
           if (!confirm(`¿Eliminar el asiento ${a.numero}?`)) break;
-          await api("DELETE", url(cfg.asientoUrl, id));
+          const r = await api("DELETE", url(cfg.asientoUrl, id));
+          if (recargarSiRenumerado(r)) break;
           card.remove();
           asientos.delete(id);
           seleccionado = null;
@@ -313,26 +332,18 @@
     }
   });
 
-  document.getElementById("nuevo-asiento").addEventListener("click", async () => {
-    try {
-      const hoy = new Date();
-      const iso = new Date(hoy - hoy.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-      const a = await api("POST", cfg.nuevoUrl, { fecha: iso, concepto: "Nuevo asiento" });
-      actualizar(a, { nueva: true });
-      const card = lista.querySelector(`.asiento[data-id="${a.id}"]`);
-      card.scrollIntoView({ behavior: sinMovimiento ? "auto" : "smooth", block: "center" });
-      const concepto = card.querySelector('[data-campo="concepto"]');
-      concepto.focus();
-      concepto.select();
-    } catch (e) {
-      avisar(e.message);
-    }
-  });
-
   // ---------- carga inicial ----------
   const iniciales = JSON.parse(document.getElementById("datos-asientos").textContent);
   if (!iniciales.length) {
     lista.innerHTML = '<p class="vacio">No hay asientos en este periodo. Crea uno con «Nuevo asiento».</p>';
   }
   iniciales.forEach((a) => actualizar(a));
+
+  // Al llegar con #a123 (por ejemplo, tras crear un asiento) se selecciona y se resalta
+  const destino = location.hash && document.getElementById(location.hash.slice(1));
+  if (destino?.classList.contains("asiento")) {
+    seleccionar(Number(destino.dataset.id));
+    destino.classList.add("recien");
+    destino.scrollIntoView({ block: "center", behavior: sinMovimiento ? "auto" : "smooth" });
+  }
 })();

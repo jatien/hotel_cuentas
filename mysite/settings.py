@@ -86,6 +86,9 @@ MEDIA_ROOT = BASE_DIR / "media"
 #Command to not block pdf files of rendering
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
+#Da permiso A Postgresql para crear la base de datos y tablas
+
+
 #Allowed hosts in LAN 
 ALLOWED_HOSTS = ["*"]
 # Database
