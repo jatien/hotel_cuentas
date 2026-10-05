@@ -22,7 +22,7 @@ class CrearAsientoTests(TestCase):
 
     def factura(self, **kwargs):
         return crear_asiento(FECHA, "Factura de prueba", [
-            Linea("60000001", debe=D("100.00"), departamento="cocina"),
+            Linea("60000001", debe=D("100.00")),
             Linea("47200001", debe=D("10.00")),
             Linea("40000001", haber=D("110.00")),
         ], **kwargs)
@@ -46,9 +46,8 @@ class CrearAsientoTests(TestCase):
         apuntes = {a.cuenta.codigo: a.contrapartida.codigo for a in asiento.apuntes.select_related("cuenta", "contrapartida")}
         self.assertEqual(apuntes, {"40000001": "57200001", "57200001": "40000001"})
 
-    def test_conserva_departamento_y_concepto(self):
+    def test_conserva_concepto(self):
         apunte = self.factura().apuntes.get(cuenta__codigo="60000001")
-        self.assertEqual(apunte.departamento, "cocina")
         self.assertEqual(apunte.concepto, "Factura de prueba")
 
     def test_sin_contabilizar_queda_en_borrador(self):

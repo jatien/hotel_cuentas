@@ -1,0 +1,98 @@
+/* ---------- documento ---------- */
+.documento {
+  background: var(--papel); border-radius: 24px; padding: 1.5rem 1.75rem;
+  box-shadow: var(--sombra); min-width: 0;
+}
+.identificacion .empresa { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.identificacion .empresa span { font-weight: 400; color: var(--tinta-suave); font-size: .95rem; margin-left: .5rem; }
+.identificacion .subtitulo { margin: .2rem 0 1rem; color: var(--tinta-suave); }
+
+.selector-modelo { display: flex; border: 1px solid var(--linea); border-radius: 999px; overflow: hidden; }
+.selector-modelo a { padding: .4rem 1rem; text-decoration: none; color: var(--tinta-suave); }
+.selector-modelo a[aria-current="true"] { background: var(--tinta); color: var(--papel); }
+
+.pestanas { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1.25rem; }
+.pestanas button {
+  border: 1px solid var(--linea); background: transparent; border-radius: 999px;
+  padding: .4rem .9rem; font: inherit; font-size: .88rem; color: var(--tinta); cursor: pointer;
+}
+.pestanas button[aria-selected="true"] { background: var(--foco); border-color: var(--foco); color: #fff; }
+.pestanas button:disabled { opacity: .45; cursor: not-allowed; }
+
+.estado-panel h2 { font-size: 1.05rem; letter-spacing: .02em; margin: 0 0 .75rem; }
+
+/* ---------- tablas de los estados ---------- */
+.estado-tabla { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: .9rem; }
+.estado-tabla th {
+  text-align: left; font-size: .78rem; font-weight: 600; color: var(--tinta-suave);
+  border-bottom: 2px solid var(--tinta); padding: .4rem .5rem;
+}
+.estado-tabla td { padding: .3rem .5rem; border-bottom: 1px solid var(--linea); vertical-align: top; }
+.estado-tabla .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 8.5rem; }
+.col-cuentas { width: 12rem; font-size: .75rem; color: var(--tinta-suave); line-height: 1.35; }
+.col-notas { width: 3.5rem; }
+
+.estado-tabla .nivel-0 td { font-weight: 600; background: var(--fondo); }
+.estado-tabla .nivel-1 .partida { padding-left: 1.25rem; }
+.estado-tabla .nivel-1.agrupa td { font-weight: 500; }
+.estado-tabla .nivel-2 .partida { padding-left: 2.5rem; }
+.estado-tabla .nivel-3 .partida { padding-left: 3.75rem; }
+.estado-tabla .nivel-4 .partida { padding-left: 5rem; }
+.estado-tabla tr.total td { font-weight: 600; background: var(--debe-tinte); color: var(--tinta); }
+.estado-tabla tfoot td {
+  font-weight: 600; border-top: 2px solid var(--tinta); border-bottom: 3px double var(--tinta);
+}
+.estado-tabla tr.detalle td { font-size: .82rem; color: var(--tinta-suave); background: transparent; }
+.estado-tabla tr.detalle td:nth-child(2) { padding-left: 4rem; }
+
+.desplegar {
+  border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.desplegar::after { content: " ›"; color: var(--tinta-suave); display: inline-block; transition: transform .15s; }
+.desplegar[aria-expanded="true"]::after { transform: rotate(90deg); }
+
+/* ---------- avisos y panel ---------- */
+.aviso-doc, .alerta {
+  padding: .75rem 1rem; border-radius: 16px; background: var(--haber-tinte); color: var(--haber);
+  font-size: .9rem;
+}
+.aviso-doc a, .alerta a { color: inherit; }
+.aviso-doc ul { margin: .4rem 0; }
+.panel h2 { font-size: 1.05rem; margin: 1.25rem 0 .25rem; }
+.panel h2:first-of-type { margin-top: 0; }
+.criterios { width: 100%; border-collapse: collapse; font-size: .85rem; margin: .5rem 0; }
+.criterios th, .criterios td { padding: .3rem .25rem; border-bottom: 1px solid var(--linea); text-align: left; }
+.criterios .num { text-align: right; font-variant-numeric: tabular-nums; }
+.criterios td:not(:first-child), .criterios th { white-space: nowrap; }
+.veredicto { list-style: none; padding: 0; margin: .5rem 0; display: flex; flex-direction: column; gap: .3rem; }
+.veredicto li { padding: .45rem .8rem; border-radius: 12px; font-size: .88rem; }
+.veredicto .si { background: var(--debe-tinte); color: var(--debe); }
+.veredicto .no { background: var(--fondo); color: var(--tinta-suave); }
+.nota { font-size: .85rem; color: var(--tinta-suave); }
+.formulario label { display: block; margin: .8rem 0 .25rem; font-size: .85rem; color: var(--tinta-suave); }
+.formulario input {
+  width: 100%; padding: .5rem .8rem; border: 1px solid var(--linea); border-radius: 12px;
+  background: var(--papel); font: inherit; color: inherit;
+}
+.formulario .btn-sec { margin-top: .75rem; }
+.ayuda { margin: .3rem 0 0; font-size: .82rem; color: var(--tinta-suave); }
+.mensaje { padding: .7rem 1rem; border-radius: 18px; background: var(--debe-tinte); color: var(--debe); }
+
+.firmas { margin-top: 2rem; font-size: .9rem; }
+.lineas-firma { display: flex; gap: 2rem; margin-top: 3rem; }
+.lineas-firma span { flex: 1; border-top: 1px solid var(--tinta); padding-top: .3rem; font-size: .8rem; color: var(--tinta-suave); }
+
+/* ---------- impresión: solo el documento, cada estado en su página ---------- */
+@media print {
+  :root { --fondo: #fff; --papel: #fff; --tinta: #000; --tinta-suave: #333; --linea: #ccc; }
+  body { background: #fff; font-size: 10pt; }
+  .barra, .panel, .pestanas, .aviso-doc, .desplegar::after { display: none !important; }
+  .libro { display: block; padding: 0; }
+  .documento { box-shadow: none; padding: 0; border-radius: 0; }
+  .estado-panel { break-before: page; }
+  .estado-panel:first-of-type { break-before: auto; }
+  .estado-tabla tr { break-inside: avoid; }
+  .estado-tabla tr.detalle { display: none; }
+  .estado-tabla .nivel-0 td, .estado-tabla tr.total td { background: none; }
+  .firmas { break-before: avoid; }
+}

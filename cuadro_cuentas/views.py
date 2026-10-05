@@ -15,7 +15,9 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .forms import AltaSubcuentaForm
 from .modelos_asiento import MODELOS, crear_desde_modelo, previsualizar
-from .models import DEPARTAMENTOS, LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, Ejercicio
+from .cuentas_anuales import calcular_cuentas_anuales, evaluar_abreviado
+from .forms import AltaSubcuentaForm, DatosEjercicioForm
+from .models import LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio
 from .services import (LONGITUDES_BASE, asignar_contrapartidas, crear_subcuenta, renumerar,
                        siguiente_codigo)
 from .tipos_alta import TIPOS_ALTA
@@ -45,7 +47,7 @@ def serializar_asiento(asiento):
             "id": a.id, "cuenta": a.cuenta.codigo, "cuenta_nombre": a.cuenta.nombre,
             "contrapartida": a.contrapartida.codigo if a.contrapartida_id else "",
             "concepto": a.concepto, "debe": f"{a.debe:.2f}", "haber": f"{a.haber:.2f}",
-            "departamento": a.departamento,
+            
         } for a in apuntes],
     }
 
@@ -102,11 +104,7 @@ def _aplicar_apunte(apunte, datos):
         apunte.cuenta = cuenta
     if "concepto" in datos:
         apunte.concepto = str(datos["concepto"]).strip()[:255]
-    if "departamento" in datos:
-        dep = datos["departamento"] or ""
-        if dep and dep not in dict(DEPARTAMENTOS):
-            raise ValidationError(f"Departamento no válido: {dep}")
-        apunte.departamento = dep
+    
     if "debe" in datos:
         apunte.debe = _importe(datos["debe"])
         if apunte.debe:
@@ -151,7 +149,7 @@ def libro_diario(request):
         },
         "asientos": [serializar_asiento(a) for a in asientos],
         "cuentas": CuentaContable.objects.filter(imputable=True, activa=True),
-        "departamentos": DEPARTAMENTOS,
+        
     })
 
 
@@ -433,3 +431,37 @@ def api_ficha_cuenta(request, codigo):
         "saldo": f"{debe - haber:.2f}",
         "hijas": list(cuenta.hijas.order_by("codigo").values("codigo", "nombre", "nif")),
     })
+
+# ===================== Cuentas anuales =====================
+
+def cuentas_anuales(request):
+    ejercicios = Ejercicio.objects.all()
+    anio = request.GET.get("ejercicio")
+    ejercicio = ejercicios.filter(anio=anio).first() if anio else ejercicios.first()
+
+    form = None
+    if ejercicio:
+        form = DatosEjercicioForm(request.POST or None, instance=ejercicio)
+        if request.method == "POST" and form.is_valid():
+            form.save()
+            messages.success(request, "Datos del ejercicio guardados.")
+            return redirect(f"{reverse('cuadro_cuentas:cuentas_anuales')}?ejercicio={ejercicio.anio}")
+
+    contexto = {"ejercicios": ejercicios, "ejercicio": ejercicio, "form": form,
+                "empresa": DatosEmpresa.actual()}
+    if ejercicio:
+        evaluacion = evaluar_abreviado(ejercicio)
+        propuesto = "abreviado" if evaluacion["balance"]["puede"] and evaluacion["pyg"]["puede"] else "normal"
+        modelo = request.GET.get("modelo") if request.GET.get("modelo") in ("normal", "abreviado") else propuesto
+        ca = calcular_cuentas_anuales(ejercicio, modelo)
+        balance = ca["balance"]
+        contexto.update({
+            "modelo": modelo,
+            "propuesto": propuesto,
+            "evaluacion": evaluacion,
+            "ca": ca,
+            "estados": [balance, ca["pyg"], ca["ecpn"]],
+            "descuadre": balance.secciones[0][2] - balance.secciones[1][2],
+            "anio_anterior": ejercicio.anio - 1,
+        })
+    return render(request, "cuadro_cuentas/cuentas_anuales.html", contexto)

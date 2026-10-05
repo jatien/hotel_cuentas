@@ -12,7 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from .models import DEPARTAMENTOS, LONGITUD_SUBCUENTA, Asiento, CuentaContable, Ejercicio
+from .models import  LONGITUD_SUBCUENTA, Asiento, CuentaContable, Ejercicio
 from .services import Linea, crear_asiento, renumerar, saldos_subcuentas
 
 CENTIMO = Decimal("0.01")
@@ -86,7 +86,7 @@ def _factura_proveedor(d, ctx):
     cuota = porcentaje(d["base"], d["iva"])
     total = d["base"] + cuota
     return (f"Factura {_detalle(d['proveedor'].nombre, ctx['documento'])}", lineas_sin_ceros(
-        Linea(d["compra"].codigo, debe=d["base"], departamento=d["departamento"]),
+        Linea(d["compra"].codigo, debe=d["base"]),
         Linea(d["cuenta_iva"].codigo, debe=cuota),
         Linea(d["proveedor"].codigo, haber=total),            # contrapartida automática
     ))
@@ -99,7 +99,7 @@ def _factura_acreedor(d, ctx):
         raise ValidationError("Con retención hay que elegir la cuenta de retenciones (4751).")
     total = d["base"] + cuota - retencion
     return (f"Factura {_detalle(d['acreedor'].nombre, ctx['documento'])}", lineas_sin_ceros(
-        Linea(d["gasto"].codigo, debe=d["base"], departamento=d["departamento"]),
+        Linea(d["gasto"].codigo, debe=d["base"]),
         Linea(d["cuenta_iva"].codigo, debe=cuota),
         Linea(d["cuenta_retencion"].codigo if retencion else "", haber=retencion),
         Linea(d["acreedor"].codigo, haber=total),             # contrapartida automática
@@ -117,7 +117,7 @@ def _factura_cliente(d, ctx):
     cuota = porcentaje(d["base"], d["iva"])
     return (f"Factura a {_detalle(d['cliente'].nombre, ctx['documento'])}", lineas_sin_ceros(
         Linea(d["cliente"].codigo, debe=d["base"] + cuota),   # contrapartida automática
-        Linea(d["ingreso"].codigo, haber=d["base"], departamento=d["departamento"]),
+        Linea(d["ingreso"].codigo, haber=d["base"]),
         Linea(d["cuenta_iva"].codigo, haber=cuota),
     ))
 
@@ -135,7 +135,7 @@ def _venta_contado(d, ctx):
     cuota = d["total"] - base
     return (f"Ventas al contado {d['ingreso'].nombre}", lineas_sin_ceros(
         Linea(d["tesoreria"].codigo, debe=d["total"]),
-        Linea(d["ingreso"].codigo, haber=base, departamento=d["departamento"]),
+        Linea(d["ingreso"].codigo, haber=base),
         Linea(d["cuenta_iva"].codigo, haber=cuota),
     ))
 
@@ -145,8 +145,8 @@ def _nomina(d, ctx):
     if neto <= 0:
         raise ValidationError("Las retenciones no pueden ser mayores que el sueldo bruto.")
     return ("Nóminas", lineas_sin_ceros(
-        Linea(d["sueldos"].codigo, debe=d["bruto"], departamento=d["departamento"]),
-        Linea(d["ss_cargo"].codigo, debe=d["ss_empresa"], departamento=d["departamento"]),
+        Linea(d["sueldos"].codigo, debe=d["bruto"]),
+        Linea(d["ss_cargo"].codigo, debe=d["ss_empresa"]),
         Linea(d["cuenta_irpf"].codigo, haber=d["irpf"]),
         Linea(d["cuenta_ss"].codigo, haber=d["ss_trabajador"] + d["ss_empresa"]),
         Linea(d["pendiente"].codigo, haber=neto),             # contrapartida automática
@@ -252,8 +252,6 @@ def _libre(d, ctx):
 
 # ---------- catálogo ----------
 
-DEPARTAMENTO = Campo("departamento", "Departamento", "opcion",
-                     opciones=(("", "Sin departamento"),) + tuple(DEPARTAMENTOS), obligatorio=False)
 T = Asiento.Tipo
 
 MODELOS = [
@@ -266,7 +264,7 @@ MODELOS = [
             Campo("base", "Base imponible", "importe"),
             Campo("iva", "IVA", "opcion", opciones=IVA, inicial="10"),
             Campo("cuenta_iva", "Cuenta de IVA soportado", "cuenta", ("472",)),
-            DEPARTAMENTO,
+            
         ]),
     ModeloAsiento(
         "factura_acreedor", "Factura de servicios",
@@ -281,7 +279,7 @@ MODELOS = [
             Campo("retencion", "Retención IRPF", "opcion", opciones=RETENCION, inicial="0"),
             Campo("cuenta_retencion", "Cuenta de retenciones", "cuenta", ("4751",), obligatorio=False,
                   ayuda="Solo si hay retención."),
-            DEPARTAMENTO,
+            
         ]),
     ModeloAsiento(
         "pago", "Pago a proveedor o acreedor",
@@ -300,7 +298,7 @@ MODELOS = [
             Campo("base", "Base imponible", "importe"),
             Campo("iva", "IVA", "opcion", opciones=IVA, inicial="10"),
             Campo("cuenta_iva", "Cuenta de IVA repercutido", "cuenta", ("477",)),
-            DEPARTAMENTO,
+            
         ]),
     ModeloAsiento(
         "cobro", "Cobro de cliente",
@@ -319,7 +317,7 @@ MODELOS = [
             Campo("total", "Total cobrado (IVA incluido)", "importe"),
             Campo("iva", "IVA", "opcion", opciones=IVA, inicial="10"),
             Campo("cuenta_iva", "Cuenta de IVA repercutido", "cuenta", ("477",)),
-            DEPARTAMENTO,
+            
         ]),
     ModeloAsiento(
         "nomina", "Nóminas del mes",
@@ -335,7 +333,7 @@ MODELOS = [
             Campo("cuenta_irpf", "Cuenta de retenciones", "cuenta", ("4751",)),
             Campo("cuenta_ss", "Cuenta de Seguridad Social acreedora", "cuenta", ("476",)),
             Campo("pendiente", "Cuenta de remuneraciones pendientes", "cuenta", ("465",)),
-            DEPARTAMENTO,
+            
         ]),
     ModeloAsiento(
         "pago_nomina", "Pago de nóminas",

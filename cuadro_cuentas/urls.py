@@ -18,4 +18,5 @@ urlpatterns = [
     path("api/apuntes/<int:pk>/", views.api_apunte, name="api_apunte"),
     path("api/modelos/<slug:clave>/previsualizar/", views.api_modelo_previsualizar, name="api_modelo_previsualizar"),
     path("api/modelos/<slug:clave>/crear/", views.api_modelo_crear, name="api_modelo_crear"),
+    path("cuentas-anuales/", views.cuentas_anuales, name="cuentas_anuales"),
 ]

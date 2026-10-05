@@ -15,6 +15,7 @@
   <header class="barra">
     <a href="/" class="volver">Inicio</a>
     <a href="{% url 'cuadro_cuentas:plan_cuentas' %}" class="volver">Cuadro de cuentas</a>
+    <a href="{% url 'cuadro_cuentas:cuentas_anuales' %}" class="volver">Cuentas anuales</a>
     <h1>Libro diario</h1>
     <form method="get" class="filtros">
       <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
@@ -78,7 +79,6 @@
   <div id="aviso" class="aviso" role="status" hidden></div>
 
   {{ asientos|json_script:"datos-asientos" }}
-  {{ departamentos|json_script:"datos-departamentos" }}
   {{ modelos|json_script:"datos-modelos" }}
   {{ ejercicio_info|json_script:"datos-ejercicio" }}
   <script>

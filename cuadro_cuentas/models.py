@@ -5,13 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Max, Q, Sum
 
-DEPARTAMENTOS = [
-    ("cocina", "Cocina"),
-    ("recepcion", "Recepción"),
-    ("comedor", "Comedor"),
-    ("mantenimiento", "Mantenimiento"),
-    ("lavanderia", "Lavandería"),
-]
+
 
 LONGITUD_SUBCUENTA = 8
 NIVELES = {1: "Grupo", 2: "Subgrupo", 3: "Cuenta", 4: "Cuenta", 5: "Cuenta", LONGITUD_SUBCUENTA: "Subcuenta"}
@@ -69,12 +63,37 @@ class CuentaContable(models.Model):
             )
         super().save(*args, **kwargs)
 
+class DatosEmpresa(models.Model):
+    """Identificación de la empresa en las cuentas anuales (norma 2ª.3). Se usa un único registro."""
+    denominacion = models.CharField("denominación social", max_length=200)
+    nif = models.CharField("NIF", max_length=20, blank=True)
+    forma_juridica = models.CharField("forma jurídica", max_length=100, blank=True,
+                                      help_text="Sociedad limitada, sociedad anónima, comunidad de bienes...")
+    domicilio = models.CharField(max_length=255, blank=True)
+    actividad = models.CharField(max_length=255, blank=True, help_text="Por ejemplo: explotación hotelera.")
 
+    class Meta:
+        verbose_name = "datos de la empresa"
+        verbose_name_plural = "datos de la empresa"
+
+    def __str__(self):
+        return self.denominacion
+
+    @classmethod
+    def actual(cls):
+        return cls.objects.first()
+    
 class Ejercicio(models.Model):
     anio = models.PositiveIntegerField("año", unique=True)
     fecha_inicio = models.DateField()
     fecha_fin = models.DateField()
     cerrado = models.BooleanField(default=False)
+    trabajadores_medios = models.DecimalField(
+        "número medio de trabajadores", max_digits=7, decimal_places=2, null=True, blank=True,
+        help_text="Para saber si se pueden presentar cuentas anuales abreviadas (norma 4ª).")
+    fecha_formulacion = models.DateField(
+        "fecha de formulación", null=True, blank=True,
+        help_text="Fecha en que se formulan las cuentas anuales (como máximo, tres meses tras el cierre).")
 
     class Meta:
         ordering = ["-anio"]
@@ -210,7 +229,6 @@ class Apunte(models.Model):
     concepto = models.CharField(max_length=255, blank=True)
     debe = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
     haber = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
-    departamento = models.CharField(max_length=20, choices=DEPARTAMENTOS, blank=True)
 
     class Meta:
         ordering = ["asiento", "orden", "id"]

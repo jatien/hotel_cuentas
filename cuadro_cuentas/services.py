@@ -21,7 +21,7 @@ class Linea:
     debe: Decimal = Decimal("0")
     haber: Decimal = Decimal("0")
     concepto: str = ""
-    departamento: str = ""
+    
 
 
 def asignar_contrapartidas(asiento, recalcular=False):
@@ -109,7 +109,7 @@ def crear_asiento(fecha, concepto, lineas, origen=Asiento.Origen.MANUAL,
 
     Apunte.objects.bulk_create([
         Apunte(asiento=asiento, orden=i, cuenta=cuentas[l.cuenta], debe=l.debe, haber=l.haber,
-               concepto=l.concepto or concepto, departamento=l.departamento)
+               concepto=l.concepto or concepto)
         for i, l in enumerate(lineas)
     ])
     asignar_contrapartidas(asiento)

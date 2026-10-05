@@ -7,7 +7,12 @@ from django.forms.models import BaseInlineFormSet
 
 from .models import Apunte, Asiento, CuentaContable, Ejercicio
 from .services import asignar_contrapartidas
+from .models import DatosEmpresa
 
+
+@admin.register(DatosEmpresa)
+class DatosEmpresaAdmin(admin.ModelAdmin):
+    list_display = ["denominacion", "nif", "forma_juridica"]
 
 @admin.register(CuentaContable)
 class CuentaContableAdmin(admin.ModelAdmin):
@@ -45,7 +50,7 @@ class ApunteFormSet(BaseInlineFormSet):
 class ApunteInline(admin.TabularInline):
     model = Apunte
     formset = ApunteFormSet
-    fields = ["orden", "cuenta", "debe", "haber", "contrapartida", "concepto", "departamento"]
+    fields = ["orden", "cuenta", "debe", "haber", "contrapartida", "concepto"]
     autocomplete_fields = ["cuenta", "contrapartida"]
     extra = 2
 

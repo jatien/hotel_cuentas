@@ -49,7 +49,7 @@ class BaseModelos(TestCase):
     def compra(self, fecha=date(2026, 3, 2), base="100", iva="10", documento="F-1"):
         return crear_desde_modelo("factura_proveedor", fecha, {
             "proveedor": "40000001", "compra": "60000001", "base": base, "iva": iva,
-            "cuenta_iva": "47200001", "departamento": "cocina"}, documento=documento)
+            "cuenta_iva": "47200001"}, documento=documento)
 
     def venta(self, fecha=date(2026, 4, 1), base="1000"):
         return crear_desde_modelo("factura_cliente", fecha, {
@@ -66,7 +66,6 @@ class OperacionesTests(BaseModelos):
         self.assertEqual((asiento.tipo, asiento.modelo, asiento.clase), ("operacion", "factura_proveedor", "Compuesto"))
         self.assertEqual(asiento.concepto, "Factura Frutas Prueba SL F-1")
         self.assertEqual(asiento.referencia_origen, "F-1")
-        self.assertEqual(asiento.apuntes.get(cuenta__codigo="60000001").departamento, "cocina")
         self.assertEqual(asiento.apuntes.get(cuenta__codigo="60000001").contrapartida.codigo, "40000001")
 
     def test_factura_de_servicios_con_retencion(self):

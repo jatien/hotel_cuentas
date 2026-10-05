@@ -1,0 +1,181 @@
+{% load static cuadro_cuentas_tags %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cuentas anuales {{ ejercicio|default:"" }}{% if empresa %} · {{ empresa.denominacion }}{% endif %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/cuentas_anuales.css' %}">
+</head>
+<body>
+  <header class="barra">
+    <a href="/" class="volver">Inicio</a>
+    <a href="{% url 'cuadro_cuentas:plan_cuentas' %}" class="volver">Cuadro de cuentas</a>
+    <a href="{% url 'cuadro_cuentas:libro_diario' %}" class="volver">Libro diario</a>
+    <h1>Cuentas anuales</h1>
+    {% if ejercicio %}
+      <form method="get" class="filtros">
+        <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
+          {% for e in ejercicios %}
+            <option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>Ejercicio {{ e.anio }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="modelo" value="{{ modelo }}">
+      </form>
+      <nav class="selector-modelo" aria-label="Modelo">
+        <a href="?ejercicio={{ ejercicio.anio }}&modelo=normal" {% if modelo == "normal" %}aria-current="true"{% endif %}>Normal</a>
+        <a href="?ejercicio={{ ejercicio.anio }}&modelo=abreviado" {% if modelo == "abreviado" %}aria-current="true"{% endif %}>Abreviado</a>
+      </nav>
+      <button type="button" class="btn-primario" onclick="window.print()">Imprimir o guardar en PDF</button>
+    {% endif %}
+  </header>
+
+  {% if not ejercicio %}
+    <main class="libro"><p class="vacio">Todavía no hay ejercicios. Las cuentas anuales aparecerán en cuanto haya asientos.</p></main>
+  {% else %}
+  <main class="libro">
+    <section class="documento" aria-label="Cuentas anuales">
+      <div class="identificacion">
+        {% if empresa %}
+          <p class="empresa">{{ empresa.denominacion }}{% if empresa.nif %} <span>NIF {{ empresa.nif }}</span>{% endif %}</p>
+        {% else %}
+          <p class="aviso-doc">Falta identificar la empresa (norma 2ª.3).
+            <a href="{% url 'admin:cuadro_cuentas_datosempresa_add' %}">Añade los datos de la empresa</a>.</p>
+        {% endif %}
+        <p class="subtitulo">Ejercicio terminado el {{ ejercicio.fecha_fin|date:"j \d\e F \d\e Y" }}. Importes en euros.
+          Modelo {{ modelo }}.</p>
+      </div>
+
+      <div class="pestanas" role="tablist">
+        {% for estado in estados %}
+          <button type="button" role="tab" data-pestana="{{ estado.clave }}" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">{{ estado.titulo }}</button>
+        {% endfor %}
+        <button type="button" role="tab" disabled title="Próximo paso">Estado total de cambios en el PN</button>
+        <button type="button" role="tab" disabled title="Próximo paso">Flujos de efectivo</button>
+        <button type="button" role="tab" disabled title="Próximo paso">Memoria</button>
+      </div>
+
+      {% for estado in estados %}
+        <article class="estado-panel" data-panel="{{ estado.clave }}" {% if not forloop.first %}hidden{% endif %}>
+          <h2>{{ estado.titulo|upper }}{% if estado.clave == "balance" %} AL {{ ejercicio.fecha_fin|date:"j/n/Y" }}{% else %} DEL EJERCICIO {{ ejercicio.anio }}{% endif %}</h2>
+          {% for titulo, total_texto, total_actual, total_anterior, filas in estado.secciones %}
+            <table class="estado-tabla">
+              <thead>
+                <tr>
+                  <th class="col-cuentas">Nº cuentas</th>
+                  <th>{{ titulo|upper }}</th>
+                  <th class="col-notas">Notas</th>
+                  <th class="num">{{ ejercicio.anio }}</th>
+                  <th class="num">{{ anio_anterior }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for f in filas %}{% if f.visible %}
+                  <tr class="nivel-{{ f.nivel }}{% if f.es_total %} total{% endif %}{% if f.tiene_hijos %} agrupa{% endif %}">
+                    <td class="col-cuentas">{{ f.cuentas_texto }}</td>
+                    <td class="partida">
+                      {% if f.detalle %}
+                        <button type="button" class="desplegar" data-ref="{{ estado.clave }}-{{ f.ref }}" aria-expanded="false">{{ f.texto }}</button>
+                      {% else %}{{ f.texto }}{% endif %}
+                    </td>
+                    <td class="col-notas"></td>
+                    <td class="num">{{ f.actual|importe }}</td>
+                    <td class="num">{% if ca.anterior %}{{ f.anterior|importe }}{% endif %}</td>
+                  </tr>
+                  {% for codigo, nombre, a, b in f.detalle %}
+                    <tr class="detalle" data-de="{{ estado.clave }}-{{ f.ref }}" hidden>
+                      <td class="col-cuentas">{{ codigo }}</td>
+                      <td>{{ nombre }}</td>
+                      <td class="col-notas"></td>
+                      <td class="num">{{ a|importe }}</td>
+                      <td class="num">{% if ca.anterior %}{{ b|importe }}{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                {% endif %}{% endfor %}
+              </tbody>
+              {% if total_texto %}
+                <tfoot>
+                  <tr>
+                    <td class="col-cuentas"></td>
+                    <td>{{ total_texto }}</td>
+                    <td class="col-notas"></td>
+                    <td class="num">{{ total_actual|importe }}</td>
+                    <td class="num">{% if ca.anterior %}{{ total_anterior|importe }}{% endif %}</td>
+                  </tr>
+                </tfoot>
+              {% endif %}
+            </table>
+          {% endfor %}
+          {% if estado.sin_clasificar %}
+            <div class="aviso-doc">
+              <strong>Cuentas con saldo que no encajan en ninguna partida del modelo:</strong>
+              <ul>{% for codigo, nombre, saldo in estado.sin_clasificar %}<li>{{ codigo }} {{ nombre }}: {{ saldo|importe }}</li>{% endfor %}</ul>
+              Revisa si están bien contabilizadas. Por ejemplo, la 473 (pagos a cuenta) se cancela al
+              registrar el impuesto sobre beneficios.
+            </div>
+          {% endif %}
+        </article>
+      {% endfor %}
+
+      <footer class="firmas">
+        <p>Cuentas anuales formuladas el
+          {% if ejercicio.fecha_formulacion %}{{ ejercicio.fecha_formulacion|date:"j \d\e F \d\e Y" }}{% else %}________________{% endif %}
+          por los administradores, que las firman a continuación (norma 2ª.2).</p>
+        <div class="lineas-firma"><span>Firma</span><span>Firma</span><span>Firma</span></div>
+      </footer>
+    </section>
+
+    <aside class="panel">
+      {% for m in messages %}<p class="mensaje">{{ m }}</p>{% endfor %}
+
+      {% if descuadre %}
+        <p class="alerta">El balance no cuadra: diferencia de {{ descuadre|importe }}. Suele deberse a cuentas
+          que no encajan en el modelo (se listan bajo el balance).</p>
+      {% endif %}
+      {% if ca.borradores %}
+        <p class="alerta">Hay {{ ca.borradores }} asiento{{ ca.borradores|pluralize }} en borrador que no se
+          incluye{{ ca.borradores|pluralize:"n" }}. <a href="{% url 'cuadro_cuentas:libro_diario' %}?ejercicio={{ ejercicio.anio }}&mes=">Revisar en el libro diario</a>.</p>
+      {% endif %}
+
+      <h2>¿Modelo abreviado?</h2>
+      <p class="panel-sub">Norma 4ª: basta con cumplir dos de las tres condiciones dos ejercicios seguidos.</p>
+      <table class="criterios">
+        <thead><tr><th></th><th class="num">{{ ejercicio.anio }}</th><th>Balance</th><th>PyG</th></tr></thead>
+        <tbody>
+          <tr><td>Total activo</td><td class="num">{{ evaluacion.activo|importe }}</td><td>≤ 4 M</td><td>≤ 11,4 M</td></tr>
+          <tr><td>Cifra de negocios</td><td class="num">{{ evaluacion.cifra|importe }}</td><td>≤ 8 M</td><td>≤ 22,8 M</td></tr>
+          <tr><td>Trabajadores</td><td class="num">{% if evaluacion.trabajadores is not None %}{{ evaluacion.trabajadores|floatformat:"-2" }}{% else %}?{% endif %}</td><td>≤ 50</td><td>≤ 250</td></tr>
+        </tbody>
+      </table>
+      <ul class="veredicto">
+        <li class="{% if evaluacion.balance.puede %}si{% else %}no{% endif %}">Balance y memoria abreviados:
+          {% if evaluacion.balance.puede %}sí{% else %}no{% endif %}{% if evaluacion.balance.anterior is None %} (sin datos del año anterior){% endif %}</li>
+        <li class="{% if evaluacion.pyg.puede %}si{% else %}no{% endif %}">Pérdidas y ganancias abreviada:
+          {% if evaluacion.pyg.puede %}sí{% else %}no{% endif %}</li>
+      </ul>
+      {% if evaluacion.balance.puede %}
+        <p class="nota">Con balance abreviado, el estado de cambios en el patrimonio neto y el de flujos de
+          efectivo no son obligatorios (norma 1ª).</p>
+      {% endif %}
+      {% if modelo != propuesto %}<p class="nota">Según estos datos correspondería el modelo {{ propuesto }}.</p>{% endif %}
+
+      <h2>Datos del ejercicio</h2>
+      <form method="post" class="formulario">
+        {% csrf_token %}
+        <label for="id_trabajadores_medios">Número medio de trabajadores</label>
+        {{ form.trabajadores_medios }}{{ form.trabajadores_medios.errors }}
+        <label for="id_fecha_formulacion">Fecha de formulación</label>
+        {{ form.fecha_formulacion }}{{ form.fecha_formulacion.errors }}
+        <p class="ayuda">Como máximo tres meses después del cierre.</p>
+        <button type="submit" class="btn-sec">Guardar</button>
+      </form>
+    </aside>
+  </main>
+  {% endif %}
+  <script src="{% static 'cuadro_cuentas/cuentas_anuales.js' %}"></script>
+</body>
+</html>

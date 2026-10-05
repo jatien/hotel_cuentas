@@ -4,7 +4,6 @@
   const lista = document.getElementById("lista-asientos");
   const panel = document.getElementById("panel");
   const aviso = document.getElementById("aviso");
-  const departamentos = JSON.parse(document.getElementById("datos-departamentos").textContent);
   const sinMovimiento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const asientos = new Map();
@@ -50,10 +49,6 @@
     const d = Number(ap.debe), h = Number(ap.haber);
     const nuevo = ap.id === "nuevo";
     const lado = nuevo ? "" : h > 0 ? "lado-haber" : "lado-debe";
-    const opciones = ['<option value="">Sin dpto.</option>']
-      .concat(departamentos.map(([v, n]) =>
-        `<option value="${v}" ${v === ap.departamento ? "selected" : ""}>${esc(n)}</option>`))
-      .join("");
     return `
       <li class="apunte ${lado}" data-id="${ap.id}">
         <span class="asa" title="Arrastra para reordenar" aria-hidden="true">⠿</span>
@@ -68,7 +63,6 @@
         <input class="campo num importe ${h ? "lleno-haber" : ""}" data-campo="haber" inputmode="decimal"
                value="${h ? eur.format(h) : ""}" aria-label="Haber" ${bloq}>
         <span class="contrapartida" title="Contrapartida">${nuevo ? "" : esc(ap.contrapartida) || "varias"}</span>
-        <select class="campo" data-campo="departamento" aria-label="Departamento" ${bloq}>${opciones}</select>
         <button class="btn-x" data-accion="borrar-linea" title="Eliminar línea" aria-label="Eliminar línea" ${bloq}>×</button>
       </li>`;
   }
@@ -93,7 +87,7 @@
       </header>
       <div class="columnas" aria-hidden="true">
         <span></span><span>Cuenta</span><span>Concepto</span><span class="num">Debe</span>
-        <span class="num">Haber</span><span>Contrapartida</span><span>Departamento</span><span></span>
+         <span class="num">Haber</span><span>Contrapartida</span><span></span>
       </div>
       <ol class="apuntes">${a.apuntes.map((ap) => filaHTML(ap, bloq)).join("")}</ol>
       <footer class="asiento-pie">
@@ -296,7 +290,7 @@
           if (!borrador) {
             ol.insertAdjacentHTML("beforeend", filaHTML({
               id: "nuevo", cuenta: "", cuenta_nombre: "", concepto: "",
-              debe: 0, haber: 0, contrapartida: "", departamento: "",
+              debe: 0, haber: 0, contrapartida: "",
             }, ""));
             borrador = ol.lastElementChild;
             borrador.classList.add("recien");
