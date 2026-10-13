@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'invoice_data.apps.InvoiceDataConfig',
     'nominas.apps.NominasConfig',
     'cuadro_cuentas.apps.CuadroCuentasConfig',
+    'analisis.apps.AnalisisConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
