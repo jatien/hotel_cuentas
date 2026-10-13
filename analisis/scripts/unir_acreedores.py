@@ -1,4 +1,4 @@
-"""Une los extractos de mayor de acreedores (un .xlsx por acreedor) en un único CSV.
+"""Une las facturas de los mayores de acreedores (un .xlsx por acreedor) en un único CSV.
 
 Cada .xlsx es el mayor de la cuenta 410 de un acreedor, exportado desde la
 contabilidad, con las columnas:
@@ -7,15 +7,17 @@ contabilidad, con las columnas:
 Uso (desde la raíz del proyecto):
     python analisis/scripts/unir_acreedores.py analisis/datos/2026/acreedores analisis/datos/2026/acreedores.csv
 
+Solo se exportan las facturas recibidas (concepto «S/FRA ...»); los pagos,
+cobros y aperturas se leen para validar pero no se escriben.
+
 El script es independiente de Django: solo lee, valida y escribe el CSV.
-Comprueba que el saldo acumulado de cada fichero cuadra línea a línea, para
-detectar filas perdidas o mal leídas antes de importar nada.
+Comprueba que el saldo acumulado de cada fichero cuadra línea a línea (con
+todas las filas), para detectar filas perdidas o mal leídas antes de importar.
 """
 
 import argparse
 import csv
 import sys
-from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -25,12 +27,12 @@ from python_calamine import CalamineWorkbook
 CABECERA_ESPERADA = ["Fecha", "Documento", "Concepto", "Contrapartida",
                      "Debe", "Haber", "Saldo", "Asiento", "Linea"]
 
-COLUMNAS_CSV = ["fichero", "acreedor", "fecha", "documento", "tipo", "concepto",
-                "contrapartida", "debe", "haber", "asiento", "linea"]
+COLUMNAS_CSV = ["fichero", "acreedor", "fecha", "documento", "cuenta", "importe",
+                "asiento", "linea"]
 
 # Prefijo del concepto -> tipo de movimiento
 PREFIJOS = [
-    ("S/FRA", "factura"),
+    ("S/FRA", "factura"),     # «su factura»: factura recibida del acreedor
     ("N/PAGO", "pago"),
     ("COBRO", "cobro"),
     ("APERTURA", "apertura"),
@@ -111,31 +113,21 @@ def leer_fichero(ruta: Path) -> tuple[list[dict], list[str]]:
                            f"(calculado {saldo_calc}, fichero {saldo})")
             saldo_calc = saldo      # resincroniza para no arrastrar el error
 
-        if debe == 0 and haber == 0:
-            continue                # apertura sin saldo: no aporta nada
-
         concepto = str(fila[2]).strip()
         tipo, nombre = clasificar(concepto)
+        if tipo != "factura":
+            continue                # pagos, cobros y aperturas: solo cuentan para el saldo
+
         movimientos.append({
             "fichero": slug,
-            "acreedor": nombre,
+            "acreedor": nombre or slug,
             "fecha": fecha,
             "documento": texto(fila[1]),
-            "tipo": tipo,
-            "concepto": concepto,
-            "contrapartida": texto(fila[3]),
-            "debe": debe,
-            "haber": haber,
+            "cuenta": texto(fila[3]),
+            "importe": haber - debe,    # positivo = factura, negativo = abono
             "asiento": a_entero(fila[7]),
             "linea": a_entero(fila[8]),
         })
-
-    # La apertura no lleva nombre: usa el nombre más frecuente de las facturas del fichero
-    nombres = Counter(m["acreedor"] for m in movimientos if m["tipo"] == "factura" and m["acreedor"])
-    principal = nombres.most_common(1)[0][0] if nombres else slug
-    for m in movimientos:
-        if not m["acreedor"]:
-            m["acreedor"] = principal
     return movimientos, errores
 
 
@@ -172,25 +164,18 @@ def main() -> int:
         for m in todos:
             w.writerow({**m,
                         "fecha": m["fecha"].strftime("%d/%m/%Y"),
-                        "debe": fmt(m["debe"]),
-                        "haber": fmt(m["haber"])})
+                        "importe": fmt(m["importe"])})
 
     # Resumen por pantalla
-    por_tipo = Counter(m["tipo"] for m in todos)
-    facturas = [m for m in todos if m["tipo"] == "factura"]
     por_grupo: dict[str, Decimal] = {}
-    for m in facturas:
-        g = m["contrapartida"][:3] or "???"
-        por_grupo[g] = por_grupo.get(g, Decimal("0")) + m["haber"] - m["debe"]
+    for m in todos:
+        g = m["cuenta"][:3] or "???"
+        por_grupo[g] = por_grupo.get(g, Decimal("0")) + m["importe"]
 
-    print(f"OK: {len(ficheros)} ficheros -> {len(todos)} movimientos en {args.salida}")
-    print("   ", ", ".join(f"{t}: {n}" for t, n in por_tipo.most_common()))
-    print("    Facturas por cuenta de contrapartida (importe total, IVA incluido):")
+    print(f"OK: {len(ficheros)} ficheros -> {len(todos)} facturas en {args.salida}")
+    print("    Importe por cuenta (total factura, IVA incluido):")
     for g in sorted(por_grupo):
         print(f"      {g}  {por_grupo[g]:>14,.2f}")
-    otros = [m for m in todos if m["tipo"] == "otro"]
-    if otros:
-        print(f"    Atención: {len(otros)} movimientos con concepto no reconocido (tipo 'otro')")
     return 0
 
 

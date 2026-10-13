@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CompraProveedor, MovimientoAcreedor, Reserva
+from .models import AsignacionDepartamento, CompraProveedor, FacturaAcreedor, Reserva
 
 
 @admin.register(Reserva)
@@ -20,9 +20,20 @@ class CompraProveedorAdmin(admin.ModelAdmin):
     date_hierarchy = "fecha"
 
 
-@admin.register(MovimientoAcreedor)
-class MovimientoAcreedorAdmin(admin.ModelAdmin):
-    list_display = ("fecha", "acreedor", "tipo", "documento", "contrapartida", "debe", "haber")
-    list_filter = ("tipo", "fichero")
-    search_fields = ("acreedor", "documento", "concepto", "contrapartida")
+@admin.register(FacturaAcreedor)
+class FacturaAcreedorAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "acreedor", "documento", "cuenta", "importe")
+    list_filter = ("fichero",)
+    search_fields = ("acreedor", "documento", "cuenta")
     date_hierarchy = "fecha"
+
+
+@admin.register(AsignacionDepartamento)
+class AsignacionDepartamentoAdmin(admin.ModelAdmin):
+    """Asignar departamentos de un vistazo: el desplegable se edita en la propia lista."""
+
+    list_display = ("nombre", "origen", "clave", "departamento")
+    list_editable = ("departamento",)
+    list_filter = ("origen", ("departamento", admin.EmptyFieldListFilter), "departamento")
+    search_fields = ("nombre", "clave")
+    list_per_page = 200

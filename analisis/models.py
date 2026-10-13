@@ -99,46 +99,62 @@ class CompraProveedor(models.Model):
         return self.bruto - self.dto_pp + self.portes_gastos
 
 
-class MovimientoAcreedor(models.Model):
-    """Un apunte del mayor de un acreedor (cuenta 410), del CSV unificado.
+class FacturaAcreedor(models.Model):
+    """Una factura recibida de un acreedor («S/FRA» en su mayor de la cuenta 410).
 
-    En las facturas, `contrapartida` es la cuenta de gasto (6xx) o de
-    inmovilizado (2xx) y el importe es el TOTAL de la factura, IVA incluido.
+    `cuenta` es la contrapartida: gasto (6xx) o inmovilizado (2xx). El importe
+    es el TOTAL de la factura, IVA incluido; negativo si es un abono.
     """
-
-    class Tipo(models.TextChoices):
-        FACTURA = "factura", "Factura"
-        PAGO = "pago", "Pago"
-        COBRO = "cobro", "Cobro"
-        APERTURA = "apertura", "Apertura"
-        OTRO = "otro", "Otro"
 
     fichero = models.CharField(max_length=60, help_text="Clave del fichero de origen, p. ej. «iberdrola»")
     acreedor = models.CharField(max_length=150)
     fecha = models.DateField()
     documento = models.CharField(max_length=40, blank=True)
-    tipo = models.CharField(max_length=10, choices=Tipo.choices)
-    concepto = models.CharField(max_length=255, blank=True)
-    contrapartida = models.CharField(max_length=12, blank=True)
-    debe = _importe()
-    haber = _importe()
+    cuenta = models.CharField(max_length=12, blank=True)
+    importe = _importe()
     asiento = models.PositiveIntegerField(null=True, blank=True)
     linea = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["fecha", "fichero", "asiento", "linea"]
-        verbose_name = "movimiento de acreedor"
-        verbose_name_plural = "movimientos de acreedores"
-        indexes = [models.Index(fields=["tipo", "fecha"]), models.Index(fields=["contrapartida"])]
+        verbose_name = "factura de acreedor"
+        verbose_name_plural = "facturas de acreedores"
+        indexes = [models.Index(fields=["fecha"]), models.Index(fields=["cuenta"])]
 
     def __str__(self):
-        return f"{self.fecha} · {self.acreedor} · {self.get_tipo_display()} {self.importe} €"
+        return f"{self.fecha} · {self.acreedor} · {self.importe} €"
 
     @property
-    def importe(self) -> Decimal:
-        """Positivo para facturas, negativo para abonos y pagos."""
-        return self.haber - self.debe
+    def es_inversion(self) -> bool:
+        """Contrapartida en el grupo 2 (inmovilizado): no es gasto del ejercicio."""
+        return self.cuenta.startswith("2")
 
-    @property
-    def grupo_cuenta(self) -> str:
-        return self.contrapartida[:3]
+
+DEPARTAMENTOS = ["Cocina", "Comedor", "Recepción", "Mantenimiento", "Lavandería", "General"]
+
+
+class AsignacionDepartamento(models.Model):
+    """A qué departamento se imputa el gasto de cada proveedor o acreedor.
+
+    Las filas se crean solas al importar (sin departamento); se rellenan desde
+    el admin. Lo que no tiene departamento sale como «Sin asignar».
+    """
+
+    class Origen(models.TextChoices):
+        PROVEEDOR = "proveedor", "Proveedor"
+        ACREEDOR = "acreedor", "Acreedor"
+
+    origen = models.CharField(max_length=10, choices=Origen.choices)
+    clave = models.CharField(max_length=60, help_text="Código de proveedor o fichero del acreedor")
+    nombre = models.CharField(max_length=150)
+    departamento = models.CharField(max_length=30, blank=True,
+                                    choices=[(d, d) for d in DEPARTAMENTOS])
+
+    class Meta:
+        ordering = ["origen", "nombre"]
+        verbose_name = "departamento de proveedor/acreedor"
+        verbose_name_plural = "departamentos de proveedores y acreedores"
+        constraints = [models.UniqueConstraint(fields=["origen", "clave"], name="asignacion_unica")]
+
+    def __str__(self):
+        return f"{self.nombre} → {self.departamento or 'sin asignar'}"
