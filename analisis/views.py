@@ -32,8 +32,9 @@ def resumen(request):
     anio = _entero(request.GET.get("anio"), 2000, 2100) or anios[0]
     mes = _entero(request.GET.get("mes"), 1, 12)
     incluir_previsto = request.GET.get("previsto") == "1"
+    con_iva = request.GET.get("iva") == "con"
 
-    r = calcular_resumen(anio, mes=mes, incluir_previsto=incluir_previsto)
+    r = calcular_resumen(anio, mes=mes, incluir_previsto=incluir_previsto, con_iva=con_iva)
     m = r["mensual"]
 
     # Datos para Chart.js (se pasan con json_script, nunca interpolados en el JS)
@@ -46,6 +47,7 @@ def resumen(request):
             "proveedores": _floats(d["proveedores"] for d in r["departamentos"]),
             "acreedores": _floats(d["acreedores"] for d in r["departamentos"]),
             "nominas": _floats(d["nominas"] for d in r["departamentos"]),
+            "ingresos": _floats(d["ingresos"] for d in r["departamentos"]),
         },
         "cuentas": {
             "etiquetas": [f'{c["cuenta"]} · {c["nombre"]}' for c in r["cuentas_gasto"]],
@@ -60,8 +62,10 @@ def resumen(request):
     # Filas de la cuenta de resultados mensual: (etiqueta, clave, estilo)
     filas = [
         ("Estancias", "estancias", ""),
-        ("Extras", "extras", ""),
+        ("Extras de reservas", "extras", ""),
         ("Tasas turísticas", "tasas", ""),
+        ("Bar (estimado)", "bar", ""),
+        ("Comedor (estimado)", "comedor", ""),
     ]
     if incluir_previsto:
         filas.append(("Reservas futuras (previsto)", "previsto", ""))
@@ -69,11 +73,15 @@ def resumen(request):
         ("Total ingresos", "ingresos", "subtotal"),
         ("Proveedores", "proveedores", ""),
         ("Acreedores", "acreedores", ""),
-        ("Nóminas", "nominas", ""),
+        ("Nóminas (coste empresa)", "coste_nomina", ""),
+        ("Extras de personal", "extras_personal", ""),
         ("Total gastos", "gastos", "subtotal"),
         ("Beneficio", "beneficio", "total"),
         ("Beneficio acumulado", "acumulado", "nota"),
         ("Inversiones (no restan)", "inversiones", "nota"),
+        ("IVA repercutido", "iva_repercutido", "nota separador"),
+        ("IVA soportado", "iva_soportado", "nota"),
+        ("IVA a ingresar", "iva_liquidar", "nota"),
     ]
     tabla_mensual = []
     for etiqueta, clave, estilo in filas:
@@ -88,4 +96,5 @@ def resumen(request):
         "graficos": graficos,
         "tabla_mensual": tabla_mensual,
         "ano_en_curso": anio == date.today().year,
+        "texto_iva": "con IVA" if con_iva else "sin IVA",
     })

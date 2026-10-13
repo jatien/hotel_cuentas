@@ -23,3 +23,7 @@ opencv-python-headless>=4.9
 numpy>=1.26
 # Lectura de .xlsx (analisis). Más tolerante que openpyxl con exports defectuosos
 python-calamine>=0.5
+
+# Opcional: leer la hoja de extras en formato Numbers (scripts/extraer_extras.py).
+# Si no se instala, exporta el .numbers a .xlsx desde Numbers.
+# numbers-parser>=4.0
