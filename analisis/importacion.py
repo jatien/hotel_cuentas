@@ -16,7 +16,7 @@ from pathlib import Path
 from django.db import transaction
 from python_calamine import CalamineWorkbook
 
-from .models import CompraProveedor, MovimientoAcreedor, Reserva
+from .models import AsignacionDepartamento, CompraProveedor, FacturaAcreedor, Reserva
 
 CENT = Decimal("0.01")
 TOLERANCIA = Decimal("0.05")
@@ -94,6 +94,14 @@ def _reemplazar(modelo, objetos, filtro: dict) -> int:
         borrados, _ = modelo.objects.filter(**filtro).delete()
         modelo.objects.bulk_create(objetos, batch_size=1000)
     return borrados
+
+
+def _registrar_asignaciones(origen: str, claves: dict[str, str]):
+    """Crea (sin departamento) las asignaciones de los proveedores/acreedores nuevos."""
+    AsignacionDepartamento.objects.bulk_create(
+        [AsignacionDepartamento(origen=origen, clave=c, nombre=n) for c, n in claves.items()],
+        ignore_conflicts=True,
+    )
 
 
 def _fallar_si_errores(nombre: str, errores: list[str]):
@@ -261,18 +269,20 @@ def importar_compras(ruta: Path) -> dict:
 
     años = sorted({c.fecha.year for c in compras})
     borradas = _reemplazar(CompraProveedor, compras, {"fecha__year__in": años})
+    _registrar_asignaciones(AsignacionDepartamento.Origen.PROVEEDOR,
+                            {str(c.codigo_proveedor): c.proveedor for c in compras})
     return {"leidas": len(compras), "reemplazadas": borradas, "años": años,
             "control": total_general is not None}
 
 
 # ---------------------------------------------------------------- acreedores
 
-COLUMNAS_ACREEDORES = ["fichero", "acreedor", "fecha", "documento", "tipo", "concepto",
-                       "contrapartida", "debe", "haber", "asiento", "linea"]
+COLUMNAS_ACREEDORES = ["fichero", "acreedor", "fecha", "documento", "cuenta", "importe",
+                       "asiento", "linea"]
 
 
 def importar_acreedores(ruta: Path) -> dict:
-    """Importa el CSV generado por scripts/unir_acreedores.py."""
+    """Importa el CSV de facturas generado por scripts/unir_acreedores.py."""
     try:
         with ruta.open(encoding="utf-8-sig", newline="") as fh:
             filas = list(csv.DictReader(fh, delimiter=";"))
@@ -282,24 +292,19 @@ def importar_acreedores(ruta: Path) -> dict:
         raise ErrorImportacion(f"{ruta.name}: fichero vacío")
     faltan = [c for c in COLUMNAS_ACREEDORES if c not in filas[0]]
     if faltan:
-        raise ErrorImportacion(f"{ruta.name}: faltan columnas {', '.join(faltan)}")
+        raise ErrorImportacion(f"{ruta.name}: faltan columnas {', '.join(faltan)} "
+                               "(¿CSV generado con una versión antigua del script?)")
 
-    tipos = set(MovimientoAcreedor.Tipo.values)
-    movimientos, errores = [], []
+    facturas, errores = [], []
     for n, f in enumerate(filas, start=2):
         try:
-            if f["tipo"] not in tipos:
-                raise ValueError(f"tipo desconocido: {f['tipo']!r}")
-            movimientos.append(MovimientoAcreedor(
+            facturas.append(FacturaAcreedor(
                 fichero=f["fichero"].strip(),
                 acreedor=f["acreedor"].strip(),
                 fecha=a_fecha(f["fecha"]),
                 documento=f["documento"].strip(),
-                tipo=f["tipo"],
-                concepto=f["concepto"].strip()[:255],
-                contrapartida=f["contrapartida"].strip(),
-                debe=a_decimal(f["debe"]),
-                haber=a_decimal(f["haber"]),
+                cuenta=f["cuenta"].strip(),
+                importe=a_decimal(f["importe"]),
                 asiento=a_entero(f["asiento"], nulo=True),
                 linea=a_entero(f["linea"], nulo=True),
             ))
@@ -307,9 +312,11 @@ def importar_acreedores(ruta: Path) -> dict:
             errores.append(f"fila {n}: {e}")
     _fallar_si_errores(ruta.name, errores)
 
-    años = sorted({m.fecha.year for m in movimientos})
-    borrados = _reemplazar(MovimientoAcreedor, movimientos, {"fecha__year__in": años})
-    return {"leidas": len(movimientos), "reemplazadas": borrados, "años": años}
+    años = sorted({m.fecha.year for m in facturas})
+    borradas = _reemplazar(FacturaAcreedor, facturas, {"fecha__year__in": años})
+    _registrar_asignaciones(AsignacionDepartamento.Origen.ACREEDOR,
+                            {f.fichero: f.acreedor for f in facturas})
+    return {"leidas": len(facturas), "reemplazadas": borradas, "años": años}
 
 
 IMPORTADORES = {
