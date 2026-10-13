@@ -19,3 +19,5 @@ staticfiles/
 .vscode/
 .DS_Store
 muestras/
+# Datos de la app analisis (exports xlsx y CSV generados)
+analisis/datos/
