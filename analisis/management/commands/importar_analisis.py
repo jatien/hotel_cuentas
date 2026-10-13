@@ -9,7 +9,10 @@ class Command(BaseCommand):
     help = ("Importa un fichero de análisis. Ejemplos:\n"
             "  python manage.py importar_analisis reservas analisis/datos/2026/reservas.xlsx\n"
             "  python manage.py importar_analisis compras analisis/datos/2026/compras.xlsx\n"
-            "  python manage.py importar_analisis acreedores analisis/datos/2026/acreedores.csv")
+            "  python manage.py importar_analisis acreedores analisis/datos/2026/acreedores.csv\n"
+            "  python manage.py importar_analisis iva_soportado analisis/datos/2026/iva_soportado.xlsx\n"
+            "  python manage.py importar_analisis iva_repercutido analisis/datos/2026/iva_repercutido.xlsx\n"
+            "  python manage.py importar_analisis extras analisis/datos/2026/extras.csv")
 
     def add_arguments(self, parser):
         parser.add_argument("fuente", choices=sorted(IMPORTADORES))

@@ -22,6 +22,10 @@
         <option value="">Todo el año</option>
         {% for n, nombre in meses_opciones %}<option value="{{ n }}" {% if n == mes %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
       </select>
+      <select name="iva" aria-label="IVA" onchange="this.form.submit()">
+        <option value="">Sin IVA</option>
+        <option value="con" {% if con_iva %}selected{% endif %}>Con IVA</option>
+      </select>
       <label class="check">
         <input type="checkbox" name="previsto" value="1" {% if incluir_previsto %}checked{% endif %} onchange="this.form.submit()">
         Incluir reservas futuras
@@ -32,7 +36,8 @@
 
   <main>
     <p class="criterio">
-      Importes con IVA, como vienen en las fuentes. Ingresos repartidos por noche;
+      Importes {{ texto_iva }}{% if not con_iva %} (el IVA de acreedores sale del libro de IVA soportado){% endif %}.
+      Ingresos de reservas repartidos por noche;
       {% if incluir_previsto %}incluye las noches posteriores a hoy ({{ hoy|date:"d/m/Y" }}){% else %}solo noches hasta hoy ({{ hoy|date:"d/m/Y" }}){% endif %}.
     </p>
 
@@ -56,7 +61,7 @@
         <div class="kpi">
           <span class="kpi-titulo">Gastos</span>
           <span class="kpi-valor">{{ totales.gastos|euros }}</span>
-          <span class="kpi-nota">Proveedores, acreedores y nóminas</span>
+          <span class="kpi-nota">Proveedores, acreedores y personal (nómina + extras)</span>
         </div>
         <div class="kpi kpi-destacado">
           <span class="kpi-titulo">Beneficio</span>
@@ -72,6 +77,11 @@
           <span class="kpi-titulo">Inversiones</span>
           <span class="kpi-valor">{{ totales.inversiones|euros }}</span>
           <span class="kpi-nota">Inmovilizado (2xx), no resta</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-titulo">IVA a ingresar</span>
+          <span class="kpi-valor {% if totales.iva_liquidar|negativo %}es-negativo{% endif %}">{{ totales.iva_liquidar|euros }}</span>
+          <span class="kpi-nota">Repercutido − soportado, según los libros</span>
         </div>
       </div>
     </section>
@@ -112,28 +122,31 @@
 
     {# ------------------------------------------------ Departamentos #}
     <section class="panel">
-      <h2>Gastos por departamento · {{ nombre_periodo }}</h2>
-      <div class="graficos-dos">
+      <h2>Por departamento · {{ nombre_periodo }}</h2>
+      <div class="apilado">
         <figure>
           <figcaption>Gasto por departamento y origen</figcaption>
           <div class="lienzo lienzo-alto"><canvas id="g-departamentos" role="img" aria-label="Gasto por departamento; datos en la tabla"></canvas></div>
         </figure>
         <div class="desliza"><table class="tabla">
-          <thead><tr><th scope="col">Departamento</th><th scope="col">Proveedores</th><th scope="col">Acreedores</th><th scope="col">Nóminas</th><th scope="col">Total</th><th scope="col">% gasto</th></tr></thead>
+          <thead><tr><th scope="col">Departamento</th><th scope="col">Ingresos</th><th scope="col">Proveedores</th><th scope="col">Acreedores</th><th scope="col">Personal</th><th scope="col">Total gasto</th><th scope="col">% gasto</th><th scope="col">Resultado</th></tr></thead>
           <tbody>
             {% for d in departamentos %}
               <tr{% if d.nombre == "Sin asignar" %} class="nota"{% endif %}>
                 <th scope="row">{{ d.nombre }}</th>
+                <td>{% if d.ingresos %}{{ d.ingresos|numero }}{% else %}<span class="cero">–</span>{% endif %}</td>
                 <td>{{ d.proveedores|numero }}</td><td>{{ d.acreedores|numero }}</td><td>{{ d.nominas|numero }}</td>
                 <td class="col-total">{{ d.total|numero }}</td><td>{{ d.pct|pct }}</td>
+                <td class="col-total {% if d.resultado|negativo %}es-negativo{% endif %}">{% if d.resultado is not None %}{{ d.resultado|numero }}{% else %}<span class="cero">–</span>{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="6" class="vacio">Sin gastos en el periodo.</td></tr>
+              <tr><td colspan="8" class="vacio">Sin gastos en el periodo.</td></tr>
             {% endfor %}
           </tbody>
-          <tfoot><tr><th scope="row">Total</th><td>{{ totales.proveedores|numero }}</td><td>{{ totales.acreedores|numero }}</td><td>{{ totales.nominas|numero }}</td><td class="col-total">{{ totales.gastos|numero }}</td><td></td></tr></tfoot>
+          <tfoot><tr><th scope="row">Total</th><td>{{ totales.bar_comedor|numero }}</td><td>{{ totales.proveedores|numero }}</td><td>{{ totales.acreedores|numero }}</td><td>{{ totales.nominas|numero }}</td><td class="col-total">{{ totales.gastos|numero }}</td><td></td><td></td></tr></tfoot>
         </table></div>
       </div>
+      <p class="nota-pie">Ingresos por departamento: solo bar y comedor tienen ingresos propios (estimados); el alojamiento no se reparte.</p>
     </section>
 
     {# ------------------------------------------------ Acreedores por cuenta #}
@@ -223,6 +236,26 @@
         </div>
       </div>
     </section>
+
+    {# ------------------------------------------------ Extras de personal #}
+    {% if extras_personas %}
+    <section class="panel">
+      <h2>Extras de personal · {{ nombre_periodo }}</h2>
+      <div class="desliza"><table class="tabla">
+        <thead><tr><th scope="col">Persona</th><th scope="col">Departamento</th><th scope="col">Meses</th><th scope="col">Importe</th></tr></thead>
+        <tbody>
+          {% for e in extras_personas %}
+            <tr><th scope="row">{{ e.nombre }}</th><td class="texto">{{ e.departamento }}</td><td>{{ e.meses }}</td><td>{{ e.importe|numero }}</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th scope="row">Total hoja de extras</th><td></td><td></td><td>{{ totales.extras_hoja|numero }}</td></tr></tfoot>
+      </table></div>
+      {% if totales.extras_personal != totales.extras_hoja %}
+        <p class="nota-pie">Los meses sin hoja de extras usan el importe extra anotado en la nómina; por eso el total de extras
+          de la cuenta de resultados ({{ totales.extras_personal|euros }}) no coincide con esta tabla.</p>
+      {% endif %}
+    </section>
+    {% endif %}
   </main>
 
   {{ graficos|json_script:"datos-graficos" }}

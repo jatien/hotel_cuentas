@@ -130,7 +130,7 @@ class FacturaAcreedor(models.Model):
         return self.cuenta.startswith("2")
 
 
-DEPARTAMENTOS = ["Cocina", "Comedor", "Recepción", "Mantenimiento", "Lavandería", "General"]
+DEPARTAMENTOS = ["Cocina", "Bar", "Comedor", "Recepción", "Pisos", "Mantenimiento", "Lavandería", "General"]
 
 
 class AsignacionDepartamento(models.Model):
@@ -143,18 +143,69 @@ class AsignacionDepartamento(models.Model):
     class Origen(models.TextChoices):
         PROVEEDOR = "proveedor", "Proveedor"
         ACREEDOR = "acreedor", "Acreedor"
+        PERSONAL = "personal", "Personal (extras)"
 
     origen = models.CharField(max_length=10, choices=Origen.choices)
-    clave = models.CharField(max_length=60, help_text="Código de proveedor o fichero del acreedor")
+    clave = models.CharField(max_length=60,
+                             help_text="Código de proveedor, fichero del acreedor o nombre de la persona")
     nombre = models.CharField(max_length=150)
     departamento = models.CharField(max_length=30, blank=True,
                                     choices=[(d, d) for d in DEPARTAMENTOS])
 
     class Meta:
         ordering = ["origen", "nombre"]
-        verbose_name = "departamento de proveedor/acreedor"
-        verbose_name_plural = "departamentos de proveedores y acreedores"
+        verbose_name = "asignación de departamento"
+        verbose_name_plural = "departamentos (proveedores, acreedores y personal)"
         constraints = [models.UniqueConstraint(fields=["origen", "clave"], name="asignacion_unica")]
 
     def __str__(self):
         return f"{self.nombre} → {self.departamento or 'sin asignar'}"
+
+
+class ApunteIva(models.Model):
+    """Un apunte de los libros de IVA (mayor de la 472 soportado o de la 477 repercutido).
+
+    `cuota` va siempre en positivo para el sentido normal del libro: IVA que
+    pagamos en el soportado, IVA que cobramos en el repercutido. Los abonos
+    quedan en negativo.
+    """
+
+    class Libro(models.TextChoices):
+        SOPORTADO = "soportado", "IVA soportado"
+        REPERCUTIDO = "repercutido", "IVA repercutido"
+
+    libro = models.CharField(max_length=12, choices=Libro.choices)
+    fecha = models.DateField()
+    documento = models.CharField(max_length=40, blank=True)
+    concepto = models.CharField(max_length=255, blank=True)
+    cuenta = models.CharField(max_length=12, blank=True, help_text="Contrapartida: 410 acreedor, 400 proveedor, 430 cliente…")
+    cuota = _importe()
+    asiento = models.PositiveIntegerField(null=True, blank=True)
+    linea = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["libro", "fecha", "asiento", "linea"]
+        verbose_name = "apunte de IVA"
+        verbose_name_plural = "apuntes de IVA"
+        indexes = [models.Index(fields=["libro", "fecha"]), models.Index(fields=["asiento"])]
+
+    def __str__(self):
+        return f"{self.get_libro_display()} · {self.fecha} · {self.concepto} · {self.cuota} €"
+
+
+class ExtraPersonal(models.Model):
+    """Extras pagados a una persona en un mes, fuera de la nómina (hoja de extras)."""
+
+    anio = models.PositiveSmallIntegerField()
+    mes = models.PositiveSmallIntegerField()
+    persona = models.CharField(max_length=100)
+    importe = _importe()
+
+    class Meta:
+        ordering = ["anio", "mes", "persona"]
+        verbose_name = "extra de personal"
+        verbose_name_plural = "extras de personal"
+        constraints = [models.UniqueConstraint(fields=["anio", "mes", "persona"], name="extra_unico")]
+
+    def __str__(self):
+        return f"{self.persona} {self.mes}/{self.anio}: {self.importe} €"

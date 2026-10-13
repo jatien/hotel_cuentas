@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AsignacionDepartamento, CompraProveedor, FacturaAcreedor, Reserva
+from .models import AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor, Reserva
 
 
 @admin.register(Reserva)
@@ -37,3 +37,18 @@ class AsignacionDepartamentoAdmin(admin.ModelAdmin):
     list_filter = ("origen", ("departamento", admin.EmptyFieldListFilter), "departamento")
     search_fields = ("nombre", "clave")
     list_per_page = 200
+
+
+@admin.register(ApunteIva)
+class ApunteIvaAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "libro", "documento", "concepto", "cuenta", "cuota")
+    list_filter = ("libro",)
+    search_fields = ("documento", "concepto", "cuenta")
+    date_hierarchy = "fecha"
+
+
+@admin.register(ExtraPersonal)
+class ExtraPersonalAdmin(admin.ModelAdmin):
+    list_display = ("anio", "mes", "persona", "importe")
+    list_filter = ("anio", "mes")
+    search_fields = ("persona",)

@@ -78,6 +78,9 @@ section > div > div > h3:first-child { margin-top: 0; }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 1.5rem; align-items: start;
 }
+.apilado { display: grid; gap: 1.25rem; }
+.apilado .lienzo-alto { height: 300px; }
+.nota-pie { margin: .75rem 0 0; font-size: .82rem; color: var(--tinta-tenue); }
 figure { margin: 0; }
 figcaption { font-size: .88rem; color: var(--tinta-suave); margin-bottom: .5rem; }
 .lienzo { position: relative; height: 300px; }
@@ -112,6 +115,7 @@ figcaption { font-size: .88rem; color: var(--tinta-suave); margin-bottom: .5rem;
   font-weight: 600; background: var(--acento-tinte); border-top: 2px solid var(--acento);
 }
 .tabla tr.nota th, .tabla tr.nota td { color: var(--tinta-suave); font-style: italic; }
+.tabla-mensual tr.separador th, .tabla-mensual tr.separador td { border-top: 1px solid #C3C2B7; padding-top: .8rem; }
 
 .es-negativo { color: var(--negativo); }
 

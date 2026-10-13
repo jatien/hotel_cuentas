@@ -16,7 +16,8 @@ from pathlib import Path
 from django.db import transaction
 from python_calamine import CalamineWorkbook
 
-from .models import AsignacionDepartamento, CompraProveedor, FacturaAcreedor, Reserva
+from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor,
+                     Reserva)
 
 CENT = Decimal("0.01")
 TOLERANCIA = Decimal("0.05")
@@ -96,10 +97,15 @@ def _reemplazar(modelo, objetos, filtro: dict) -> int:
     return borrados
 
 
-def _registrar_asignaciones(origen: str, claves: dict[str, str]):
-    """Crea (sin departamento) las asignaciones de los proveedores/acreedores nuevos."""
+def _registrar_asignaciones(origen: str, claves: dict[str, str], departamentos: dict[str, str] | None = None):
+    """Crea las asignaciones de los proveedores/acreedores/personas nuevos.
+
+    Las que ya existen no se tocan: el departamento elegido en el admin manda.
+    """
+    departamentos = departamentos or {}
     AsignacionDepartamento.objects.bulk_create(
-        [AsignacionDepartamento(origen=origen, clave=c, nombre=n) for c, n in claves.items()],
+        [AsignacionDepartamento(origen=origen, clave=c, nombre=n, departamento=departamentos.get(c, ""))
+         for c, n in claves.items()],
         ignore_conflicts=True,
     )
 
@@ -319,8 +325,113 @@ def importar_acreedores(ruta: Path) -> dict:
     return {"leidas": len(facturas), "reemplazadas": borradas, "años": años}
 
 
+# ---------------------------------------------------------------- libros de IVA
+
+CABECERA_MAYOR = ["Fecha", "Documento", "Concepto", "Contrapartida", "Debe", "Haber", "Saldo", "Asiento", "Linea"]
+
+
+def _importar_iva(ruta: Path, libro: str) -> dict:
+    """Importa el mayor de la 472 (soportado) o de la 477 (repercutido).
+
+    Comprueba que el saldo acumulado cuadra línea a línea. La apertura del
+    ejercicio no se guarda (es saldo de años anteriores).
+    """
+    filas = leer_hoja(ruta)
+    if not filas:
+        raise ErrorImportacion(f"{ruta.name}: fichero vacío")
+    cabecera = _normaliza_cabecera(filas[0][:len(CABECERA_MAYOR)])
+    if cabecera != CABECERA_MAYOR:
+        raise ErrorImportacion(f"{ruta.name}: no es un extracto de mayor (cabecera {cabecera})")
+
+    signo = 1 if libro == ApunteIva.Libro.SOPORTADO else -1   # soportado: debe; repercutido: haber
+    apuntes, errores, saldo_calc = [], [], Decimal("0")
+    for n, f in enumerate(filas[1:], start=2):
+        if all(c in ("", None) for c in f[:9]):
+            continue
+        try:
+            fecha = a_fecha(f[0])
+            debe, haber, saldo = a_decimal(f[4]), a_decimal(f[5]), a_decimal(f[6])
+        except ValueError as e:
+            errores.append(f"fila {n}: {e}")
+            continue
+        saldo_calc += debe - haber
+        if abs(saldo_calc - saldo) > CENT:
+            errores.append(f"fila {n}: el saldo no cuadra (calculado {saldo_calc}, fichero {saldo})")
+            saldo_calc = saldo
+        concepto = a_texto(f[2])
+        if concepto.upper().startswith("APERTURA"):
+            continue
+        apuntes.append(ApunteIva(
+            libro=libro, fecha=fecha, documento=a_texto(f[1]), concepto=concepto[:255],
+            cuenta=a_texto(f[3]), cuota=signo * (debe - haber),
+            asiento=a_entero(f[7], nulo=True), linea=a_entero(f[8], nulo=True),
+        ))
+    if not apuntes:
+        errores.append("no hay apuntes")
+    _fallar_si_errores(ruta.name, errores)
+
+    años = sorted({a.fecha.year for a in apuntes})
+    borrados = _reemplazar(ApunteIva, apuntes, {"libro": libro, "fecha__year__in": años})
+    return {"leidas": len(apuntes), "reemplazadas": borrados, "años": años, "control": True}
+
+
+def importar_iva_soportado(ruta: Path) -> dict:
+    return _importar_iva(ruta, ApunteIva.Libro.SOPORTADO)
+
+
+def importar_iva_repercutido(ruta: Path) -> dict:
+    return _importar_iva(ruta, ApunteIva.Libro.REPERCUTIDO)
+
+
+# ---------------------------------------------------------------- extras de personal
+
+COLUMNAS_EXTRAS = ["anio", "mes", "persona", "departamento", "importe"]
+
+
+def importar_extras(ruta: Path) -> dict:
+    """Importa el CSV generado por scripts/extraer_extras.py."""
+    try:
+        with ruta.open(encoding="utf-8-sig", newline="") as fh:
+            filas = list(csv.DictReader(fh, delimiter=";"))
+    except (OSError, UnicodeDecodeError) as e:
+        raise ErrorImportacion(f"{ruta.name}: no se puede leer ({e})")
+    if not filas:
+        raise ErrorImportacion(f"{ruta.name}: fichero vacío")
+    faltan = [c for c in COLUMNAS_EXTRAS if c not in filas[0]]
+    if faltan:
+        raise ErrorImportacion(f"{ruta.name}: faltan columnas {', '.join(faltan)}")
+
+    extras, errores, departamentos, vistos = [], [], {}, set()
+    for n, f in enumerate(filas, start=2):
+        try:
+            anio, mes = a_entero(f["anio"]), a_entero(f["mes"])
+            if not 1 <= mes <= 12:
+                raise ValueError(f"mes no válido: {mes}")
+            persona = " ".join(f["persona"].split())
+            if not persona:
+                raise ValueError("persona vacía")
+            if (anio, mes, persona) in vistos:
+                raise ValueError(f"«{persona}» repetido en {mes}/{anio}")
+            vistos.add((anio, mes, persona))
+            extras.append(ExtraPersonal(anio=anio, mes=mes, persona=persona, importe=a_decimal(f["importe"])))
+            if f["departamento"].strip():
+                departamentos[persona] = f["departamento"].strip()
+        except ValueError as e:
+            errores.append(f"fila {n}: {e}")
+    _fallar_si_errores(ruta.name, errores)
+
+    años = sorted({e.anio for e in extras})
+    borrados = _reemplazar(ExtraPersonal, extras, {"anio__in": años})
+    _registrar_asignaciones(AsignacionDepartamento.Origen.PERSONAL,
+                            {e.persona: e.persona for e in extras}, departamentos)
+    return {"leidas": len(extras), "reemplazadas": borrados, "años": años}
+
+
 IMPORTADORES = {
     "reservas": importar_reservas,
     "compras": importar_compras,
     "acreedores": importar_acreedores,
+    "iva_soportado": importar_iva_soportado,
+    "iva_repercutido": importar_iva_repercutido,
+    "extras": importar_extras,
 }

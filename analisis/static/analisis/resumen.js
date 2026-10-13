@@ -80,7 +80,7 @@
           pointBorderColor: "#FFFFFF", pointBorderWidth: 2, tension: 0 },
         { label: "Proveedores", data: m.proveedores, stack: "gastos", order: 1, ...segmento(COLOR.proveedores) },
         { label: "Acreedores", data: m.acreedores, stack: "gastos", order: 1, ...segmento(COLOR.acreedores) },
-        { label: "Nóminas", data: m.nominas, stack: "gastos", order: 1, ...segmento(COLOR.nominas) },
+        { label: "Personal", data: m.nominas, stack: "gastos", order: 1, ...segmento(COLOR.nominas) },
       ],
     },
     options: {
@@ -133,7 +133,7 @@
       datasets: [
         { label: "Proveedores", data: d.proveedores, ...segmento(COLOR.proveedores, true) },
         { label: "Acreedores", data: d.acreedores, ...segmento(COLOR.acreedores, true) },
-        { label: "Nóminas", data: d.nominas, ...segmento(COLOR.nominas, true) },
+        { label: "Personal", data: d.nominas, ...segmento(COLOR.nominas, true) },
       ],
     },
     options: {
