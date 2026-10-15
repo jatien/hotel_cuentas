@@ -9,13 +9,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/cuentas_anuales.css' %}">
 </head>
 <body>
   <header class="barra">
-    <a href="/" class="volver">Inicio</a>
-    <a href="{% url 'cuadro_cuentas:plan_cuentas' %}" class="volver">Cuadro de cuentas</a>
-    <a href="{% url 'cuadro_cuentas:libro_diario' %}" class="volver">Libro diario</a>
+    {% include "cuadro_cuentas/_nav.html" %}
     <h1>Cuentas anuales</h1>
     {% if ejercicio %}
       <form method="get" class="filtros">

@@ -1,0 +1,63 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hojas</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
+</head>
+<body>
+  <header class="barra">
+    {% include "cuadro_cuentas/_nav.html" %}
+    <h1>Hojas</h1>
+  </header>
+
+  <main class="libro">
+    <section class="hoja-lista" aria-label="Hojas">
+      {% for m in messages %}<p class="mensaje {{ m.tags }}">{{ m }}</p>{% endfor %}
+      <p class="panel-sub">Las hojas agrupan asientos para trabajar con ellos por separado (por ejemplo «Bancos»,
+        «Compras» o «Pendiente de revisar»). Cambiar un asiento de hoja no cambia la contabilidad: los saldos,
+        extractos y cuentas anuales siempre cuentan todos los asientos.</p>
+
+      {% for hoja, form in hojas %}
+        <article class="hoja-tarjeta" style="--color-hoja: {{ hoja.color }}">
+          <form method="post" class="hoja-form">
+            {% csrf_token %}
+            <input type="hidden" name="id" value="{{ hoja.id }}">
+            <div class="hoja-cab">
+              <span class="punto" aria-hidden="true"></span>
+              {{ form.nombre }}
+              <a class="hoja-n" href="{% url 'cuadro_cuentas:libro_diario' %}?hoja={{ hoja.id }}&mes=">{{ hoja.n }} asiento{{ hoja.n|pluralize }}</a>
+            </div>
+            {{ form.descripcion }}
+            <div class="colores">{% for radio in form.color %}<label class="color" style="--c: {{ radio.data.value }}" title="{{ radio.choice_label }}">{{ radio.tag }}<span></span></label>{% endfor %}</div>
+            <div class="hoja-acciones">
+              <button class="btn-sec" name="accion" value="editar">Guardar</button>
+              <button class="btn-sec btn-peligro" name="accion" value="borrar"
+                      onclick="return confirm('¿Borrar la hoja «{{ hoja.nombre|escapejs }}»? Sus asientos no se borran: quedan sin hoja.')">Borrar</button>
+            </div>
+          </form>
+        </article>
+      {% empty %}
+        <p class="vacio">Aún no hay hojas. Crea la primera a la derecha.</p>
+      {% endfor %}
+      <p class="nota"><a href="{% url 'cuadro_cuentas:libro_diario' %}?hoja=sin&mes=">{{ sin_hoja }} asiento{{ sin_hoja|pluralize }} sin hoja</a></p>
+    </section>
+
+    <aside class="panel">
+      <h2>Nueva hoja</h2>
+      <form method="post" class="formulario">
+        {% csrf_token %}
+        <label for="id_nueva-nombre">Nombre</label>{{ nueva.nombre }}{{ nueva.nombre.errors }}
+        <label for="id_nueva-descripcion">Descripción <span class="opcional">(opcional)</span></label>{{ nueva.descripcion }}
+        <label>Color</label>
+        <div class="colores">{% for radio in nueva.color %}<label class="color" style="--c: {{ radio.data.value }}" title="{{ radio.choice_label }}">{{ radio.tag }}<span></span></label>{% endfor %}</div>
+        <button class="btn-primario" name="accion" value="crear">Crear hoja</button>
+      </form>
+    </aside>
+  </main>
+</body>
+</html>

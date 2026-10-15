@@ -1,0 +1,140 @@
+{% load static cuadro_cuentas_tags %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if extracto %}Extracto {{ cuenta }}{% else %}Extractos de cuentas{% endif %} {{ ejercicio|default:"" }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
+</head>
+<body>
+  <header class="barra">
+    {% include "cuadro_cuentas/_nav.html" %}
+    <h1>Extractos de cuentas</h1>
+  </header>
+
+  {% url 'cuadro_cuentas:extractos' as u_ext %}
+  {% url 'cuadro_cuentas:libro_diario' as u_libro %}
+  <main class="consulta">
+    <form method="get" class="filtros-consulta">
+      <label>Ejercicio
+        <select name="ejercicio">
+          {% for e in ejercicios %}<option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>{{ e.anio }}</option>
+          {% empty %}<option value="">Sin ejercicios</option>{% endfor %}
+        </select>
+      </label>
+      <label class="ancho">Cuenta
+        <input name="cuenta" value="{{ cuenta }}" list="lista-cuentas" inputmode="numeric" placeholder="57200001 o 572 para todas las de bancos">
+      </label>
+      {% if extracto %}
+        <label>Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
+        <label>Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
+      {% else %}
+        <label>Filtrar por código <input name="prefijo" value="{{ prefijo }}" inputmode="numeric" placeholder="Ej.: 4, 40, 572"></label>
+      {% endif %}
+      <label class="check"><input type="checkbox" name="solo_contabilizados" value="1" {% if solo_contabilizados %}checked{% endif %}> Solo contabilizados</label>
+      <label class="check"><input type="checkbox" name="incluir_cierre" value="1" {% if incluir_cierre %}checked{% endif %}> Incluir asiento de cierre</label>
+      <button class="btn-primario">Ver</button>
+      {% if extracto %}<a class="btn-sec" href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}">Volver a todas las cuentas</a>{% endif %}
+    </form>
+
+    {% if not ejercicio %}
+      <p class="vacio">Todavía no hay ejercicios.</p>
+
+    {% elif extracto %}
+      <section class="tarjeta-consulta">
+        <div class="cab-extracto">
+          <div>
+            <h2><span class="codigo">{{ extracto.prefijo }}</span>
+              {% if extracto.cuenta %}{{ extracto.cuenta.nombre }}{% else %}(todas las cuentas que empiezan por {{ extracto.prefijo }}){% endif %}</h2>
+            <p class="panel-sub">Ejercicio {{ ejercicio.anio }}{% if desde or hasta %}, del {{ desde|default:ejercicio.fecha_inicio|date:"d/m/Y" }} al {{ hasta|default:ejercicio.fecha_fin|date:"d/m/Y" }}{% endif %}{% if extracto.cuenta.nif %} · NIF {{ extracto.cuenta.nif }}{% endif %}</p>
+          </div>
+          <dl class="resumen-saldos">
+            <div><dt>Saldo inicial</dt><dd>{{ extracto.saldo_inicial|importe }}</dd></div>
+            <div class="d"><dt>Debe</dt><dd>{{ extracto.total_debe|importe }}</dd></div>
+            <div class="h"><dt>Haber</dt><dd>{{ extracto.total_haber|importe }}</dd></div>
+            <div class="final"><dt>Saldo final</dt><dd>{{ extracto.saldo_final|importe }}
+              <small>{% if extracto.saldo_final > 0 %}deudor{% elif extracto.saldo_final < 0 %}acreedor{% endif %}</small></dd></div>
+          </dl>
+        </div>
+
+        <table class="tabla-consulta">
+          <thead>
+            <tr>
+              <th>Fecha</th><th class="num">Asiento</th>
+              {% if extracto.varias %}<th>Cuenta</th>{% endif %}
+              <th>Concepto</th><th>Contrapartida</th>
+              <th class="num">Debe</th><th class="num">Haber</th><th class="num">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if extracto.saldo_inicial %}
+              <tr class="fila-inicial"><td colspan="{% if extracto.varias %}6{% else %}5{% endif %}">Saldo anterior</td>
+                <td></td><td class="num">{{ extracto.saldo_inicial|importe }}</td></tr>
+            {% endif %}
+            {% for l in extracto.lineas %}{% with a=l.apunte %}
+              <tr class="{% if a.asiento.estado == 'borrador' %}borrador{% endif %}">
+                <td>{{ a.asiento.fecha|date:"d/m/Y" }}</td>
+                <td class="num"><a href="{{ u_libro }}?ejercicio={{ ejercicio.anio }}&mes={{ a.asiento.fecha.month }}#a{{ a.asiento.id }}" title="Abrir en el libro diario">{{ a.asiento.numero }}</a></td>
+                {% if extracto.varias %}<td><a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="{{ a.cuenta.nombre }}">{{ a.cuenta.codigo }}</a></td>{% endif %}
+                <td>{{ a.concepto|default:a.asiento.concepto }}
+                  {% if a.asiento.tipo != "operacion" %}<span class="etiqueta etiqueta-{{ a.asiento.tipo }}">{{ a.asiento.get_tipo_display }}</span>{% endif %}
+                  {% if a.asiento.estado == "borrador" %}<span class="etiqueta">Borrador</span>{% endif %}</td>
+                <td>{% if a.contrapartida %}<a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ a.contrapartida.codigo }}" title="{{ a.contrapartida.nombre }}">{{ a.contrapartida.codigo }}</a>{% else %}<span class="tenue">varias</span>{% endif %}</td>
+                <td class="num d">{% if a.debe %}{{ a.debe|importe }}{% endif %}</td>
+                <td class="num h">{% if a.haber %}{{ a.haber|importe }}{% endif %}</td>
+                <td class="num saldo">{{ l.saldo|importe }}</td>
+              </tr>
+            {% endwith %}{% empty %}
+              <tr><td colspan="8" class="vacio">Sin movimientos en este periodo.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr><td colspan="{% if extracto.varias %}5{% else %}4{% endif %}">Totales</td>
+              <td class="num">{{ extracto.total_debe|importe }}</td><td class="num">{{ extracto.total_haber|importe }}</td>
+              <td class="num">{{ extracto.saldo_final|importe }}</td></tr>
+          </tfoot>
+        </table>
+        <p class="nota">Saldo = Debe − Haber acumulado. Los importes negativos (entre paréntesis) son saldo acreedor.</p>
+      </section>
+
+    {% else %}
+      <section class="tarjeta-consulta">
+        <h2>Saldo de cada cuenta · ejercicio {{ ejercicio.anio }}</h2>
+        <p class="panel-sub">Pulsa una cuenta para ver su extracto con todos los movimientos.</p>
+        <table class="tabla-consulta">
+          <thead><tr><th>Cuenta</th><th>Nombre</th><th class="num">Apuntes</th>
+            <th class="num">Debe</th><th class="num">Haber</th><th class="num">Saldo deudor</th><th class="num">Saldo acreedor</th></tr></thead>
+          <tbody>
+            {% for f in filas %}
+              <tr>
+                <td><a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ f.codigo }}">{{ f.codigo }}</a></td>
+                <td>{{ f.nombre }}</td>
+                <td class="num">{{ f.apuntes }}</td>
+                <td class="num d">{{ f.debe|importe }}</td>
+                <td class="num h">{{ f.haber|importe }}</td>
+                <td class="num">{% if f.saldo > 0 %}{{ f.saldo|importe }}{% endif %}</td>
+                <td class="num">{% if f.saldo < 0 %}{{ f.saldo|importe }}{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="vacio">No hay movimientos{% if prefijo %} en cuentas que empiecen por {{ prefijo }}{% endif %}.</td></tr>
+            {% endfor %}
+          </tbody>
+          {% if filas %}
+            <tfoot><tr><td colspan="3">Totales</td>
+              <td class="num">{{ totales.debe|importe }}</td><td class="num">{{ totales.haber|importe }}</td>
+              <td class="num">{{ totales.deudores|importe }}</td><td class="num">{{ totales.acreedores|importe }}</td></tr></tfoot>
+          {% endif %}
+        </table>
+        {% if not prefijo and totales.debe != totales.haber %}
+          <p class="alerta">Las sumas del Debe y del Haber no coinciden: hay algún asiento en borrador descuadrado.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+
+  <datalist id="lista-cuentas">{% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}</datalist>
+</body>
+</html>

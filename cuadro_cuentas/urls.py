@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_consultas
 
 app_name = "cuadro_cuentas"
 
@@ -19,4 +19,7 @@ urlpatterns = [
     path("api/modelos/<slug:clave>/previsualizar/", views.api_modelo_previsualizar, name="api_modelo_previsualizar"),
     path("api/modelos/<slug:clave>/crear/", views.api_modelo_crear, name="api_modelo_crear"),
     path("cuentas-anuales/", views.cuentas_anuales, name="cuentas_anuales"),
+    path("hojas/", views_consultas.hojas, name="hojas"),
+    path("extractos/", views_consultas.extractos, name="extractos"),
+    path("buscador/", views_consultas.buscador, name="buscador"),
 ]

@@ -115,6 +115,31 @@ class Ejercicio(models.Model):
             fecha_inicio=date(fecha.year, 1, 1),
             fecha_fin=date(fecha.year, 12, 31),
         )
+class Hoja(models.Model):
+    """Hoja de trabajo: agrupa asientos (por ejemplo «Bancos», «Compras», «Revisar») para
+    trabajar con ellos por separado en el libro diario."""
+
+    class Color(models.TextChoices):
+        AZUL = "#2D4FC4", "Azul"
+        VERDE = "#0E7A6D", "Verde"
+        GRANATE = "#9B3D5B", "Granate"
+        AMBAR = "#B7791F", "Ámbar"
+        MORADO = "#6B46C1", "Morado"
+        GRIS = "#5B6878", "Gris"
+
+    nombre = models.CharField(max_length=80, unique=True)
+    descripcion = models.CharField("descripción", max_length=255, blank=True)
+    color = models.CharField(max_length=7, choices=Color.choices, default=Color.AZUL)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "hoja"
+        verbose_name_plural = "hojas"
+
+    def __str__(self):
+        return self.nombre
+
+
 class Asiento(models.Model):
     class Origen(models.TextChoices):
         MANUAL = "manual", "Manual"
@@ -141,6 +166,7 @@ class Asiento(models.Model):
 
     ejercicio = models.ForeignKey(Ejercicio, on_delete=models.PROTECT, blank=True, related_name="asientos")
     numero = models.PositiveIntegerField("número", null=True, blank=True)
+    hoja = models.ForeignKey(Hoja, on_delete=models.SET_NULL, null=True, blank=True, related_name="asientos")
     fecha = models.DateField()
     tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.OPERACION)
     concepto = models.CharField(max_length=255)
