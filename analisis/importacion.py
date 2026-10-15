@@ -537,10 +537,18 @@ def importar_terceros(ruta: Path) -> dict:
     if not terceros:
         errores.append("no hay ninguna fila con cuenta")
     _fallar_si_errores(ruta.name, errores)
+    # Si el fichero trae la categoría vacía pero ya había una (puesta en el admin o por
+    # una corrección), se conserva. Los terceros que no están en el fichero no se tocan.
+    existentes = dict(Tercero.objects.exclude(categoria="").values_list("cuenta", "categoria"))
+    for cuenta, t in terceros.items():
+        if not t.categoria and cuenta in existentes:
+            t.categoria = existentes[cuenta]
+    actualizados = Tercero.objects.filter(cuenta__in=terceros).count()
     with transaction.atomic():
-        borrados, _ = Tercero.objects.all().delete()
-        Tercero.objects.bulk_create(terceros.values())
-    return {"leidas": len(terceros), "reemplazadas": borrados}
+        Tercero.objects.bulk_create(
+            terceros.values(), batch_size=500, update_conflicts=True, unique_fields=["cuenta"],
+            update_fields=["nombre", "nif", "tipo", "categoria", "departamentos"])
+    return {"leidas": len(terceros), "reemplazadas": actualizados}
 
 
 IMPORTADORES = {
