@@ -204,6 +204,39 @@
       </div>
     </section>
 
+    {# ------------------------------------------------ Peso mensual de los canales #}
+    <section class="panel" id="pesos-canales">
+      <div class="cabecera-panel">
+        <h2>Peso de cada canal por mes · {{ anio }}</h2>
+        <div class="conmutador" role="group" aria-label="Medida">
+          <button type="button" data-medida="ingresos" aria-pressed="true">Ingresos</button>
+          <button type="button" data-medida="noches" aria-pressed="false">Noches de habitación</button>
+        </div>
+      </div>
+      <p class="nota-pie nota-arriba">Solo Directos, Booking, Expedia, Jet2 y Sidetours; cada barra suma el 100 % de esos cinco canales.
+        Las agencias pequeñas no entran.</p>
+      <figure>
+        <div class="lienzo"><canvas id="g-pesos" role="img" aria-label="Peso mensual de cada canal; datos en la tabla inferior"></canvas></div>
+      </figure>
+      {% for medida, filas in tablas_pesos %}
+        <div class="tabla-scroll" data-tabla-medida="{{ medida }}" {% if medida != "ingresos" %}hidden{% endif %}>
+          <table class="tabla tabla-mensual">
+            <thead><tr><th scope="col">Canal ({% if medida == "ingresos" %}% de ingresos{% else %}% de noches{% endif %})</th>{% for m in meses %}<th scope="col">{{ m }}</th>{% endfor %}<th scope="col">Año</th><th scope="col">{% if medida == "ingresos" %}Ingresos{% else %}Noches{% endif %}</th></tr></thead>
+            <tbody>
+              {% for f in filas %}
+                <tr>
+                  <th scope="row"><span class="muestra" data-canal="{{ f.canal }}"></span>{{ f.canal }}</th>
+                  {% for v in f.pesos %}<td>{% if v is not None %}{{ v|pct:0 }}{% else %}<span class="cero">–</span>{% endif %}</td>{% endfor %}
+                  <td class="col-total">{{ f.peso_anual|pct }}</td>
+                  <td>{{ f.total|numero }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    </section>
+
     {# ------------------------------------------------ Principales #}
     <section class="panel">
       <h2>Principales proveedores y acreedores · {{ nombre_periodo }}</h2>

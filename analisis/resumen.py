@@ -18,6 +18,10 @@ Criterios:
   conoce la cuota, así que la base se ESTIMA con IVA_BAR_COMEDOR. Las facturas
   trimestrales (fecha a fin de trimestre) se reparten entre sus tres meses.
 - Acreedores con cuenta 2xx (inmovilizado) = inversiones: aparte, no restan.
+- Gastos adicionales (p. ej. el alquiler, que solo aparece en el libro de IVA):
+  se crean en el admin y se reparten por días entre sus fechas, como acreedores.
+- Peso por canal: solo los canales principales (CANALES_PRINCIPALES); el peso de
+  cada uno es su parte sobre la suma de esos canales en el mes.
 - Personal = coste empresa de la nómina (cost_tot) + extras. Si hay hoja de
   extras importada para ese mes se usa; si no, el importe extra de la nómina.
 """
@@ -30,12 +34,21 @@ from decimal import Decimal
 from django.db.models import Count, F, Sum
 
 from .models import (DEPARTAMENTOS, ApunteIva, AsignacionDepartamento, CompraProveedor, ExtraPersonal,
-                     FacturaAcreedor, Reserva)
+                     FacturaAcreedor, GastoAdicional, Reserva)
 
 CERO = Decimal("0")
 IVA_ALOJAMIENTO = Decimal("0.10")
 IVA_BAR_COMEDOR = Decimal("0.10")   # supuesto: cámbialo si el bar factura parte al 21 %
 SIN_ASIGNAR = "Sin asignar"
+# Canales principales para el peso mensual por agencia: (etiqueta, texto que contiene el nombre).
+# El orden fija el color de cada canal. Las agencias que no encajan quedan fuera del cálculo.
+CANALES_PRINCIPALES = [
+    ("Directos", "directo"),
+    ("Booking", "booking"),
+    ("Expedia", "expedia"),
+    ("Jet2", "jet2"),
+    ("Sidetours", "sidetours"),
+]
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 MESES_LARGOS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
                 "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -90,6 +103,15 @@ def _pct(parte, total):
     return float(parte / total * 100) if total else None
 
 
+def canal_principal(agencia: str) -> str | None:
+    """«111 Expedia Group Way W» y «Expedia Lodging…» -> «Expedia»; agencias pequeñas -> None."""
+    texto = _sin_acentos(agencia or "")
+    for etiqueta, patron in CANALES_PRINCIPALES:
+        if patron in texto:
+            return etiqueta
+    return None
+
+
 def _clave_doc(asiento, documento):
     return (asiento, (documento or "").strip())
 
@@ -111,6 +133,7 @@ def _ingresos_reservas(anio: int, hoy: date, incluir_previsto: bool, mes: int | 
 
     mensual = {k: _doce() for k in ("estancias", "extras", "tasas", "previsto", "noches_hab")}
     agencias = defaultdict(lambda: {"reservas": 0, "noches_hab": 0, "estancias": CERO, "ingresos": CERO})
+    canales = {c: {"ingresos": _doce(), "noches": _doce()} for c, _ in CANALES_PRINCIPALES}
 
     for r in reservas.iterator():
         noches = _noches(r)
@@ -118,6 +141,7 @@ def _ingresos_reservas(anio: int, hoy: date, incluir_previsto: bool, mes: int | 
         estancias = r.total_estancias * factor / n
         extras = (r.fact_extras + r.pend_extras) * factor / n
         tasas = (r.fact_impuesto + r.pend_tasas) / n          # sin IVA
+        canal = canal_principal(r.agencia)
         cuenta_en_periodo = False
 
         for d in noches:
@@ -133,6 +157,10 @@ def _ingresos_reservas(anio: int, hoy: date, incluir_previsto: bool, mes: int | 
             else:
                 mensual["previsto"][m] += estancias + extras + tasas
 
+            if canal and (realizado or incluir_previsto):     # peso por canal: siempre el año entero
+                canales[canal]["ingresos"][m] += estancias + extras + tasas
+                canales[canal]["noches"][m] += r.habitaciones
+
             if (realizado or incluir_previsto) and (mes is None or d.month == mes):
                 a = agencias[r.agencia or "Sin agencia"]
                 a["noches_hab"] += r.habitaciones
@@ -143,7 +171,25 @@ def _ingresos_reservas(anio: int, hoy: date, incluir_previsto: bool, mes: int | 
         if cuenta_en_periodo:
             agencias[r.agencia or "Sin agencia"]["reservas"] += 1
 
-    return mensual, agencias
+    return mensual, agencias, canales
+
+
+def _pesos_canales(canales: dict) -> dict:
+    """Peso de cada canal principal por mes, sobre la suma de los canales principales."""
+    resultado = {"canales": [c for c, _ in CANALES_PRINCIPALES]}
+    for medida in ("ingresos", "noches"):
+        totales_mes = [sum((canales[c][medida][i] for c in canales), CERO) for i in range(12)]
+        total_anio = sum(totales_mes, CERO)
+        resultado[medida] = {
+            c: {
+                "valores": canales[c][medida],
+                "pesos": [_pct(canales[c][medida][i], totales_mes[i]) for i in range(12)],
+                "total": sum(canales[c][medida], CERO),
+                "peso_anual": _pct(sum(canales[c][medida], CERO), total_anio),
+            } for c in canales
+        }
+        resultado[f"total_{medida}"] = totales_mes
+    return resultado
 
 
 def _meses_de_factura(fecha: date) -> list[int]:
@@ -187,7 +233,7 @@ def _asignaciones(origen):
             for a in AsignacionDepartamento.objects.filter(origen=origen)}
 
 
-def _facturas_acreedor(anio: int, con_iva: bool):
+def _facturas_acreedor(anio: int, con_iva: bool, hoy: date, incluir_previsto: bool):
     """Facturas del año con su importe (sin IVA salvo que se pida) y el IVA casado."""
     soportado = defaultdict(lambda: CERO)
     for a in ApunteIva.objects.filter(libro=ApunteIva.Libro.SOPORTADO, fecha__year=anio):
@@ -207,9 +253,25 @@ def _facturas_acreedor(anio: int, con_iva: bool):
                 iva = soportado[clave]
         filas.append({
             "fecha": f.fecha, "fichero": f.fichero, "acreedor": f.acreedor, "cuenta": f.cuenta[:3],
-            "inversion": f.es_inversion, "iva": iva,
-            "importe": f.importe if con_iva else f.importe - iva,
+            "inversion": f.es_inversion, "iva": iva, "documento": (f.fichero, f.documento, f.asiento),
+            "departamento": None, "importe": f.importe if con_iva else f.importe - iva,
         })
+
+    # Gastos adicionales (alquiler…): repartidos por días entre sus meses. Los meses
+    # posteriores al actual son «previsto», con el mismo criterio que las reservas.
+    for g in GastoAdicional.objects.filter(desde__lte=date(anio, 12, 31), hasta__gte=date(anio, 1, 1)):
+        importe = g.base + g.iva if con_iva else g.base
+        for (a, m), fraccion in g.reparto_mensual().items():
+            if a != anio or ((a, m) > (hoy.year, hoy.month) and not incluir_previsto):
+                continue
+            filas.append({
+                "fecha": date(a, m, 1), "fichero": f"gasto-{g.pk}", "acreedor": g.acreedor or g.concepto,
+                "cuenta": g.cuenta[:3], "inversion": g.cuenta.startswith("2"), "iva": g.iva * fraccion,
+                "documento": ("gasto", g.pk), "departamento": normalizar_departamento(g.departamento),
+                "importe": importe * fraccion,
+            })
+        if g.asiento_iva:
+            casadas.update(k for k in soportado if k[0] == g.asiento_iva)
     return filas, soportado, casadas
 
 
@@ -233,7 +295,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     filtro_mes = {"fecha__month": mes} if mes else {}
 
     # --- Ingresos
-    ing, agencias = _ingresos_reservas(anio, hoy, incluir_previsto, mes, con_iva)
+    ing, agencias, canales_mes = _ingresos_reservas(anio, hoy, incluir_previsto, mes, con_iva)
     bar_comedor = _ingresos_bar_comedor(anio, con_iva)
     ingresos = [ing["estancias"][i] + ing["extras"][i] + ing["tasas"][i]
                 + bar_comedor["Bar"][i] + bar_comedor["Comedor"][i]
@@ -247,7 +309,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         proveedores[c["fecha__month"] - 1] += c["s"] or CERO
 
     # --- Acreedores (gasto e inversión)
-    facturas, soportado, casadas = _facturas_acreedor(anio, con_iva)
+    facturas, soportado, casadas = _facturas_acreedor(anio, con_iva, hoy, incluir_previsto)
     acreedores, inversiones = _doce(), _doce()
     for f in facturas:
         (inversiones if f["inversion"] else acreedores)[f["fecha"].month - 1] += f["importe"]
@@ -313,7 +375,8 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         deptos[asig_prov.get(str(c["codigo_proveedor"]), SIN_ASIGNAR)]["proveedores"] += c["s"]
     for f in facturas:
         if not f["inversion"] and en_periodo(f["fecha"].month):
-            deptos[asig_acr.get(f["fichero"], SIN_ASIGNAR)]["acreedores"] += f["importe"]
+            depto = f["departamento"] or asig_acr.get(f["fichero"], SIN_ASIGNAR)
+            deptos[depto]["acreedores"] += f["importe"]
     if nominas is not None:
         qs = nominas.filter(mes=mes) if mes else nominas
         for n in qs.values("departamento", "mes").annotate(c=Sum("cost_tot"), e=Sum("importe_extra")):
@@ -355,13 +418,15 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
                  "documentos": c["n"], "importe": c["s"]}
                 for c in compras.filter(**filtro_mes).values("codigo_proveedor", "proveedor")
                 .annotate(s=Sum(expr_compra), n=Count("id")).order_by("-s")]
-    por_acreedor = defaultdict(lambda: {"documentos": 0, "importe": CERO})
+    por_acreedor = defaultdict(lambda: {"docs": set(), "importe": CERO, "departamento": None})
     for f in facturas:
         if not f["inversion"] and en_periodo(f["fecha"].month):
             a = por_acreedor[(f["fichero"], f["acreedor"])]
-            a["documentos"] += 1
+            a["docs"].add(f["documento"])
             a["importe"] += f["importe"]
-    top_acr = sorted(({"nombre": acr, "departamento": asig_acr.get(fich, SIN_ASIGNAR), **v}
+            a["departamento"] = f["departamento"]
+    top_acr = sorted(({"nombre": acr, "departamento": v["departamento"] or asig_acr.get(fich, SIN_ASIGNAR),
+                       "documentos": len(v["docs"]), "importe": v["importe"]}
                       for (fich, acr), v in por_acreedor.items()), key=lambda x: -x["importe"])
     top_prov, top_acr = _top(top_prov), _top(top_acr)
     for lista, total in ((top_prov, tot["proveedores"]), (top_acr, tot["acreedores"])):
@@ -384,6 +449,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         "departamentos": departamentos, "cuentas_gasto": cuentas_gasto,
         "cuentas_inversion": cuentas_inversion, "canales": canales,
         "top_proveedores": top_prov, "top_acreedores": top_acr, "extras_personas": extras_personas,
+        "pesos_canales": _pesos_canales(canales_mes),
         "avisos": avisos,
     }
 
@@ -417,11 +483,13 @@ def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, co
                                           cuenta__startswith="410"):
             if _clave_doc(a.asiento, a.documento) not in casadas:
                 huerfanos[a.concepto.removeprefix("S/FRA ").strip()] += a.cuota
-        importantes = sorted(((n, c) for n, c in huerfanos.items() if abs(c) >= 100), key=lambda x: -abs(x[1]))
+        # Los pequeños suelen ser correcciones del año anterior: solo se avisa de los grandes
+        importantes = sorted(((n, c) for n, c in huerfanos.items() if abs(c) >= 1000), key=lambda x: -abs(x[1]))
         if importantes:
             lista = ", ".join(f"{n} ({c:,.0f} € de IVA)".replace(",", ".") for n, c in importantes[:5])
-            avisos.append("Hay IVA soportado de acreedores cuya factura no está en los ficheros de acreedores "
-                          f"(¿falta su mayor?): {lista}.")
+            avisos.append("Hay IVA soportado de acreedores cuya factura no está en los ficheros de acreedores: "
+                          f"{lista}. Si es un gasto real (p. ej. el alquiler), créalo desde el admin de "
+                          "«Apuntes de IVA» con la acción «Crear gasto adicional».")
         # Control: IVA de proveedores del diario frente al libro (cuentas que no son 410)
         libro = ApunteIva.objects.filter(libro=ApunteIva.Libro.SOPORTADO, fecha__year=anio) \
             .exclude(cuenta__startswith="410").aggregate(s=Sum("cuota"))["s"] or CERO
