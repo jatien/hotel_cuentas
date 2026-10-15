@@ -6,4 +6,5 @@ app_name = "analisis"
 
 urlpatterns = [
     path("", views.resumen, name="resumen"),
+    path("revision/", views.revision, name="revision"),
 ]

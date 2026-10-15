@@ -12,15 +12,17 @@ class Command(BaseCommand):
             "  python manage.py importar_analisis acreedores analisis/datos/2026/acreedores.csv\n"
             "  python manage.py importar_analisis iva_soportado analisis/datos/2026/iva_soportado.xlsx\n"
             "  python manage.py importar_analisis iva_repercutido analisis/datos/2026/iva_repercutido.xlsx\n"
-            "  python manage.py importar_analisis extras analisis/datos/2026/extras.csv")
+            "  python manage.py importar_analisis extras analisis/datos/2026/extras.csv\n"
+            "  python manage.py importar_analisis departamentos_albaranes analisis/datos/2026/departamentos\n"
+            "  python manage.py importar_analisis terceros analisis/datos/acreedores_proveedores.csv")
 
     def add_arguments(self, parser):
         parser.add_argument("fuente", choices=sorted(IMPORTADORES))
         parser.add_argument("ruta", type=Path)
 
     def handle(self, fuente, ruta, **opts):
-        if not ruta.is_file():
-            raise CommandError(f"No existe el fichero {ruta}")
+        if not ruta.exists():
+            raise CommandError(f"No existe {ruta}")
         try:
             r = IMPORTADORES[fuente](ruta)
         except ErrorImportacion as e:
@@ -32,3 +34,5 @@ class Command(BaseCommand):
         if r.get("control"):
             partes.append("totales de control OK")
         self.stdout.write(self.style.SUCCESS(f"{fuente}: " + "; ".join(partes)))
+        for nombre in r.get("ignorados", []):
+            self.stdout.write(f"  (ignorado, no es de un departamento: {nombre})")

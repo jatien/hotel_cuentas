@@ -1,0 +1,93 @@
+{% load static analisis_tags %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Revisión interna · Análisis {{ anio }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'analisis/resumen.css' %}">
+</head>
+<body>
+  <header class="barra">
+    <a href="{% url 'analisis:resumen' %}?anio={{ anio }}" class="volver">Análisis</a>
+    <h1>Revisión de datos</h1>
+    <span class="etiqueta-interna">Uso interno</span>
+    <form method="get" class="filtros">
+      <select name="anio" aria-label="Año" onchange="this.form.submit()">
+        {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+    </form>
+    <a class="enlace" href="{% url 'admin:app_list' 'analisis' %}">Admin de análisis</a>
+  </header>
+
+  <main>
+    <p class="criterio">Información para revisar y completar los datos. No aparece en el panel de análisis.
+      Importes {{ texto_iva }}.</p>
+
+    <section class="panel">
+      <h2>Avisos</h2>
+      {% if avisos %}
+        <ul class="avisos">{% for a in avisos %}<li>{{ a }}</li>{% endfor %}</ul>
+      {% else %}
+        <p class="vacio">Nada que revisar.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>Proveedores y acreedores con ficha incompleta · {{ revision.incompletos|length }}</h2>
+      <p class="nota-pie nota-arriba">Tienen gasto este año pero no tienen categoría en el listado de terceros
+        (o no aparecen en él). En el panel se agrupan como «Otros». Complétalos en
+        <a href="{% url 'admin:analisis_tercero_changelist' %}">Terceros</a> o en el fichero y vuelve a importarlo.</p>
+      <div class="desliza"><table class="tabla">
+        <thead><tr><th scope="col">Nombre</th><th scope="col">Tipo</th><th scope="col">Cuenta</th><th scope="col">Motivo</th><th scope="col">Gasto</th></tr></thead>
+        <tbody>
+          {% for f in revision.incompletos %}
+            <tr><th scope="row">{{ f.nombre }}</th><td class="texto">{{ f.tipo }}</td><td class="texto">{{ f.cuenta }}</td><td class="texto">{{ f.motivo }}</td><td>{{ f.importe|numero }}</td></tr>
+          {% empty %}
+            <tr><td colspan="5" class="vacio">Todas las fichas están completas.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if revision.incompletos %}<tfoot><tr><th scope="row">Total</th><td></td><td></td><td></td><td>{{ total_incompletos|numero }}</td></tr></tfoot>{% endif %}
+      </table></div>
+    </section>
+
+    <section class="panel">
+      <h2>Departamento de las compras</h2>
+      <div class="desliza"><table class="tabla">
+        <thead><tr><th scope="col">Cómo se ha asignado</th><th scope="col">Líneas</th><th scope="col">Importe</th></tr></thead>
+        <tbody>
+          {% for c in revision.cobertura %}
+            <tr><th scope="row">{{ c.origen }}</th><td>{{ c.lineas|numero }}</td><td>{{ c.importe|numero }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      {% if revision.sin_pareja %}
+        <h3>Albaranes de los listados por departamento que no están en el diario · {{ revision.sin_pareja|length }}</h3>
+        <div class="desliza"><table class="tabla">
+          <thead><tr><th scope="col">Albarán</th><th scope="col">Fecha</th><th scope="col">Proveedor</th><th scope="col">Departamento</th><th scope="col">Total</th></tr></thead>
+          <tbody>
+            {% for d in revision.sin_pareja %}
+              <tr><th scope="row">{{ d.numero }}</th><td>{{ d.fecha|date:"d/m/Y" }}</td><td class="texto">{{ d.proveedor }}</td><td class="texto">{{ d.departamento }}</td><td>{{ d.total|numero:2 }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+    </section>
+
+    {% if revision.sin_depto_personal %}
+    <section class="panel">
+      <h2>Personas de la hoja de extras sin departamento</h2>
+      <p class="nota-pie nota-arriba">Asígnalas en <a href="{% url 'admin:analisis_asignaciondepartamento_changelist' %}?origen__exact=personal">Departamentos</a>.</p>
+      <div class="desliza"><table class="tabla">
+        <tbody>
+          {% for e in revision.sin_depto_personal %}<tr><th scope="row">{{ e.nombre }}</th><td>{{ e.importe|numero }}</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>

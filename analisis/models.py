@@ -130,7 +130,8 @@ class FacturaAcreedor(models.Model):
         return self.cuenta.startswith("2")
 
 
-DEPARTAMENTOS = ["Cocina", "Bar", "Comedor", "Recepción", "Pisos", "Mantenimiento", "Lavandería", "General"]
+DEPARTAMENTOS = ["Cocina", "Bar", "Comedor", "Almacén central", "Recepción", "Pisos", "Mantenimiento",
+                 "Lavandería", "General"]
 
 
 class AsignacionDepartamento(models.Model):
@@ -252,3 +253,61 @@ class GastoAdicional(models.Model):
             reparto[(d.year, d.month)] = reparto.get((d.year, d.month), 0) + 1
             d += timedelta(days=1)
         return {k: Decimal(v) / dias for k, v in reparto.items()}
+
+
+class DepartamentoAlbaran(models.Model):
+    """Departamento de cada albarán, según los listados de compras exportados por departamento.
+
+    Se guarda aparte del diario de compras para que reimportar el diario no
+    borre los departamentos. El cruce es por tipo + número + código de proveedor.
+    """
+
+    tipo = models.CharField(max_length=1)
+    numero = models.CharField(max_length=40)
+    codigo_proveedor = models.PositiveIntegerField()
+    fecha = models.DateField()
+    proveedor = models.CharField(max_length=150, blank=True)
+    total = _importe()
+    departamento = models.CharField(max_length=30)
+
+    class Meta:
+        ordering = ["fecha", "numero"]
+        verbose_name = "departamento de albarán"
+        verbose_name_plural = "departamentos de albaranes"
+        constraints = [models.UniqueConstraint(fields=["tipo", "numero", "codigo_proveedor"], name="albaran_unico")]
+
+    def __str__(self):
+        return f"{self.numero} · {self.proveedor} → {self.departamento}"
+
+
+class Tercero(models.Model):
+    """Proveedor, acreedor o cliente del plan de cuentas (400…, 410…, 430…) con su categoría."""
+
+    class Tipo(models.TextChoices):
+        PROVEEDOR = "proveedor", "Proveedor"
+        ACREEDOR = "acreedor", "Acreedor"
+        CLIENTE = "cliente", "Cliente"
+        OTRO = "otro", "Otro"
+
+    cuenta = models.CharField(max_length=12, unique=True)
+    nombre = models.CharField(max_length=150)
+    nif = models.CharField(max_length=30, blank=True)
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    categoria = models.CharField(max_length=60, blank=True, help_text="Comida, Bebida, Luz, Agencias…")
+    departamentos = models.CharField(max_length=150, blank=True, help_text="Texto libre del fichero, p. ej. «Cocina, Bar»")
+
+    class Meta:
+        ordering = ["cuenta"]
+        verbose_name = "tercero (proveedor/acreedor)"
+        verbose_name_plural = "terceros (proveedores y acreedores)"
+
+    def __str__(self):
+        return f"{self.cuenta} {self.nombre}"
+
+    @property
+    def completo(self) -> bool:
+        return bool(self.categoria)
+
+    @staticmethod
+    def tipo_de_cuenta(cuenta: str) -> str:
+        return {"400": "proveedor", "410": "acreedor", "430": "cliente"}.get(cuenta[:3], "otro")

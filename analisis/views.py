@@ -40,16 +40,27 @@ def _datos_pesos(p):
 
 
 def _tabla_pesos(p, medida):
-    return [{"canal": c, "pesos": p[medida][c]["pesos"], "peso_anual": p[medida][c]["peso_anual"],
-             "total": p[medida][c]["total"]} for c in p["canales"]]
+    filas = [{"canal": c, "pesos": p[medida][c]["pesos"], "peso_anual": p[medida][c]["peso_anual"],
+              "total": p[medida][c]["total"]} for c in p["canales"]]
+    totales = p[f"total_{medida}"]
+    return {"filas": filas, "totales": totales, "total_anual": sum(totales)}
+
+
+def _parametros(request):
+    anios = anios_disponibles()
+    return {
+        "anios": anios,
+        "anio": _entero(request.GET.get("anio"), 2000, 2100) or anios[0],
+        "mes": _entero(request.GET.get("mes"), 1, 12),
+        "incluir_previsto": request.GET.get("previsto") == "1",
+        "con_iva": request.GET.get("iva") == "con",
+    }
 
 
 def resumen(request):
-    anios = anios_disponibles()
-    anio = _entero(request.GET.get("anio"), 2000, 2100) or anios[0]
-    mes = _entero(request.GET.get("mes"), 1, 12)
-    incluir_previsto = request.GET.get("previsto") == "1"
-    con_iva = request.GET.get("iva") == "con"
+    prm = _parametros(request)
+    anios, anio, mes = prm["anios"], prm["anio"], prm["mes"]
+    incluir_previsto, con_iva = prm["incluir_previsto"], prm["con_iva"]
 
     r = calcular_resumen(anio, mes=mes, incluir_previsto=incluir_previsto, con_iva=con_iva)
     m = r["mensual"]
@@ -64,7 +75,11 @@ def resumen(request):
             "proveedores": _floats(d["proveedores"] for d in r["departamentos"]),
             "acreedores": _floats(d["acreedores"] for d in r["departamentos"]),
             "nominas": _floats(d["nominas"] for d in r["departamentos"]),
-            "ingresos": _floats(d["ingresos"] for d in r["departamentos"]),
+        },
+        "categorias": {
+            "etiquetas": [c["nombre"] for c in r["categorias"]],
+            "proveedores": _floats(c["proveedores"] for c in r["categorias"]),
+            "acreedores": _floats(c["acreedores"] for c in r["categorias"]),
         },
         "cuentas": {
             "etiquetas": [f'{c["cuenta"]} · {c["nombre"]}' for c in r["cuentas_gasto"]],
@@ -117,4 +132,14 @@ def resumen(request):
                          ("noches", _tabla_pesos(r["pesos_canales"], "noches"))],
         "ano_en_curso": anio == date.today().year,
         "texto_iva": "con IVA" if con_iva else "sin IVA",
+    })
+
+
+def revision(request):
+    """Página interna: avisos de calidad de datos y fichas incompletas (no va en el panel)."""
+    prm = _parametros(request)
+    r = calcular_resumen(prm["anio"], incluir_previsto=prm["incluir_previsto"], con_iva=prm["con_iva"])
+    return render(request, "analisis/revision.html", {
+        **r, "anios": prm["anios"], "texto_iva": "con IVA" if prm["con_iva"] else "sin IVA",
+        "total_incompletos": sum((f["importe"] for f in r["revision"]["incompletos"]), 0),
     })
