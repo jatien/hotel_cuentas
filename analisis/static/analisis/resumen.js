@@ -178,15 +178,33 @@
     });
   }
   barrasSimples("g-cuentas", datos.cuentas, "Gasto", COLOR.acreedores);
-  barrasSimples("g-canales", datos.canales, "Ingresos", COLOR.ingresos);
-
-  // 6. Peso mensual de los canales principales (barras apiladas al 100 %)
-  //    Orden de colores validado para daltonismo con el validador de paleta.
+  // Colores de los canales principales (orden validado para daltonismo con el
+  // validador de paleta); las agencias pequeñas van en gris neutro.
   const COLORES_CANAL = ["#e87ba4", "#008300", "#eda100", "#6250d6", "#e34948"];
+  const GRIS_CANAL = "#A9AEB6";
   const p = datos.pesos;
   const colorCanal = Object.fromEntries(p.canales.map((c, i) => [c, COLORES_CANAL[i % COLORES_CANAL.length]]));
   document.querySelectorAll(".muestra[data-canal]").forEach((el) => {
-    el.style.background = colorCanal[el.dataset.canal] || "#C3C2B7";
+    el.style.background = colorCanal[el.dataset.canal] || GRIS_CANAL;
+  });
+
+  // 5. Ingresos por canal: cada barra con el color de su canal principal
+  const can = datos.canales;
+  crear("g-canales", {
+    type: "bar",
+    data: {
+      labels: can.etiquetas,
+      datasets: [{
+        label: "Ingresos", data: can.valores,
+        backgroundColor: can.principal.map((c) => colorCanal[c] || GRIS_CANAL),
+        borderRadius: 4, borderSkipped: "start", maxBarThickness: 22,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: { x: ejeValores(false), y: ejeCategorias(false) },
+    },
   });
 
   const lienzoPesos = document.getElementById("g-pesos");

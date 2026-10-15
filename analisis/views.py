@@ -88,6 +88,7 @@ def resumen(request):
         "canales": {
             "etiquetas": [c["nombre"] for c in r["canales"]],
             "valores": _floats(c["ingresos"] for c in r["canales"]),
+            "principal": [c["principal"] for c in r["canales"]],
         },
         "pesos": _datos_pesos(r["pesos_canales"]),
     }

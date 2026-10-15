@@ -209,14 +209,14 @@
       <h2>Ingresos por canal · {{ nombre_periodo }}</h2>
       <div class="graficos-dos">
         <figure>
-          <figcaption>Ingresos por agencia o canal</figcaption>
+          <figcaption>Ingresos por agencia o canal (en gris, las agencias pequeñas)</figcaption>
           <div class="lienzo lienzo-alto"><canvas id="g-canales" role="img" aria-label="Ingresos por canal; datos en la tabla"></canvas></div>
         </figure>
         <div class="desliza"><table class="tabla">
           <thead><tr><th scope="col">Canal</th><th scope="col">Reservas</th><th scope="col">Noches hab.</th><th scope="col">Ingresos</th><th scope="col">ADR</th><th scope="col">%</th></tr></thead>
           <tbody>
             {% for c in canales %}
-              <tr><th scope="row">{{ c.nombre }}</th><td>{{ c.reservas|numero }}</td><td>{{ c.noches_hab|numero }}</td><td>{{ c.ingresos|numero }}</td><td>{{ c.adr|numero:2 }}</td><td>{{ c.pct|pct }}</td></tr>
+              <tr><th scope="row"><span class="muestra" data-canal="{{ c.principal|default:'' }}"></span>{{ c.nombre }}</th><td>{{ c.reservas|numero }}</td><td>{{ c.noches_hab|numero }}</td><td>{{ c.ingresos|numero }}</td><td>{{ c.adr|numero:2 }}</td><td>{{ c.pct|pct }}</td></tr>
             {% empty %}
               <tr><td colspan="6" class="vacio">Sin reservas en el periodo.</td></tr>
             {% endfor %}

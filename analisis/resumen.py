@@ -89,12 +89,23 @@ def _sin_acentos(texto: str) -> str:
 
 _DEPTOS = {_sin_acentos(d): d for d in DEPARTAMENTOS}
 
+# En el análisis, algunos departamentos se agrupan dentro de otro. Los datos de
+# origen no cambian (el albarán sigue siendo de Lavandería); solo se suman juntos.
+AGRUPACION_DEPARTAMENTOS = {
+    "Almacén central": "Pisos",
+    "Lavandería": "Pisos",
+}
+
 
 def normalizar_departamento(texto: str) -> str:
-    """«COCINA», «cocina », «Recepcion» -> nombre canónico; vacío -> «Sin asignar»."""
+    """«COCINA», «cocina », «Recepcion» -> nombre canónico; vacío -> «Sin asignar».
+
+    Aplica también AGRUPACION_DEPARTAMENTOS (Lavandería -> Pisos…).
+    """
     if not texto or not texto.strip():
         return SIN_ASIGNAR
-    return _DEPTOS.get(_sin_acentos(texto), texto.strip().capitalize())
+    nombre = _DEPTOS.get(_sin_acentos(texto), texto.strip().capitalize())
+    return AGRUPACION_DEPARTAMENTOS.get(nombre, nombre)
 
 
 def _doce():
@@ -336,9 +347,9 @@ def _compras_con_departamento(compras, expr_compra):
                                                           "fecha", "importe", "total"):
         clave = (c["tipo"], c["numero"], c["codigo_proveedor"])
         if clave in exactos:
-            depto, origen = exactos[clave], "albaran"
+            depto, origen = normalizar_departamento(exactos[clave]), "albaran"
         elif c["codigo_proveedor"] in habitual:
-            depto, origen = habitual[c["codigo_proveedor"]], "habitual"
+            depto, origen = normalizar_departamento(habitual[c["codigo_proveedor"]]), "habitual"
         elif manual.get(str(c["codigo_proveedor"]), SIN_ASIGNAR) != SIN_ASIGNAR:
             depto, origen = manual[str(c["codigo_proveedor"])], "manual"
         else:
@@ -508,7 +519,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     # --- Canales (agencias)
     total_ing_agencias = sum((a["ingresos"] for a in agencias.values()), CERO)
     canales = sorted(({
-        "nombre": nombre, **a,
+        "nombre": nombre, **a, "principal": canal_principal(nombre),
         "adr": a["estancias"] / a["noches_hab"] if a["noches_hab"] else None,
         "pct": _pct(a["ingresos"], total_ing_agencias),
     } for nombre, a in agencias.items() if a["ingresos"] or a["noches_hab"]), key=lambda x: -x["ingresos"])

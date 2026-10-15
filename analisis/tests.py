@@ -290,3 +290,30 @@ class ImportarDepartamentosYTercerosTests(TestCase):
         uno, dos = Tercero.objects.get(cuenta="400000001"), Tercero.objects.get(cuenta="410000002")
         self.assertEqual((uno.tipo, uno.categoria, uno.departamentos), ("proveedor", "Comida", "Cocina, Bar"))
         self.assertEqual((dos.tipo, dos.categoria), ("acreedor", ""))
+
+
+class AgrupacionYCorreccionesTests(TestCase):
+    def test_almacen_y_lavanderia_van_a_pisos(self):
+        self.assertEqual(normalizar_departamento("Lavandería"), "Pisos")
+        self.assertEqual(normalizar_departamento("ALMACEN CENTRAL"), "Pisos")
+        CompraProveedor.objects.create(tipo="A", numero="9", fecha=date(2026, 5, 3), codigo_proveedor=5,
+                                       proveedor="P", bruto=D("80"), total=D("88"))
+        DepartamentoAlbaran.objects.create(tipo="A", numero="9", codigo_proveedor=5, fecha=date(2026, 5, 3),
+                                           total=D("88"), departamento="Lavandería")
+        deps = {d["nombre"]: d for d in calcular_resumen(2026, hoy=HOY)["departamentos"]}
+        self.assertEqual(deps["Pisos"]["proveedores"], D("80"))
+        self.assertNotIn("Lavandería", deps)
+
+    def test_reimportar_terceros_conserva_categoria_manual(self):
+        Tercero.objects.update_or_create(cuenta="410000777", defaults={
+            "nombre": "ACREEDOR X", "tipo": "acreedor", "categoria": "Agua"})
+        f = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8")
+        f.write("410000777,ACREEDOR X SL,,9,0,4100,,,\n400000001,PROVEEDOR,,9,0,4000,,Comida,\n")
+        f.close()
+        self.addCleanup(Path(f.name).unlink)
+        importar_terceros(Path(f.name))
+        t = Tercero.objects.get(cuenta="410000777")
+        self.assertEqual((t.nombre, t.categoria), ("ACREEDOR X SL", "Agua"))
+
+    def test_migracion_de_categorias_aplicada(self):
+        self.assertEqual(Tercero.objects.get(cuenta="410000195").categoria, "Agua")
