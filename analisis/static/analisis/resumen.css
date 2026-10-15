@@ -143,3 +143,11 @@ figcaption { font-size: .88rem; color: var(--tinta-suave); margin-bottom: .5rem;
 .conmutador button[aria-pressed="true"] { background: var(--acento-tinte); color: var(--acento); font-weight: 500; }
 .conmutador button:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
 .muestra { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .45rem; vertical-align: baseline; }
+
+.tabla tr.fila-acreedores th, .tabla tr.fila-acreedores td { border-top: 1px solid #C3C2B7; }
+
+/* ---------- revisión interna */
+.etiqueta-interna {
+  font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--aviso); background: #FBF1F4; padding: .2rem .5rem; border-radius: 6px;
+}

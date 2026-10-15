@@ -16,8 +16,8 @@ from pathlib import Path
 from django.db import transaction
 from python_calamine import CalamineWorkbook
 
-from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor,
-                     Reserva)
+from .models import (DEPARTAMENTOS, AsignacionDepartamento, ApunteIva, CompraProveedor, DepartamentoAlbaran,
+                     ExtraPersonal, FacturaAcreedor, Reserva, Tercero)
 
 CENT = Decimal("0.01")
 TOLERANCIA = Decimal("0.05")
@@ -427,6 +427,122 @@ def importar_extras(ruta: Path) -> dict:
     return {"leidas": len(extras), "reemplazadas": borrados, "años": años}
 
 
+# ---------------------------------------------------------------- albaranes por departamento
+
+def _departamento_de_fichero(nombre: str) -> str | None:
+    """«albaranes_cocina_.csv» -> «Cocina»; «albaranes_almacencentral_.csv» -> «Almacén central».
+
+    El fichero combinado («albaranes_facturas…») no tiene departamento: devuelve None.
+    """
+    import unicodedata
+
+    def plano(t):
+        t = "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+        return "".join(ch for ch in t.lower() if ch.isalnum())
+
+    texto = plano(Path(nombre).stem).removeprefix("albaranes")   # «albaranes» contiene «bar»
+    for depto in sorted(DEPARTAMENTOS, key=len, reverse=True):
+        if plano(depto) in texto:
+            return depto
+    return None
+
+
+def _leer_listado_compras(ruta: Path):
+    """Filas A/F de un listado de compras en CSV (separador coma, decimales con coma)."""
+    for codificacion in ("utf-8-sig", "cp1252"):
+        try:
+            texto = ruta.read_text(encoding=codificacion)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ErrorImportacion(f"{ruta.name}: codificación no reconocida")
+    filas = list(csv.reader(texto.splitlines()))
+    if not filas or "NUMERO" not in [c.strip() for c in filas[0]]:
+        raise ErrorImportacion(f"{ruta.name}: no es un listado de compras (falta la cabecera NUMERO, FECHA…)")
+    return [f for f in filas[1:] if f and f[0].strip() in ("A", "F")]
+
+
+def importar_departamentos_albaranes(ruta: Path) -> dict:
+    """Importa los listados de compras por departamento (una carpeta o un fichero).
+
+    El departamento sale del nombre del fichero: albaranes_cocina_.csv, albaranes_bar_.csv…
+    Reemplaza, para cada departamento importado, los albaranes de los años que trae.
+    """
+    ficheros = sorted(ruta.glob("*.csv")) if ruta.is_dir() else [ruta]
+    registros, errores, ignorados, vistos = [], [], [], {}
+    for fichero in ficheros:
+        depto = _departamento_de_fichero(fichero.name)
+        if not depto:
+            ignorados.append(fichero.name)
+            continue
+        for n, f in enumerate(_leer_listado_compras(fichero), start=2):
+            try:
+                clave = (f[0].strip(), a_texto(f[1]).lstrip(" -"), a_entero(f[3]))
+                if clave in vistos and vistos[clave] != depto:
+                    raise ValueError(f"el albarán {clave[1]} también está en {vistos[clave]}")
+                vistos[clave] = depto
+                registros.append(DepartamentoAlbaran(
+                    tipo=clave[0], numero=clave[1], codigo_proveedor=clave[2], fecha=a_fecha(f[2]),
+                    proveedor=a_texto(f[4]), total=a_decimal(f[11]), departamento=depto))
+            except (ValueError, IndexError) as e:
+                errores.append(f"{fichero.name} fila {n}: {e}")
+    if not registros:
+        errores.append("no se ha encontrado ningún listado de departamento (albaranes_<departamento>_.csv)")
+    _fallar_si_errores(ruta.name, errores)
+
+    # Quita duplicados exactos (el mismo albarán dos veces en el mismo fichero)
+    unicos = {(r.tipo, r.numero, r.codigo_proveedor): r for r in registros}
+    deptos = sorted({r.departamento for r in unicos.values()})
+    años = sorted({r.fecha.year for r in unicos.values()})
+    with transaction.atomic():
+        borrados, _ = DepartamentoAlbaran.objects.filter(departamento__in=deptos, fecha__year__in=años).delete()
+        # Si un albarán ya estaba en otro departamento (exportación anterior), manda la nueva
+        DepartamentoAlbaran.objects.bulk_create(
+            unicos.values(), batch_size=1000, update_conflicts=True,
+            unique_fields=["tipo", "numero", "codigo_proveedor"],
+            update_fields=["fecha", "proveedor", "total", "departamento"])
+    resultado = {"leidas": len(unicos), "reemplazadas": borrados, "años": años}
+    if ignorados:
+        resultado["ignorados"] = ignorados
+    return resultado
+
+
+# ---------------------------------------------------------------- terceros (plan de cuentas)
+
+def importar_terceros(ruta: Path) -> dict:
+    """Importa el listado de proveedores/acreedores/clientes con su categoría.
+
+    Columnas (sin cabecera): cuenta, nombre, NIF, …, …, grupo, …, categoría, departamentos.
+    """
+    try:
+        texto = ruta.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        texto = ruta.read_text(encoding="cp1252")
+    terceros, errores = {}, []
+    for n, f in enumerate(csv.reader(texto.splitlines()), start=1):
+        if not f or not f[0].strip():
+            continue
+        cuenta = f[0].strip()
+        if not cuenta.isdigit():
+            if n == 1:
+                continue            # cabecera, si la hubiera
+            errores.append(f"fila {n}: cuenta no válida «{cuenta}»")
+            continue
+        f = f + [""] * (9 - len(f))
+        terceros[cuenta] = Tercero(
+            cuenta=cuenta, nombre=" ".join(f[1].split())[:150], nif=f[2].strip()[:30],
+            tipo=Tercero.tipo_de_cuenta(cuenta), categoria=" ".join(f[7].split())[:60],
+            departamentos=" ".join(f[8].split())[:150])
+    if not terceros:
+        errores.append("no hay ninguna fila con cuenta")
+    _fallar_si_errores(ruta.name, errores)
+    with transaction.atomic():
+        borrados, _ = Tercero.objects.all().delete()
+        Tercero.objects.bulk_create(terceros.values())
+    return {"leidas": len(terceros), "reemplazadas": borrados}
+
+
 IMPORTADORES = {
     "reservas": importar_reservas,
     "compras": importar_compras,
@@ -434,4 +550,6 @@ IMPORTADORES = {
     "iva_soportado": importar_iva_soportado,
     "iva_repercutido": importar_iva_repercutido,
     "extras": importar_extras,
+    "departamentos_albaranes": importar_departamentos_albaranes,
+    "terceros": importar_terceros,
 }

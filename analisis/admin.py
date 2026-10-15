@@ -3,8 +3,8 @@ from decimal import Decimal
 
 from django.contrib import admin, messages
 
-from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor,
-                     GastoAdicional, Reserva)
+from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, DepartamentoAlbaran, ExtraPersonal,
+                     FacturaAcreedor, GastoAdicional, Reserva, Tercero)
 
 
 @admin.register(Reserva)
@@ -80,3 +80,20 @@ class GastoAdicionalAdmin(admin.ModelAdmin):
     list_display = ("concepto", "cuenta", "base", "iva", "desde", "hasta", "departamento")
     list_filter = ("cuenta", "departamento")
     search_fields = ("concepto", "acreedor")
+
+
+@admin.register(Tercero)
+class TerceroAdmin(admin.ModelAdmin):
+    list_display = ("cuenta", "nombre", "tipo", "categoria", "departamentos")
+    list_editable = ("categoria",)
+    list_filter = ("tipo", ("categoria", admin.EmptyFieldListFilter), "categoria")
+    search_fields = ("cuenta", "nombre", "nif")
+    list_per_page = 200
+
+
+@admin.register(DepartamentoAlbaran)
+class DepartamentoAlbaranAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "numero", "proveedor", "departamento", "total")
+    list_filter = ("departamento",)
+    search_fields = ("numero", "proveedor")
+    date_hierarchy = "fecha"

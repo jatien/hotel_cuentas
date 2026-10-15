@@ -27,19 +27,21 @@ Criterios:
 """
 
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, F, Sum
 
-from .models import (DEPARTAMENTOS, ApunteIva, AsignacionDepartamento, CompraProveedor, ExtraPersonal,
-                     FacturaAcreedor, GastoAdicional, Reserva)
+from .models import (DEPARTAMENTOS, ApunteIva, AsignacionDepartamento, CompraProveedor, DepartamentoAlbaran,
+                     ExtraPersonal, FacturaAcreedor, GastoAdicional, Reserva, Tercero)
 
 CERO = Decimal("0")
 IVA_ALOJAMIENTO = Decimal("0.10")
 IVA_BAR_COMEDOR = Decimal("0.10")   # supuesto: cámbialo si el bar factura parte al 21 %
 SIN_ASIGNAR = "Sin asignar"
+SIN_CATEGORIA = "Otros"
+ACREEDORES = "Acreedores (sin departamento)"
 # Canales principales para el peso mensual por agencia: (etiqueta, texto que contiene el nombre).
 # El orden fija el color de cada canal. Las agencias que no encajan quedan fuera del cálculo.
 CANALES_PRINCIPALES = [
@@ -235,9 +237,11 @@ def _asignaciones(origen):
 
 def _facturas_acreedor(anio: int, con_iva: bool, hoy: date, incluir_previsto: bool):
     """Facturas del año con su importe (sin IVA salvo que se pida) y el IVA casado."""
-    soportado = defaultdict(lambda: CERO)
+    soportado, cuenta_iva = defaultdict(lambda: CERO), {}
     for a in ApunteIva.objects.filter(libro=ApunteIva.Libro.SOPORTADO, fecha__year=anio):
         soportado[_clave_doc(a.asiento, a.documento)] += a.cuota
+        if a.cuenta.startswith("410"):
+            cuenta_iva[_clave_doc(a.asiento, a.documento)] = a.cuenta
     # Inversión del sujeto pasivo: la misma factura está también en el repercutido
     isp = {_clave_doc(a.asiento, a.documento)
            for a in ApunteIva.objects.filter(libro=ApunteIva.Libro.REPERCUTIDO, fecha__year=anio,
@@ -254,7 +258,7 @@ def _facturas_acreedor(anio: int, con_iva: bool, hoy: date, incluir_previsto: bo
         filas.append({
             "fecha": f.fecha, "fichero": f.fichero, "acreedor": f.acreedor, "cuenta": f.cuenta[:3],
             "inversion": f.es_inversion, "iva": iva, "documento": (f.fichero, f.documento, f.asiento),
-            "departamento": None, "importe": f.importe if con_iva else f.importe - iva,
+            "cuenta_410": cuenta_iva.get(clave), "importe": f.importe if con_iva else f.importe - iva,
         })
 
     # Gastos adicionales (alquiler…): repartidos por días entre sus meses. Los meses
@@ -267,12 +271,80 @@ def _facturas_acreedor(anio: int, con_iva: bool, hoy: date, incluir_previsto: bo
             filas.append({
                 "fecha": date(a, m, 1), "fichero": f"gasto-{g.pk}", "acreedor": g.acreedor or g.concepto,
                 "cuenta": g.cuenta[:3], "inversion": g.cuenta.startswith("2"), "iva": g.iva * fraccion,
-                "documento": ("gasto", g.pk), "departamento": normalizar_departamento(g.departamento),
-                "importe": importe * fraccion,
+                "documento": ("gasto", g.pk), "cuenta_410": None, "importe": importe * fraccion,
             })
         if g.asiento_iva:
             casadas.update(k for k in soportado if k[0] == g.asiento_iva)
     return filas, soportado, casadas
+
+
+_FORMAS_JURIDICAS = {"sl", "sa", "slu", "sau", "cb", "scp", "sc", "ltd", "limited", "bv", "gmbh", "ag", "sll",
+                     "s", "l", "a", "u", "y", "de", "del", "la", "el"}
+
+
+def _nombre_plano(nombre: str) -> frozenset:
+    """Palabras significativas de un nombre de empresa (sin forma jurídica, acentos ni signos)."""
+    texto = "".join(c if c.isalnum() else " " for c in _sin_acentos(nombre or ""))
+    return frozenset(p for p in texto.split() if p not in _FORMAS_JURIDICAS and len(p) > 1)
+
+
+class Terceros:
+    """Busca la ficha (cuenta, categoría) de proveedores y acreedores."""
+
+    def __init__(self):
+        self.por_cuenta = {t.cuenta: t for t in Tercero.objects.all()}
+        self.acreedores = [(t, _nombre_plano(t.nombre)) for t in self.por_cuenta.values() if t.tipo == "acreedor"]
+
+    def proveedor(self, codigo: int):
+        return self.por_cuenta.get(f"400{codigo:06d}")
+
+    def acreedor(self, cuenta: str | None, nombre: str):
+        if cuenta and cuenta in self.por_cuenta:
+            return self.por_cuenta[cuenta]
+        buscado = _nombre_plano(nombre)
+        if not buscado:
+            return None
+        for t, palabras in self.acreedores:          # mismo nombre
+            if palabras == buscado:
+                return t
+        for t, palabras in self.acreedores:          # uno contiene al otro
+            if palabras and (palabras <= buscado or buscado <= palabras):
+                return t
+        return None
+
+    @staticmethod
+    def categoria(tercero) -> str:
+        return tercero.categoria if tercero and tercero.categoria else SIN_CATEGORIA
+
+
+def _compras_con_departamento(compras, expr_compra):
+    """Cada línea del diario con su departamento.
+
+    1) el listado por departamento de ese albarán; 2) si no está (albaranes
+    posteriores al listado), el departamento habitual del proveedor según los
+    listados; 3) la asignación manual del admin; 4) «Sin asignar».
+    """
+    exactos, habitual = {}, defaultdict(lambda: defaultdict(lambda: CERO))
+    for d in DepartamentoAlbaran.objects.all():
+        exactos[(d.tipo, d.numero, d.codigo_proveedor)] = d.departamento
+        habitual[d.codigo_proveedor][d.departamento] += abs(d.total)
+    habitual = {c: max(v, key=v.get) for c, v in habitual.items()}
+    manual = _asignaciones(AsignacionDepartamento.Origen.PROVEEDOR)
+
+    filas = []
+    for c in compras.annotate(importe=expr_compra).values("tipo", "numero", "codigo_proveedor", "proveedor",
+                                                          "fecha", "importe", "total"):
+        clave = (c["tipo"], c["numero"], c["codigo_proveedor"])
+        if clave in exactos:
+            depto, origen = exactos[clave], "albaran"
+        elif c["codigo_proveedor"] in habitual:
+            depto, origen = habitual[c["codigo_proveedor"]], "habitual"
+        elif manual.get(str(c["codigo_proveedor"]), SIN_ASIGNAR) != SIN_ASIGNAR:
+            depto, origen = manual[str(c["codigo_proveedor"])], "manual"
+        else:
+            depto, origen = SIN_ASIGNAR, "sin"
+        filas.append({**c, "departamento": depto, "origen_depto": origen})
+    return filas
 
 
 def _top(filas, n=10):
@@ -281,7 +353,7 @@ def _top(filas, n=10):
         return filas
     resto = filas[n:]
     return filas[:n] + [{
-        "nombre": f"Resto ({len(resto)})", "departamento": "", "documentos": sum(f["documentos"] for f in resto),
+        "nombre": f"Resto ({len(resto)})", "departamento": "", "categoria": "", "documentos": sum(f["documentos"] for f in resto),
         "importe": sum((f["importe"] for f in resto), CERO), "resto": True,
     }]
 
@@ -304,9 +376,10 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     # --- Proveedores
     compras = CompraProveedor.objects.filter(fecha__year=anio)
     expr_compra = F("total") if con_iva else F("bruto") - F("dto_pp") + F("portes_gastos")
+    lineas_compra = _compras_con_departamento(compras, expr_compra)
     proveedores = _doce()
-    for c in compras.values("fecha__month").annotate(s=Sum(expr_compra)):
-        proveedores[c["fecha__month"] - 1] += c["s"] or CERO
+    for c in lineas_compra:
+        proveedores[c["fecha"].month - 1] += c["importe"] or CERO
 
     # --- Acreedores (gasto e inversión)
     facturas, soportado, casadas = _facturas_acreedor(anio, con_iva, hoy, incluir_previsto)
@@ -361,9 +434,21 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     tot["adr"] = tot["estancias"] / tot["noches_hab"] if tot["noches_hab"] else None
     tot["bar_comedor"] = tot["bar"] + tot["comedor"]
 
-    # --- Por departamento
-    asig_prov = _asignaciones(AsignacionDepartamento.Origen.PROVEEDOR)
-    asig_acr = _asignaciones(AsignacionDepartamento.Origen.ACREEDOR)
+    # --- Fichas de terceros (categoría) para proveedores y acreedores
+    terceros = Terceros()
+    ficha_acr = {}                     # fichero -> Tercero (por la cuenta 410 de su IVA o por nombre)
+    cuentas_por_fichero = defaultdict(Counter)
+    for f in facturas:
+        if f["cuenta_410"]:
+            cuentas_por_fichero[f["fichero"]][f["cuenta_410"]] += 1
+    for f in facturas:
+        if f["fichero"] not in ficha_acr:
+            cuentas = cuentas_por_fichero.get(f["fichero"])
+            cuenta = cuentas.most_common(1)[0][0] if cuentas else None
+            ficha_acr[f["fichero"]] = terceros.acreedor(cuenta, f["acreedor"])
+
+    # --- Por departamento: proveedores (por albarán) y personal. Los acreedores
+    #     no tienen departamento: van en un bloque aparte.
     asig_pers = _asignaciones(AsignacionDepartamento.Origen.PERSONAL)
     deptos = defaultdict(lambda: {"ingresos": CERO, "proveedores": CERO, "acreedores": CERO, "nominas": CERO})
 
@@ -371,12 +456,9 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         ingreso = sum((bar_comedor[nombre][i] for i in idx), CERO)
         if ingreso:
             deptos[nombre]["ingresos"] += ingreso
-    for c in compras.filter(**filtro_mes).values("codigo_proveedor").annotate(s=Sum(expr_compra)):
-        deptos[asig_prov.get(str(c["codigo_proveedor"]), SIN_ASIGNAR)]["proveedores"] += c["s"]
-    for f in facturas:
-        if not f["inversion"] and en_periodo(f["fecha"].month):
-            depto = f["departamento"] or asig_acr.get(f["fichero"], SIN_ASIGNAR)
-            deptos[depto]["acreedores"] += f["importe"]
+    for c in lineas_compra:
+        if en_periodo(c["fecha"].month):
+            deptos[c["departamento"]]["proveedores"] += c["importe"] or CERO
     if nominas is not None:
         qs = nominas.filter(mes=mes) if mes else nominas
         for n in qs.values("departamento", "mes").annotate(c=Sum("cost_tot"), e=Sum("importe_extra")):
@@ -387,10 +469,28 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
 
     departamentos = []
     for nombre, d in deptos.items():
-        total = d["proveedores"] + d["acreedores"] + d["nominas"]
+        total = d["proveedores"] + d["nominas"]
         departamentos.append({"nombre": nombre, **d, "total": total, "pct": _pct(total, tot["gastos"]),
                               "resultado": d["ingresos"] - total if d["ingresos"] else None})
     departamentos.sort(key=lambda d: (d["nombre"] == SIN_ASIGNAR, -d["total"]))
+    if tot["acreedores"]:
+        departamentos.append({"nombre": ACREEDORES, "ingresos": CERO, "proveedores": CERO,
+                              "acreedores": tot["acreedores"], "nominas": CERO, "total": tot["acreedores"],
+                              "pct": _pct(tot["acreedores"], tot["gastos"]), "resultado": None,
+                              "es_acreedores": True})
+
+    # --- Por categoría (Comida, Bebida, Luz, Agencias…): proveedores y acreedores
+    cats = defaultdict(lambda: {"proveedores": CERO, "acreedores": CERO})
+    for c in lineas_compra:
+        if en_periodo(c["fecha"].month):
+            cats[Terceros.categoria(terceros.proveedor(c["codigo_proveedor"]))]["proveedores"] += c["importe"] or CERO
+    for f in facturas:
+        if not f["inversion"] and en_periodo(f["fecha"].month):
+            cats[Terceros.categoria(ficha_acr.get(f["fichero"]))]["acreedores"] += f["importe"]
+    total_cats = tot["proveedores"] + tot["acreedores"]
+    categorias = sorted(({"nombre": n, **v, "total": v["proveedores"] + v["acreedores"],
+                          "pct": _pct(v["proveedores"] + v["acreedores"], total_cats)} for n, v in cats.items()),
+                        key=lambda x: (x["nombre"] == SIN_CATEGORIA, -x["total"]))
 
     # --- Acreedores por cuenta (gasto e inversión)
     def por_cuenta(inversion: bool):
@@ -413,21 +513,44 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         "pct": _pct(a["ingresos"], total_ing_agencias),
     } for nombre, a in agencias.items() if a["ingresos"] or a["noches_hab"]), key=lambda x: -x["ingresos"])
 
-    # --- Principales proveedores, acreedores y extras de personal
-    top_prov = [{"nombre": c["proveedor"], "departamento": asig_prov.get(str(c["codigo_proveedor"]), SIN_ASIGNAR),
-                 "documentos": c["n"], "importe": c["s"]}
-                for c in compras.filter(**filtro_mes).values("codigo_proveedor", "proveedor")
-                .annotate(s=Sum(expr_compra), n=Count("id")).order_by("-s")]
-    por_acreedor = defaultdict(lambda: {"docs": set(), "importe": CERO, "departamento": None})
+    # --- Principales proveedores y acreedores
+    por_proveedor = defaultdict(lambda: {"documentos": 0, "importe": CERO, "deptos": Counter()})
+    for c in lineas_compra:
+        if en_periodo(c["fecha"].month):
+            p = por_proveedor[(c["codigo_proveedor"], c["proveedor"])]
+            p["documentos"] += 1
+            p["importe"] += c["importe"] or CERO
+            p["deptos"][c["departamento"]] += abs(c["importe"] or CERO)
+    top_prov = sorted(({"nombre": nombre, "documentos": v["documentos"], "importe": v["importe"],
+                        "departamento": v["deptos"].most_common(1)[0][0] if v["deptos"] else SIN_ASIGNAR,
+                        "categoria": Terceros.categoria(terceros.proveedor(cod))}
+                       for (cod, nombre), v in por_proveedor.items()), key=lambda x: -x["importe"])
+    por_acreedor = defaultdict(lambda: {"docs": set(), "importe": CERO})
     for f in facturas:
         if not f["inversion"] and en_periodo(f["fecha"].month):
             a = por_acreedor[(f["fichero"], f["acreedor"])]
             a["docs"].add(f["documento"])
             a["importe"] += f["importe"]
-            a["departamento"] = f["departamento"]
-    top_acr = sorted(({"nombre": acr, "departamento": v["departamento"] or asig_acr.get(fich, SIN_ASIGNAR),
+    top_acr = sorted(({"nombre": acr, "categoria": Terceros.categoria(ficha_acr.get(fich)),
                        "documentos": len(v["docs"]), "importe": v["importe"]}
                       for (fich, acr), v in por_acreedor.items()), key=lambda x: -x["importe"])
+
+    # Revisión interna: terceros con gasto pero sin ficha completa (no se muestra en el panel)
+    incompletos = []
+    for (cod, nombre), v in por_proveedor.items():
+        t = terceros.proveedor(cod)
+        if not (t and t.categoria):
+            incompletos.append({"tipo": "Proveedor", "nombre": nombre, "cuenta": t.cuenta if t else f"400{cod:06d}",
+                                "motivo": "sin categoría" if t else "no está en el listado de terceros",
+                                "importe": v["importe"]})
+    for (fich, acr), v in por_acreedor.items():
+        t = ficha_acr.get(fich)
+        if not (t and t.categoria):
+            incompletos.append({"tipo": "Acreedor", "nombre": acr, "cuenta": t.cuenta if t else "—",
+                                "motivo": "sin categoría" if t else "no está en el listado de terceros",
+                                "importe": v["importe"]})
+    incompletos.sort(key=lambda x: -abs(x["importe"]))
+
     top_prov, top_acr = _top(top_prov), _top(top_acr)
     for lista, total in ((top_prov, tot["proveedores"]), (top_acr, tot["acreedores"])):
         for f in lista:
@@ -442,6 +565,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
 
     # --- Avisos de calidad de datos
     avisos = _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor)
+    revision = _revision(anio, lineas_compra, incompletos, extras_personas)
 
     return {
         "anio": anio, "mes": mes, "incluir_previsto": incluir_previsto, "con_iva": con_iva, "hoy": hoy,
@@ -449,16 +573,17 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         "departamentos": departamentos, "cuentas_gasto": cuentas_gasto,
         "cuentas_inversion": cuentas_inversion, "canales": canales,
         "top_proveedores": top_prov, "top_acreedores": top_acr, "extras_personas": extras_personas,
-        "pesos_canales": _pesos_canales(canales_mes),
-        "avisos": avisos,
+        "pesos_canales": _pesos_canales(canales_mes), "categorias": categorias,
+        "avisos": avisos, "revision": revision,
     }
 
 
 def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor):
     avisos = []
-    pendientes = AsignacionDepartamento.objects.filter(departamento="").count()
+    pendientes = AsignacionDepartamento.objects.filter(origen=AsignacionDepartamento.Origen.PERSONAL,
+                                                       departamento="").count()
     if pendientes:
-        avisos.append(f"{pendientes} proveedores, acreedores o personas sin departamento asignado.")
+        avisos.append(f"{pendientes} personas de la hoja de extras sin departamento asignado.")
 
     if nominas is None:
         avisos.append("La app de nóminas no está instalada: el coste de nómina sale a 0.")
@@ -504,6 +629,25 @@ def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, co
         avisos.append("Las facturas de acreedores con cuenta 2xx (inmovilizado) se muestran como "
                       "inversiones y no restan del beneficio.")
     return avisos
+
+
+def _revision(anio, lineas_compra, incompletos, extras_personas):
+    """Datos solo para la página interna de revisión."""
+    origen = defaultdict(lambda: {"lineas": 0, "importe": CERO})
+    for c in lineas_compra:
+        origen[c["origen_depto"]]["lineas"] += 1
+        origen[c["origen_depto"]]["importe"] += c["importe"] or CERO
+    nombres = {"albaran": "Por su albarán (listado por departamento)",
+               "habitual": "Departamento habitual del proveedor (albarán posterior al listado)",
+               "manual": "Asignación manual del proveedor en el admin", "sin": "Sin departamento"}
+    cobertura = [{"origen": nombres[k], **origen[k]} for k in nombres if k in origen]
+
+    en_diario = {(c["tipo"], c["numero"], c["codigo_proveedor"]) for c in lineas_compra}
+    sin_pareja = [d for d in DepartamentoAlbaran.objects.filter(fecha__year=anio)
+                  if (d.tipo, d.numero, d.codigo_proveedor) not in en_diario]
+    sin_depto_personal = [e for e in extras_personas if e["departamento"] == SIN_ASIGNAR]
+    return {"incompletos": incompletos, "cobertura": cobertura, "sin_pareja": sin_pareja,
+            "sin_depto_personal": sin_depto_personal}
 
 
 def anios_disponibles() -> list[int]:

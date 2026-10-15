@@ -143,6 +143,24 @@
     },
   });
 
+  // 3b. Gasto por categoría (proveedores y acreedores apilados)
+  const cat = datos.categorias;
+  crear("g-categorias", {
+    type: "bar",
+    data: {
+      labels: cat.etiquetas,
+      datasets: [
+        { label: "Proveedores", data: cat.proveedores, ...segmento(COLOR.proveedores, true) },
+        { label: "Acreedores", data: cat.acreedores, ...segmento(COLOR.acreedores, true) },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      interaction: { mode: "index", intersect: false, axis: "y" },
+      scales: { x: ejeValores(true), y: ejeCategorias(true) },
+    },
+  });
+
   // 4 y 5. Una sola serie: sin leyenda (el título la nombra)
   function barrasSimples(id, serie, etiqueta, color) {
     crear(id, {

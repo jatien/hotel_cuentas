@@ -8,10 +8,11 @@ from pathlib import Path
 from django.test import TestCase
 from django.urls import reverse
 
-from .importacion import ErrorImportacion, importar_acreedores, importar_extras
-from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor,
-                     GastoAdicional, Reserva)
-from .resumen import SIN_ASIGNAR, calcular_resumen, normalizar_departamento
+from .importacion import (ErrorImportacion, _departamento_de_fichero, importar_acreedores,
+                          importar_departamentos_albaranes, importar_extras, importar_terceros)
+from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, DepartamentoAlbaran, ExtraPersonal,
+                     FacturaAcreedor, GastoAdicional, Reserva, Tercero)
+from .resumen import ACREEDORES, SIN_ASIGNAR, calcular_resumen, normalizar_departamento
 
 HOY = date(2026, 6, 15)
 
@@ -99,7 +100,7 @@ class GastosTests(TestCase):
     def test_departamentos(self):
         deps = {d["nombre"]: d for d in calcular_resumen(2026, hoy=HOY)["departamentos"]}
         self.assertEqual(deps["Cocina"]["proveedores"], D("1000"))   # base sin IVA
-        self.assertEqual(deps[SIN_ASIGNAR]["acreedores"], D("500"))   # «luz» sin asignar
+        self.assertEqual(deps[ACREEDORES]["acreedores"], D("500"))    # acreedores: bloque sin departamento
 
     def test_filtro_de_mes(self):
         self.assertEqual(calcular_resumen(2026, mes=4, hoy=HOY)["totales"]["gastos"], D("0"))
@@ -212,3 +213,80 @@ class GastoAdicionalYCanalesTests(TestCase):
         self.assertAlmostEqual(p["ingresos"]["Expedia"]["pesos"][4], 40.0)   # las dos de Expedia juntas
         self.assertIsNone(p["ingresos"]["Booking"]["pesos"][3])             # abril sin reservas
         self.assertEqual(p["noches"]["Expedia"]["total"], 2)
+
+
+class DepartamentosYCategoriasTests(TestCase):
+    def setUp(self):
+        for numero, cod, fecha in (("1", 7, date(2026, 5, 3)), ("2", 7, date(2026, 8, 3)), ("3", 8, date(2026, 5, 4))):
+            CompraProveedor.objects.create(tipo="A", numero=numero, fecha=fecha, codigo_proveedor=cod,
+                                           proveedor=f"PROVEEDOR {cod}", bruto=D("100"), total=D("110"))
+        # El albarán 1 está en el listado de Cocina; el 2 es posterior (sin listado)
+        DepartamentoAlbaran.objects.create(tipo="A", numero="1", codigo_proveedor=7, fecha=date(2026, 5, 3),
+                                           total=D("110"), departamento="Cocina")
+
+    def test_departamento_por_albaran_y_habitual(self):
+        deps = {d["nombre"]: d for d in calcular_resumen(2026, hoy=HOY, incluir_previsto=True)["departamentos"]}
+        self.assertEqual(deps["Cocina"]["proveedores"], D("200"))      # albarán 1 + albarán 2 (habitual)
+        self.assertEqual(deps[SIN_ASIGNAR]["proveedores"], D("100"))   # proveedor 8 sin listado ni asignación
+
+    def test_categoria_y_fichas_incompletas(self):
+        Tercero.objects.create(cuenta="400000007", nombre="PROVEEDOR 7", tipo="proveedor", categoria="Comida")
+        r = calcular_resumen(2026, hoy=date(2026, 12, 31))
+        cats = {c["nombre"]: c for c in r["categorias"]}
+        self.assertEqual(cats["Comida"]["proveedores"], D("200"))
+        self.assertEqual(cats["Otros"]["proveedores"], D("100"))
+        incompletos = {f["nombre"] for f in r["revision"]["incompletos"]}
+        self.assertEqual(incompletos, {"PROVEEDOR 8"})
+
+    def test_acreedor_se_relaciona_por_cuenta_del_iva_o_por_nombre(self):
+        Tercero.objects.create(cuenta="410000217", nombre="Iberdrola Clientes SAU", tipo="acreedor", categoria="Luz")
+        Tercero.objects.create(cuenta="410000099", nombre="BOOKING.COM BV", tipo="acreedor", categoria="Agencias")
+        FacturaAcreedor.objects.create(fichero="iberdrola", acreedor="Otra razón social", fecha=date(2026, 5, 5),
+                                       documento="F1", asiento=10, cuenta="628000001", importe=D("121"))
+        ApunteIva.objects.create(libro="soportado", fecha=date(2026, 5, 5), documento="F1", asiento=10,
+                                 concepto="S/FRA X", cuenta="410000217", cuota=D("21"))
+        FacturaAcreedor.objects.create(fichero="booking", acreedor="BOOKING.COM B.V.", fecha=date(2026, 5, 6),
+                                       cuenta="629000004", importe=D("50"))
+        cats = {c["nombre"]: c for c in calcular_resumen(2026, hoy=HOY)["categorias"]}
+        self.assertEqual(cats["Luz"]["acreedores"], D("100"))
+        self.assertEqual(cats["Agencias"]["acreedores"], D("50"))
+
+    def test_vistas(self):
+        resp = self.client.get(reverse("analisis:resumen"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'class="avisos"')          # los avisos ya no van en el panel
+        self.assertContains(resp, "Total 5 canales")
+        self.assertEqual(self.client.get(reverse("analisis:revision")).status_code, 200)
+
+
+class ImportarDepartamentosYTercerosTests(TestCase):
+    CABECERA = ",NUMERO,FECHA,PROV.,NOMBRE COMERCIAL,N.I.F.,BRUTO,DTO P.P.,POR.+GTOS.,IVA/REC.,I.R.P.F.,TOTAL,,C.D.\n"
+
+    def test_nombre_de_fichero(self):
+        self.assertEqual(_departamento_de_fichero("albaranes_cocina_.csv"), "Cocina")
+        self.assertEqual(_departamento_de_fichero("albaranes_bar_.csv"), "Bar")
+        self.assertEqual(_departamento_de_fichero("albaranes_almacencentral_.csv"), "Almacén central")
+        self.assertEqual(_departamento_de_fichero("albaranes_lavanderia_.csv"), "Lavandería")
+        self.assertIsNone(_departamento_de_fichero("albaranes_facturas.csv"))
+
+    def test_importa_carpeta(self):
+        carpeta = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: [p.unlink() for p in carpeta.iterdir()] and carpeta.rmdir())
+        (carpeta / "albaranes_cocina_.csv").write_text(
+            self.CABECERA + 'A, - 100,03.05.2026,7,PROVEEDOR X,B000,"1.000,50","0,00","0,00","100,05","0,00","1.100,55",NOR,\n',
+            encoding="utf-8")
+        (carpeta / "albaranes_facturas.csv").write_text(self.CABECERA, encoding="utf-8")
+        r = importar_departamentos_albaranes(carpeta)
+        self.assertEqual(r["leidas"], 1)
+        d = DepartamentoAlbaran.objects.get()
+        self.assertEqual((d.numero, d.codigo_proveedor, d.departamento, d.total), ("100", 7, "Cocina", D("1100.55")))
+
+    def test_importa_terceros(self):
+        f = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8")
+        f.write('400000001,PROVEEDOR UNO,B1,9,0,4000,,Comida,"Cocina, Bar"\n410000002,ACREEDOR DOS,,9,0,4100,,,\n')
+        f.close()
+        self.addCleanup(Path(f.name).unlink)
+        importar_terceros(Path(f.name))
+        uno, dos = Tercero.objects.get(cuenta="400000001"), Tercero.objects.get(cuenta="410000002")
+        self.assertEqual((uno.tipo, uno.categoria, uno.departamentos), ("proveedor", "Comida", "Cocina, Bar"))
+        self.assertEqual((dos.tipo, dos.categoria), ("acreedor", ""))
