@@ -508,7 +508,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     # --- Canales (agencias)
     total_ing_agencias = sum((a["ingresos"] for a in agencias.values()), CERO)
     canales = sorted(({
-        "nombre": nombre, **a,
+        "nombre": nombre, **a, "principal": canal_principal(nombre),
         "adr": a["estancias"] / a["noches_hab"] if a["noches_hab"] else None,
         "pct": _pct(a["ingresos"], total_ing_agencias),
     } for nombre, a in agencias.items() if a["ingresos"] or a["noches_hab"]), key=lambda x: -x["ingresos"])
