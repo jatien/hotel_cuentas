@@ -27,6 +27,23 @@ def _ultimo_mes_con_datos(m) -> int:
     return ultimo
 
 
+def _datos_pesos(p):
+    """Peso mensual de cada canal principal (null en los meses sin reservas de esos canales)."""
+    datos = {"canales": p["canales"]}
+    for medida in ("ingresos", "noches"):
+        datos[medida] = {
+            c: {"pesos": [round(v, 2) if v is not None else None for v in p[medida][c]["pesos"]],
+                "valores": [round(float(v), 2) for v in p[medida][c]["valores"]]}
+            for c in p["canales"]
+        }
+    return datos
+
+
+def _tabla_pesos(p, medida):
+    return [{"canal": c, "pesos": p[medida][c]["pesos"], "peso_anual": p[medida][c]["peso_anual"],
+             "total": p[medida][c]["total"]} for c in p["canales"]]
+
+
 def resumen(request):
     anios = anios_disponibles()
     anio = _entero(request.GET.get("anio"), 2000, 2100) or anios[0]
@@ -57,6 +74,7 @@ def resumen(request):
             "etiquetas": [c["nombre"] for c in r["canales"]],
             "valores": _floats(c["ingresos"] for c in r["canales"]),
         },
+        "pesos": _datos_pesos(r["pesos_canales"]),
     }
 
     # Filas de la cuenta de resultados mensual: (etiqueta, clave, estilo)
@@ -95,6 +113,8 @@ def resumen(request):
         "nombre_periodo": MESES_LARGOS[mes - 1] if mes else f"Año {anio}",
         "graficos": graficos,
         "tabla_mensual": tabla_mensual,
+        "tablas_pesos": [("ingresos", _tabla_pesos(r["pesos_canales"], "ingresos")),
+                         ("noches", _tabla_pesos(r["pesos_canales"], "noches"))],
         "ano_en_curso": anio == date.today().year,
         "texto_iva": "con IVA" if con_iva else "sin IVA",
     })

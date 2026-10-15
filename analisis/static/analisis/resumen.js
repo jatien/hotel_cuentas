@@ -161,4 +161,63 @@
   }
   barrasSimples("g-cuentas", datos.cuentas, "Gasto", COLOR.acreedores);
   barrasSimples("g-canales", datos.canales, "Ingresos", COLOR.ingresos);
+
+  // 6. Peso mensual de los canales principales (barras apiladas al 100 %)
+  //    Orden de colores validado para daltonismo con el validador de paleta.
+  const COLORES_CANAL = ["#e87ba4", "#008300", "#eda100", "#6250d6", "#e34948"];
+  const p = datos.pesos;
+  const colorCanal = Object.fromEntries(p.canales.map((c, i) => [c, COLORES_CANAL[i % COLORES_CANAL.length]]));
+  document.querySelectorAll(".muestra[data-canal]").forEach((el) => {
+    el.style.background = colorCanal[el.dataset.canal] || "#C3C2B7";
+  });
+
+  const lienzoPesos = document.getElementById("g-pesos");
+  if (lienzoPesos) {
+    const numero = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
+    let medida = "ingresos";
+    const conjuntos = (med) => p.canales.map((c) => ({
+      label: c,
+      data: p[med][c].pesos,
+      valores: p[med][c].valores,
+      ...segmento(colorCanal[c]),
+    }));
+    const grafico = new Chart(lienzoPesos, {
+      type: "bar",
+      data: { labels: datos.meses, datasets: conjuntos(medida) },
+      options: {
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const peso = ctx.parsed.y;
+                if (peso === null || peso === undefined) return null;
+                const valor = ctx.dataset.valores[ctx.dataIndex];
+                const detalle = medida === "ingresos" ? eur.format(valor) : `${numero.format(valor)} noches`;
+                return ` ${ctx.dataset.label}: ${peso.toLocaleString("es-ES", { maximumFractionDigits: 1 })} % (${detalle})`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: ejeCategorias(true),
+          y: { ...ejeValores(true), max: 100, ticks: { callback: (v) => `${v} %`, stepSize: 25 } },
+        },
+      },
+    });
+
+    document.querySelectorAll("#pesos-canales .conmutador button").forEach((boton) => {
+      boton.addEventListener("click", () => {
+        medida = boton.dataset.medida;
+        document.querySelectorAll("#pesos-canales .conmutador button").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b === boton));
+        });
+        document.querySelectorAll("#pesos-canales [data-tabla-medida]").forEach((t) => {
+          t.hidden = t.dataset.tablaMedida !== medida;
+        });
+        grafico.data.datasets = conjuntos(medida);
+        grafico.update();
+      });
+    });
+  }
 })();

@@ -209,3 +209,46 @@ class ExtraPersonal(models.Model):
 
     def __str__(self):
         return f"{self.persona} {self.mes}/{self.anio}: {self.importe} €"
+
+
+class GastoAdicional(models.Model):
+    """Un gasto que no está en los ficheros de acreedores ni de proveedores (p. ej. el alquiler).
+
+    Se reparte por días entre `desde` y `hasta` y entra en el análisis como
+    gasto de acreedores (o como inversión si la cuenta es del grupo 2).
+    """
+
+    concepto = models.CharField(max_length=150)
+    acreedor = models.CharField(max_length=150, blank=True)
+    cuenta = models.CharField(max_length=12, default="621", help_text="Cuenta PGC, p. ej. 621 Arrendamientos")
+    base = _importe(help_text="Importe sin IVA")
+    iva = _importe(help_text="Cuota de IVA")
+    desde = models.DateField()
+    hasta = models.DateField()
+    departamento = models.CharField(max_length=30, blank=True, choices=[(d, d) for d in DEPARTAMENTOS])
+    asiento_iva = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Asiento del libro de IVA soportado al que corresponde (así deja de salir en los avisos)")
+
+    class Meta:
+        ordering = ["desde", "concepto"]
+        verbose_name = "gasto adicional"
+        verbose_name_plural = "gastos adicionales (alquiler…)"
+
+    def __str__(self):
+        return f"{self.concepto} · {self.base} € ({self.desde:%d/%m/%Y}–{self.hasta:%d/%m/%Y})"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.desde and self.hasta and self.hasta < self.desde:
+            raise ValidationError("La fecha «hasta» no puede ser anterior a «desde».")
+
+    def reparto_mensual(self) -> dict[tuple[int, int], Decimal]:
+        """{(año, mes): fracción del periodo} proporcional a los días de cada mes."""
+        from datetime import timedelta
+        dias = (self.hasta - self.desde).days + 1
+        reparto, d = {}, self.desde
+        while d <= self.hasta:
+            reparto[(d.year, d.month)] = reparto.get((d.year, d.month), 0) + 1
+            d += timedelta(days=1)
+        return {k: Decimal(v) / dias for k, v in reparto.items()}

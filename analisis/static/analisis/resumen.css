@@ -129,3 +129,17 @@ figcaption { font-size: .88rem; color: var(--tinta-suave); margin-bottom: .5rem;
   .filtros, .enlace { display: none; }
   .panel, .kpi { box-shadow: none; border: 1px solid var(--linea); break-inside: avoid; }
 }
+
+/* ---------- peso por canal */
+.cabecera-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .25rem; }
+.cabecera-panel h2 { margin: 0; }
+.nota-arriba { margin: .25rem 0 .75rem; }
+.conmutador { display: inline-flex; border: 1px solid #C9CFD8; border-radius: 10px; overflow: hidden; }
+.conmutador button {
+  font: inherit; font-size: .88rem; padding: .35rem .8rem; border: 0; background: var(--tarjeta);
+  color: var(--tinta-suave); cursor: pointer;
+}
+.conmutador button + button { border-left: 1px solid #C9CFD8; }
+.conmutador button[aria-pressed="true"] { background: var(--acento-tinte); color: var(--acento); font-weight: 500; }
+.conmutador button:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+.muestra { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .45rem; vertical-align: baseline; }

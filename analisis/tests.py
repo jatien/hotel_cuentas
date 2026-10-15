@@ -9,7 +9,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .importacion import ErrorImportacion, importar_acreedores, importar_extras
-from .models import AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor, Reserva
+from .models import (AsignacionDepartamento, ApunteIva, CompraProveedor, ExtraPersonal, FacturaAcreedor,
+                     GastoAdicional, Reserva)
 from .resumen import SIN_ASIGNAR, calcular_resumen, normalizar_departamento
 
 HOY = date(2026, 6, 15)
@@ -178,3 +179,36 @@ class ImportarExtrasTests(TestCase):
         importar_extras(Path(f.name))
         a.refresh_from_db()
         self.assertEqual(a.departamento, "Bar")
+
+
+class GastoAdicionalYCanalesTests(TestCase):
+    def test_alquiler_se_reparte_y_respeta_el_previsto(self):
+        GastoAdicional.objects.create(concepto="Alquiler", cuenta="621", base=D("1200"), iva=D("252"),
+                                      desde=date(2026, 1, 1), hasta=date(2026, 12, 31))
+        hoy = date(2026, 6, 15)
+        r = calcular_resumen(2026, hoy=hoy)
+        self.assertAlmostEqual(float(r["totales"]["acreedores"]), 1200 * 181 / 365, places=2)  # ene–jun
+        con = calcular_resumen(2026, hoy=hoy, incluir_previsto=True)
+        self.assertAlmostEqual(float(con["totales"]["acreedores"]), 1200, places=2)
+        self.assertEqual(con["cuentas_gasto"][0]["cuenta"], "621")
+
+    def test_gasto_adicional_quita_el_aviso_de_su_iva(self):
+        ApunteIva.objects.create(libro="soportado", fecha=date(2026, 5, 31), documento="1", asiento=99,
+                                 concepto="S/FRA ARRENDADOR", cuenta="410000036", cuota=D("2100"))
+        avisos = calcular_resumen(2026, hoy=HOY)["avisos"]
+        self.assertTrue(any("ARRENDADOR" in a for a in avisos))
+        GastoAdicional.objects.create(concepto="Alquiler", base=D("10000"), iva=D("2100"),
+                                      desde=date(2026, 1, 1), hasta=date(2026, 12, 31), asiento_iva=99)
+        avisos = calcular_resumen(2026, hoy=HOY)["avisos"]
+        self.assertFalse(any("ARRENDADOR" in a for a in avisos))
+
+    def test_peso_por_canal_principal(self):
+        reserva(1, date(2026, 5, 1), date(2026, 5, 2), estancias="300", agencia="BOOKING")
+        reserva(2, date(2026, 5, 1), date(2026, 5, 2), estancias="100", agencia="111 Expedia Group Way W")
+        reserva(3, date(2026, 5, 1), date(2026, 5, 2), estancias="100", agencia="Expedia Lodging Partner Services")
+        reserva(4, date(2026, 5, 1), date(2026, 5, 2), estancias="999", agencia="AGENCIA PEQUEÑA")
+        p = calcular_resumen(2026, hoy=HOY)["pesos_canales"]
+        self.assertAlmostEqual(p["ingresos"]["Booking"]["pesos"][4], 60.0)
+        self.assertAlmostEqual(p["ingresos"]["Expedia"]["pesos"][4], 40.0)   # las dos de Expedia juntas
+        self.assertIsNone(p["ingresos"]["Booking"]["pesos"][3])             # abril sin reservas
+        self.assertEqual(p["noches"]["Expedia"]["total"], 2)
