@@ -6,18 +6,17 @@ from functools import wraps
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Length
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .forms import AltaSubcuentaForm
 from .modelos_asiento import MODELOS, crear_desde_modelo, previsualizar
 from .cuentas_anuales import calcular_cuentas_anuales, evaluar_abreviado
 from .forms import AltaSubcuentaForm, DatosEjercicioForm
-from .models import LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio
+from .models import LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio, Hoja
 from .services import (LONGITUDES_BASE, asignar_contrapartidas, crear_subcuenta, renumerar,
                        siguiente_codigo)
 from .tipos_alta import TIPOS_ALTA
@@ -37,7 +36,7 @@ def serializar_asiento(asiento):
     haber = sum((a.haber for a in apuntes), Decimal("0"))
     return {
         "id": asiento.id, "numero": asiento.numero, "fecha": asiento.fecha.isoformat(),
-        "concepto": asiento.concepto, "estado": asiento.estado,
+        "concepto": asiento.concepto, "estado": asiento.estado, "hoja": asiento.hoja_id,
         "tipo": asiento.tipo, "tipo_label": asiento.get_tipo_display(), "modelo": asiento.modelo,
         "clase": "Simple" if len(apuntes) == 2 else "Compuesto" if len(apuntes) > 2 else "Incompleto",
         "estado_label": asiento.get_estado_display(), "origen_label": asiento.get_origen_display(),
@@ -75,6 +74,16 @@ def _fecha(valor):
         return date.fromisoformat(str(valor))
     except ValueError:
         raise ValidationError(f"Fecha no válida: {valor}")
+
+
+def _hoja(valor):
+    """Hoja a partir de su id; None si viene vacío."""
+    if valor in (None, "", "sin"):
+        return None
+    hoja = Hoja.objects.filter(pk=valor).first() if str(valor).isdigit() else None
+    if not hoja:
+        raise ValidationError("La hoja no existe.")
+    return hoja
 
 
 def _importe(valor):
@@ -128,19 +137,28 @@ def libro_diario(request):
     ejercicios = Ejercicio.objects.all()
     anio = request.GET.get("ejercicio")
     ejercicio = ejercicios.filter(anio=anio).first() if anio else ejercicios.first()
+    hoja = request.GET.get("hoja", "")          # "" = todas, "sin" = sin hoja, o el id
     asientos = Asiento.objects.none()
     mes = request.GET.get("mes")
     if ejercicio:
         asientos = (Asiento.objects.filter(ejercicio=ejercicio).select_related("ejercicio")
                     .prefetch_related("apuntes__cuenta", "apuntes__contrapartida").order_by("fecha", "numero"))
+        if hoja == "sin":
+            asientos = asientos.filter(hoja__isnull=True)
+        elif hoja.isdigit():
+            asientos = asientos.filter(hoja_id=hoja)
         if mes is None:
             ultimo = asientos.order_by("-fecha").first()
             mes = str(ultimo.fecha.month) if ultimo else ""
         if mes:
             asientos = asientos.filter(fecha__month=int(mes))
     anio = ejercicio.anio if ejercicio else date.today().year
+    hojas = Hoja.objects.annotate(n=Count("asientos", filter=Q(asientos__ejercicio=ejercicio)))
     return render(request, "cuadro_cuentas/libro_diario.html", {
         "ejercicios": ejercicios, "ejercicio": ejercicio, "mes": mes or "", "meses": MESES,
+        "hoja": hoja,
+        "hojas": hojas,
+        "hojas_json": [{"id": h.id, "nombre": h.nombre, "color": h.color} for h in hojas],
         "modelos": _modelos_para_pantalla(),
         "ejercicio_info": {
             "anio": anio,
@@ -149,7 +167,6 @@ def libro_diario(request):
         },
         "asientos": [serializar_asiento(a) for a in asientos],
         "cuentas": CuentaContable.objects.filter(imputable=True, activa=True),
-        
     })
 
 
@@ -159,7 +176,8 @@ def api_crear_asiento(request):
     datos = _json(request)
     asiento = Asiento(fecha=_fecha(datos.get("fecha")),
                       concepto=(datos.get("concepto") or "Nuevo asiento").strip()[:255],
-                      tipo=datos.get("tipo") or Asiento.Tipo.OPERACION)
+                      tipo=datos.get("tipo") or Asiento.Tipo.OPERACION,
+                      hoja=_hoja(datos.get("hoja")))
     asiento.full_clean(exclude=["ejercicio", "numero"], validate_constraints=False)
     asiento.save()
     renumerado = renumerar(asiento.ejercicio)
@@ -179,6 +197,11 @@ def api_asiento(request, pk):
         asiento.delete()
         return JsonResponse({"ok": True, "renumerado": renumerar(ejercicio)})
     datos = _json(request)
+    if "hoja" in datos:
+        # cambiar de hoja no toca la contabilidad: solo dónde se ve el asiento
+        asiento.hoja = _hoja(datos["hoja"])
+        asiento.save(update_fields=["hoja"])
+        return JsonResponse({**serializar_asiento(asiento), "renumerado": False})
     if "concepto" in datos:
         concepto = str(datos["concepto"]).strip()
         if not concepto:
@@ -313,13 +336,14 @@ def _modelos_para_pantalla():
 def _datos_modelo(request):
     datos = _json(request)
     return (_fecha(datos.get("fecha")), datos.get("datos") or {},
-            str(datos.get("concepto") or ""), str(datos.get("documento") or ""))
+            str(datos.get("concepto") or ""), str(datos.get("documento") or ""),
+            _hoja(datos.get("hoja")))
 
 
 @require_POST
 def api_modelo_previsualizar(request, clave):
     try:
-        fecha, entrada, concepto, documento = _datos_modelo(request)
+        fecha, entrada, concepto, documento, _ = _datos_modelo(request)
         return JsonResponse(previsualizar(clave, fecha, entrada, concepto, documento))
     except ValidationError as e:
         return JsonResponse({"error": " ".join(e.messages)}, status=400)
@@ -328,10 +352,11 @@ def api_modelo_previsualizar(request, clave):
 @require_POST
 @api
 def api_modelo_crear(request, clave):
-    fecha, entrada, concepto, documento = _datos_modelo(request)
-    asiento = crear_desde_modelo(clave, fecha, entrada, concepto, documento)
+    fecha, entrada, concepto, documento, hoja = _datos_modelo(request)
+    asiento = crear_desde_modelo(clave, fecha, entrada, concepto, documento, hoja=hoja)
     return JsonResponse({"id": asiento.id, "numero": asiento.numero,
                          "ejercicio": asiento.ejercicio.anio, "mes": asiento.fecha.month}, status=201)
+
 
 
 # ===================== Cuadro de cuentas =====================

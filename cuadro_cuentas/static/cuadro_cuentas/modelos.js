@@ -109,6 +109,7 @@
     return {
       fecha: form.elements.fecha.value,
       documento: form.elements.documento.value,
+      hoja: /^\d+$/.test(cfg.hoja) ? cfg.hoja : null,
       concepto: form.elements.concepto.value,
       datos,
     };
@@ -178,7 +179,7 @@
     try {
       const r = await llamar(cfg.crearModeloUrl);
       // se abre el libro en el mes del asiento nuevo, con el asiento seleccionado
-      location.href = `?ejercicio=${r.ejercicio}&mes=${r.mes}#a${r.id}`;
+      location.href = `?ejercicio=${r.ejercicio}&mes=${r.mes}&hoja=${cfg.hoja}#a${r.id}`;
     } catch (e) {
       vista.insertAdjacentHTML("afterbegin", `<p class="dm-estado mal">${esc(e.message)}</p>`);
       btnCrear.disabled = false;

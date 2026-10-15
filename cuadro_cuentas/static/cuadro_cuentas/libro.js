@@ -4,6 +4,7 @@
   const lista = document.getElementById("lista-asientos");
   const panel = document.getElementById("panel");
   const aviso = document.getElementById("aviso");
+  const hojas = JSON.parse(document.getElementById("datos-hojas").textContent);
   const sinMovimiento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const asientos = new Map();
@@ -16,6 +17,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const url = (plantilla, id, extra = "") => plantilla.replace("/0/", `/${id}/`) + extra;
+  const hojaPorId = (id) => hojas.find((h) => h.id === id);
 
   async function api(metodo, direccion, datos) {
     const r = await fetch(direccion, {
@@ -44,6 +46,13 @@
     return true;
   }
 
+  // ¿El asiento ya no pertenece a la hoja que se está viendo?
+  function fueraDeLaHoja(a) {
+    if (!cfg.hoja) return false;
+    if (cfg.hoja === "sin") return a.hoja !== null;
+    return String(a.hoja) !== cfg.hoja;
+  }
+
   // ---------- pintado ----------
   function filaHTML(ap, bloq) {
     const d = Number(ap.debe), h = Number(ap.haber);
@@ -67,15 +76,23 @@
       </li>`;
   }
 
+  function selectorHoja(a) {
+    const opciones = ['<option value="">Sin hoja</option>'].concat(hojas.map((h) =>
+      `<option value="${h.id}" ${h.id === a.hoja ? "selected" : ""}>${esc(h.nombre)}</option>`));
+    return `<select class="campo campo-hoja" data-campo="hoja" aria-label="Hoja" title="Hoja">${opciones.join("")}</select>`;
+  }
+
   function tarjeta(a) {
     const bloq = a.cerrado ? "disabled" : "";
     const dif = Number(a.debe) - Number(a.haber);
+    const hoja = hojaPorId(a.hoja);
     const el = document.createElement("article");
     el.className = "asiento";
     el.id = `a${a.id}`;
     el.dataset.id = a.id;
     el.dataset.estado = a.estado;
     el.dataset.tipo = a.tipo;
+    if (hoja) el.style.setProperty("--color-hoja", hoja.color);
     el.innerHTML = `
       <header class="asiento-cab">
         <span class="asiento-num" title="Número de asiento">${a.numero}</span>
@@ -84,10 +101,11 @@
         ${a.tipo !== "operacion" ? `<span class="etiqueta etiqueta-${a.tipo}">${esc(a.tipo_label)}</span>` : ""}
         <span class="etiqueta etiqueta-clase" title="Simple: dos cuentas. Compuesto: tres o más.">${esc(a.clase)}</span>
         <span class="estado">${esc(a.estado_label)}</span>
+        ${selectorHoja(a)}
       </header>
       <div class="columnas" aria-hidden="true">
         <span></span><span>Cuenta</span><span>Concepto</span><span class="num">Debe</span>
-         <span class="num">Haber</span><span>Contrapartida</span><span></span>
+        <span class="num">Haber</span><span>Contrapartida</span><span></span>
       </div>
       <ol class="apuntes">${a.apuntes.map((ap) => filaHTML(ap, bloq)).join("")}</ol>
       <footer class="asiento-pie">
@@ -151,6 +169,18 @@
     if (a.id === seleccionado) cargarResumen(a.id);
   }
 
+  function quitarTarjeta(card, id) {
+    card.remove();
+    asientos.delete(id);
+    if (seleccionado === id) {
+      seleccionado = null;
+      panel.innerHTML = '<p class="panel-vacio">Selecciona un asiento para ver sus totales y el saldo de sus cuentas.</p>';
+    }
+    if (!lista.querySelector(".asiento")) {
+      lista.innerHTML = '<p class="vacio">No hay asientos en este periodo. Crea uno con «Nuevo asiento».</p>';
+    }
+  }
+
   // ---------- panel derecho ----------
   const textoSaldo = (v) => {
     const n = Number(v);
@@ -187,6 +217,7 @@
     const cuadre = dif
       ? `El ${dif > 0 ? "Debe" : "Haber"} supera en ${eur.format(Math.abs(dif))}`
       : a.apuntes.length ? "El asiento cuadra" : "Sin líneas todavía";
+    const hoja = hojaPorId(a.hoja);
 
     panel.innerHTML = `
       <h2>Asiento ${a.numero}</h2>
@@ -199,6 +230,7 @@
       <dl class="datos">
         <dt>Tipo</dt><dd>${esc(a.tipo_label)}, ${esc(a.clase.toLowerCase())}</dd>
         <dt>Estado</dt><dd>${esc(a.estado_label)}</dd>
+        <dt>Hoja</dt><dd>${hoja ? esc(hoja.nombre) : "Sin hoja"}</dd>
         <dt>Origen</dt><dd>${esc(a.origen_label)}</dd>
         ${a.referencia_origen ? `<dt>Documento</dt><dd>${esc(a.referencia_origen)}</dd>` : ""}
         <dt>Ejercicio</dt><dd>${a.ejercicio}${a.cerrado ? " (cerrado)" : ""}</dd>
@@ -266,7 +298,14 @@
     try {
       const destino = fila ? url(cfg.apunteUrl, fila.dataset.id) : url(cfg.asientoUrl, id);
       const datos = await api("PATCH", destino, { [campo]: ev.target.value });
-      if (!recargarSiRenumerado(datos, id)) actualizar(datos);
+      if (recargarSiRenumerado(datos, id)) return;
+      if (campo === "hoja" && fueraDeLaHoja(datos)) {
+        const hoja = hojaPorId(datos.hoja);
+        quitarTarjeta(card, id);
+        avisar(`Asiento ${datos.numero} movido a ${hoja ? `la hoja «${hoja.nombre}»` : "sin hoja"}`, "ok");
+      } else {
+        actualizar(datos);
+      }
     } catch (e) {
       avisar(e.message);
       actualizar(asientos.get(id));
@@ -314,10 +353,7 @@
           if (!confirm(`¿Eliminar el asiento ${a.numero}?`)) break;
           const r = await api("DELETE", url(cfg.asientoUrl, id));
           if (recargarSiRenumerado(r)) break;
-          card.remove();
-          asientos.delete(id);
-          seleccionado = null;
-          panel.innerHTML = '<p class="panel-vacio">Selecciona un asiento para ver sus totales y el saldo de sus cuentas.</p>';
+          quitarTarjeta(card, id);
           break;
         }
       }
@@ -333,7 +369,7 @@
   }
   iniciales.forEach((a) => actualizar(a));
 
-  // Al llegar con #a123 (por ejemplo, tras crear un asiento) se selecciona y se resalta
+  // Al llegar con #a123 (desde el buscador, un extracto o tras crear un asiento) se selecciona y se resalta
   const destino = location.hash && document.getElementById(location.hash.slice(1));
   if (destino?.classList.contains("asiento")) {
     seleccionar(Number(destino.dataset.id));

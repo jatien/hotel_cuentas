@@ -1,0 +1,83 @@
+{% load static cuadro_cuentas_tags %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buscador de apuntes</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
+</head>
+<body>
+  <header class="barra">
+    {% include "cuadro_cuentas/_nav.html" %}
+    <h1>Buscador de apuntes</h1>
+  </header>
+
+  {% url 'cuadro_cuentas:extractos' as u_ext %}
+  {% url 'cuadro_cuentas:libro_diario' as u_libro %}
+  <main class="consulta">
+    <form method="get" class="buscador-form tarjeta-consulta">
+      <fieldset>
+        <legend>Por importe</legend>
+        <label>{{ form.importe.label }} {{ form.importe }}</label>
+        <label class="check">{{ form.aproximado }} {{ form.aproximado.label }}</label>
+        <label>Entre {{ form.importe_min }}</label>
+        <label>y {{ form.importe_max }}</label>
+        <label>{{ form.lado.label }} {{ form.lado }}</label>
+      </fieldset>
+      <fieldset>
+        <legend>Por texto y cuenta</legend>
+        <label class="ancho">{{ form.texto.label }} {{ form.texto }}</label>
+        <label>{{ form.cuenta.label }} {{ form.cuenta }}</label>
+      </fieldset>
+      <fieldset>
+        <legend>Por fecha y asiento</legend>
+        <label>{{ form.desde.label }} {{ form.desde }}</label>
+        <label>{{ form.hasta.label }} {{ form.hasta }}</label>
+        <label>Ejercicio {{ form.ejercicio }}</label>
+        <label>Hoja {{ form.hoja }}</label>
+        <label>Estado {{ form.estado }}</label>
+        <label>{{ form.tipo.label }} {{ form.tipo }}</label>
+      </fieldset>
+      {% if form.errors %}<div class="alerta">{% for campo, errores in form.errors.items %}{{ errores|join:" " }} {% endfor %}</div>{% endif %}
+      <div class="acciones-busqueda">
+        <button class="btn-primario">Buscar</button>
+        <a class="btn-sec" href="?">Limpiar</a>
+        <span class="nota">Puedes combinar criterios. Los importes admiten «1.234,56».</span>
+      </div>
+    </form>
+
+    {% if resultados is not None %}
+      <section class="tarjeta-consulta">
+        <h2>{{ total }} apunte{{ total|pluralize }} encontrado{{ total|pluralize }}</h2>
+        {% if total > limite %}<p class="nota">Se muestran los {{ limite }} más recientes: afina la búsqueda para ver el resto.</p>{% endif %}
+        <table class="tabla-consulta">
+          <thead><tr><th>Fecha</th><th class="num">Asiento</th><th>Cuenta</th><th>Concepto</th><th>Documento</th>
+            <th>Hoja</th><th class="num">Debe</th><th class="num">Haber</th></tr></thead>
+          <tbody>
+            {% for a in resultados %}
+              <tr class="{% if a.asiento.estado == 'borrador' %}borrador{% endif %}">
+                <td>{{ a.asiento.fecha|date:"d/m/Y" }}</td>
+                <td class="num"><a href="{{ u_libro }}?ejercicio={{ a.asiento.ejercicio.anio }}&mes={{ a.asiento.fecha.month }}#a{{ a.asiento.id }}" title="Abrir en el libro diario">{{ a.asiento.numero }}</a></td>
+                <td><a href="{{ u_ext }}?ejercicio={{ a.asiento.ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="Ver extracto">{{ a.cuenta.codigo }}</a>
+                  <span class="tenue">{{ a.cuenta.nombre }}</span></td>
+                <td>{{ a.concepto|default:a.asiento.concepto }}{% if a.asiento.estado == "borrador" %} <span class="etiqueta">Borrador</span>{% endif %}</td>
+                <td>{{ a.asiento.referencia_origen }}</td>
+                <td>{% if a.asiento.hoja %}<span class="chip-hoja" style="--color-hoja: {{ a.asiento.hoja.color }}">{{ a.asiento.hoja }}</span>{% endif %}</td>
+                <td class="num d">{% if a.debe %}{{ a.debe|importe }}{% endif %}</td>
+                <td class="num h">{% if a.haber %}{{ a.haber|importe }}{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="vacio">Ningún apunte cumple esos criterios.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+  </main>
+
+  <datalist id="lista-cuentas">{% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}</datalist>
+</body>
+</html>

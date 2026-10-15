@@ -10,14 +10,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
+  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
 </head>
 <body>
   <header class="barra">
-    <a href="/" class="volver">Inicio</a>
-    <a href="{% url 'cuadro_cuentas:plan_cuentas' %}" class="volver">Cuadro de cuentas</a>
-    <a href="{% url 'cuadro_cuentas:cuentas_anuales' %}" class="volver">Cuentas anuales</a>
+    {% include "cuadro_cuentas/_nav.html" %}
     <h1>Libro diario</h1>
     <form method="get" class="filtros">
+      <input type="hidden" name="hoja" value="{{ hoja }}">
       <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
         {% for e in ejercicios %}
           <option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>Ejercicio {{ e.anio }}</option>
@@ -34,6 +34,17 @@
     </form>
     <button id="nuevo-asiento" class="btn-primario">Nuevo asiento</button>
   </header>
+
+  <nav class="hojas-barra" aria-label="Hojas">
+    <a href="?ejercicio={{ ejercicio.anio }}&mes={{ mes }}&hoja=" {% if not hoja %}aria-current="true"{% endif %}>Todas</a>
+    {% for h in hojas %}
+      <a href="?ejercicio={{ ejercicio.anio }}&mes={{ mes }}&hoja={{ h.id }}" style="--color-hoja: {{ h.color }}"
+         {% if hoja == h.id|stringformat:"s" %}aria-current="true"{% endif %}>
+        <span class="punto" aria-hidden="true"></span>{{ h.nombre }} <small>{{ h.n }}</small></a>
+    {% endfor %}
+    <a href="?ejercicio={{ ejercicio.anio }}&mes={{ mes }}&hoja=sin" {% if hoja == "sin" %}aria-current="true"{% endif %}>Sin hoja</a>
+    <a href="{% url 'cuadro_cuentas:hojas' %}" class="gestionar">Gestionar hojas</a>
+  </nav>
 
   <main class="libro">
     <section id="lista-asientos" class="lista" aria-label="Asientos"></section>
@@ -79,6 +90,7 @@
   <div id="aviso" class="aviso" role="status" hidden></div>
 
   {{ asientos|json_script:"datos-asientos" }}
+  {{ hojas_json|json_script:"datos-hojas" }}
   {{ modelos|json_script:"datos-modelos" }}
   {{ ejercicio_info|json_script:"datos-ejercicio" }}
   <script>
@@ -89,6 +101,7 @@
       previsualizarUrl: "{% url 'cuadro_cuentas:api_modelo_previsualizar' 'x' %}",
       crearModeloUrl: "{% url 'cuadro_cuentas:api_modelo_crear' 'x' %}",
       planUrl: "{% url 'cuadro_cuentas:plan_cuentas' %}",
+      hoja: "{{ hoja|escapejs }}",
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>

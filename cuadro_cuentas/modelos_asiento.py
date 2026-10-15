@@ -473,15 +473,15 @@ def previsualizar(clave, fecha, entrada, concepto="", documento=""):
 
 
 @transaction.atomic
-def crear_desde_modelo(clave, fecha, entrada, concepto="", documento=""):
+def crear_desde_modelo(clave, fecha, entrada, concepto="", documento="", hoja=None):
     modelo, tipo, concepto, lineas = preparar(clave, fecha, entrada, concepto, documento)
     if clave == "libre":
         # asiento vacío en borrador para completar a mano en el libro diario
-        asiento = Asiento(fecha=fecha, concepto=concepto, tipo=tipo, modelo=clave)
+        asiento = Asiento(fecha=fecha, concepto=concepto, tipo=tipo, modelo=clave, hoja=hoja)
         asiento.full_clean(exclude=["ejercicio", "numero"], validate_constraints=False)
         asiento.save()
         if renumerar(asiento.ejercicio):
             asiento.refresh_from_db(fields=["numero"])
         return asiento
     return crear_asiento(fecha, concepto, lineas, tipo=tipo, modelo=clave,
-                         referencia_origen=(documento or "").strip())
+                         referencia_origen=(documento or "").strip(), hoja=hoja)

@@ -1,0 +1,10 @@
+{% url 'cuadro_cuentas:libro_diario' as u_libro %}{% url 'cuadro_cuentas:plan_cuentas' as u_plan %}{% url 'cuadro_cuentas:extractos' as u_ext %}{% url 'cuadro_cuentas:buscador' as u_bus %}{% url 'cuadro_cuentas:hojas' as u_hojas %}{% url 'cuadro_cuentas:cuentas_anuales' as u_ca %}
+<nav class="nav-conta" aria-label="Contabilidad">
+  <a href="/" class="volver">Inicio</a>
+  <a href="{{ u_plan }}" class="volver" {% if request.path == u_plan %}aria-current="page"{% endif %}>Cuadro de cuentas</a>
+  <a href="{{ u_libro }}" class="volver" {% if request.path == u_libro %}aria-current="page"{% endif %}>Libro diario</a>
+  <a href="{{ u_ext }}" class="volver" {% if request.path == u_ext %}aria-current="page"{% endif %}>Extractos</a>
+  <a href="{{ u_bus }}" class="volver" {% if request.path == u_bus %}aria-current="page"{% endif %}>Buscador</a>
+  <a href="{{ u_hojas }}" class="volver" {% if request.path == u_hojas %}aria-current="page"{% endif %}>Hojas</a>
+  <a href="{{ u_ca }}" class="volver" {% if request.path == u_ca %}aria-current="page"{% endif %}>Cuentas anuales</a>
+</nav>

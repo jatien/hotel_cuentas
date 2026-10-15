@@ -81,7 +81,8 @@ def saldos_subcuentas(ejercicio, hasta=None, prefijos=None):
 
 @transaction.atomic
 def crear_asiento(fecha, concepto, lineas, origen=Asiento.Origen.MANUAL,
-                  referencia_origen="", contabilizar=True, tipo=Asiento.Tipo.OPERACION, modelo=""):
+                  referencia_origen="", contabilizar=True, tipo=Asiento.Tipo.OPERACION, modelo="",
+                  hoja=None):
     lineas = list(lineas)
     if len(lineas) < 2:
         raise ValidationError("Un asiento necesita al menos dos líneas.")
@@ -103,7 +104,7 @@ def crear_asiento(fecha, concepto, lineas, origen=Asiento.Origen.MANUAL,
         raise ValidationError(f"El asiento no cuadra: Debe {total_debe} ≠ Haber {total_haber}.")
 
     asiento = Asiento(fecha=fecha, concepto=concepto, origen=origen, tipo=tipo, modelo=modelo,
-                      referencia_origen=referencia_origen[:100])
+                      referencia_origen=referencia_origen[:100], hoja=hoja)
     asiento.full_clean(exclude=["ejercicio", "numero"], validate_constraints=False)
     asiento.save()
 
