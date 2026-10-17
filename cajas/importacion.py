@@ -9,8 +9,8 @@ Formato esperado (una hoja por mes, p. ej. «Mayo 26_Tabla 1»):
     Total
 
 - Las columnas se localizan por el nombre de la cabecera, no por la posición.
-- Total (E) y la columna G sin nombre no se guardan: se recalculan y solo
-  sirven para comprobar que la lectura cuadra (si no cuadra, aviso).
+- Total (E) no se guarda: se recalcula y solo sirve para comprobar que la
+  lectura cuadra (si no cuadra, aviso). La columna G (sin nombre) se ignora.
 - Se lee y valida la hoja entera antes de tocar la base de datos; si hay un
   error no se importa nada de esa hoja.
 
@@ -28,7 +28,7 @@ from pathlib import Path
 from django.db import transaction
 from python_calamine import CalamineWorkbook
 
-from .models import CAMPOS_IMPORTE, CAMPOS_TOTAL_COBROS, MESES, PUNTOS_VENTA, CajaDia, CajaMes
+from .models import CAMPOS_IMPORTE, MESES, PUNTOS_VENTA, CajaDia, CajaMes
 
 CENT = Decimal("0.01")
 TOLERANCIA = Decimal("0.05")
@@ -123,14 +123,6 @@ def _localiza_columnas(filas: list[list]) -> tuple[int, dict[str, int]]:
             campo = CABECERAS.get(cab)
             if campo and campo not in columnas:
                 columnas[campo] = j
-        # Columna G: la primera sin cabecera a la izquierda de Ecotasa
-        if "ecotasa" in columnas:
-            for j in range(columnas["ecotasa"] - 1, -1, -1):
-                if cabeceras[j] == "":
-                    columnas["_total_cobros"] = j
-                    break
-                if cabeceras[j] in CABECERAS:
-                    break
         faltan = [c for c in OBLIGATORIAS if c not in columnas]
         if faltan:
             raise ErrorImportacion(f"faltan columnas en la cabecera: {', '.join(faltan)}")
@@ -189,21 +181,15 @@ def leer_hoja(filas: list[list], anio: int, mes: int) -> tuple[dict[int, dict], 
             continue
         dias[dia] = importes
 
-        # Comprobaciones contra los totales del propio Excel (solo avisos)
-        if len(importes) == len(CAMPOS_IMPORTE):
-            for campo_total, sumandos, nombre in (
-                ("_total_ventas", [c for c, _ in PUNTOS_VENTA], "Total"),
-                ("_total_cobros", CAMPOS_TOTAL_COBROS, "columna G"),
-            ):
-                if campo_total not in columnas:
-                    continue
-                try:
-                    en_excel = a_decimal(celda(fila, campo_total))
-                except ValueError:
-                    continue
-                calculado = sum((importes[c] for c in sumandos), Decimal("0"))
-                if abs(en_excel - calculado) > TOLERANCIA:
-                    avisos.append(f"día {dia}: {nombre} del Excel {en_excel} ≠ suma {calculado}")
+        # Comprobación contra el Total (bar + comedor + chill) del propio Excel (solo aviso)
+        if len(importes) == len(CAMPOS_IMPORTE) and "_total_ventas" in columnas:
+            try:
+                en_excel = a_decimal(celda(fila, "_total_ventas"))
+            except ValueError:
+                en_excel = None
+            calculado = sum((importes[c] for c, _ in PUNTOS_VENTA), Decimal("0"))
+            if en_excel is not None and abs(en_excel - calculado) > TOLERANCIA:
+                avisos.append(f"día {dia}: Total del Excel {en_excel} ≠ suma {calculado}")
 
     if errores:
         detalle = "\n".join(errores[:25])

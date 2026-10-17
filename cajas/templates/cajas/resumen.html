@@ -13,7 +13,7 @@
   </form>
   <div class="acciones">
     <a class="btn" href="{% url 'cajas:importar' %}">Importar Excel</a>
-    <a class="btn btn-primario" href="{% url 'cajas:nuevo' %}">+ Nuevo mes</a>
+    <a class="btn btn-primario" href="{% url 'cajas:meses' %}?anio={{ anio }}">Meses</a>
   </div>
 </div>
 
@@ -23,21 +23,19 @@
   <div class="vacio-estado">
     <p>No hay cajas de {{ anio }}.</p>
     <p><a class="btn" href="{% url 'cajas:importar' %}">Importar Excel</a>
-       <a class="btn btn-primario" href="{% url 'cajas:nuevo' %}">Crear un mes a mano</a></p>
+       <a class="btn btn-primario" href="{% url 'cajas:meses' %}?anio={{ anio }}">Meses</a></p>
   </div>
 {% else %}
 
 <div class="kpis">
-  <div class="kpi"><div class="etq">Ventas del año</div><div class="val">{{ r.total.total_ventas|euros:0 }}</div>
-    <div class="sub">{{ r.filas|length }} mes{{ r.filas|length|pluralize:"es" }}</div></div>
+  <div class="kpi"><div class="etq">Ventas del año</div><div class="val">{{ r.total.total_ventas|euros:0 }}</div></div>
   <div class="kpi bar"><div class="etq">Bar</div><div class="val">{{ r.total.bar|euros:0 }}</div>
     <div class="sub">{{ r.pesos.bar|pct }} de las ventas</div></div>
   <div class="kpi comedor"><div class="etq">Comedor</div><div class="val">{{ r.total.comedor|euros:0 }}</div>
     <div class="sub">{{ r.pesos.comedor|pct }} de las ventas</div></div>
   <div class="kpi chill"><div class="etq">Chill out</div><div class="val">{{ r.total.chill_out|euros:0 }}</div>
     <div class="sub">{{ r.pesos.chill_out|pct }} de las ventas</div></div>
-  <div class="kpi cobros"><div class="etq">Otros cobros (col. G)</div><div class="val">{{ r.total.total_cobros|euros:0 }}</div>
-    <div class="sub">+ {{ r.total.parking_visa|euros:0 }} parking visa</div></div>
+  <div class="kpi cobros"><div class="etq">Otros cobros</div><div class="val">{{ r.total.total_cobros|euros:0 }}</div></div>
 </div>
 
 <div class="grafico"><canvas id="grafico-ventas" aria-label="Ventas mensuales por punto de venta"></canvas></div>
@@ -72,7 +70,6 @@
 
   <section class="bloque">
     <h2>Otros cobros</h2>
-    <p class="nota">Total = ecotasa + menús + facturas + parking efectivo (columna G del Excel). El parking visa va aparte.</p>
     <div class="tabla-scroll">
     <table class="cajas">
       <thead><tr>

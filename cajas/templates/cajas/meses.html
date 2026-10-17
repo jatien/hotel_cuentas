@@ -1,9 +1,21 @@
 {% extends "base.html" %}
 {% load cajas_tags %}
-{% block title %}Editar cajas {{ caja_mes }}{% endblock %}
+{% block title %}Meses de cajas {{ anio }}{% endblock %}
 {% block extra_head %}
 {% include "cajas/_estilos.html" %}
 <style>
+  .meses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .6rem; margin-bottom: 1.5rem; }
+  .mes-tarjeta {
+    display: block; padding: .7rem .9rem; border-radius: 12px; background: var(--tarjeta); color: inherit;
+    text-decoration: none; border: 2px solid transparent; box-shadow: 0 1px 2px rgb(28 39 51 / .06);
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .mes-tarjeta:hover { border-color: var(--acento); }
+  .mes-tarjeta.activo { border-color: var(--acento); background: var(--acento-tinte); }
+  .mes-tarjeta .nombre { font-weight: 600; color: var(--acento); }
+  .mes-tarjeta .estado { font-size: .8rem; color: var(--tinta-suave); font-variant-numeric: tabular-nums; margin-top: .15rem; }
+  .mes-tarjeta.vacio .nombre { color: var(--tinta-suave); }
+
   table.editar td { padding: .2rem .3rem; }
   table.editar input.importe { width: 6.5rem; text-align: right; font-variant-numeric: tabular-nums; padding: .25rem .4rem; }
   table.editar input.importe.error { border-color: var(--aviso); background: #F8EDF1; }
@@ -11,14 +23,48 @@
   table.editar .separador { border-left: 2px solid var(--fondo); }
   .pie-form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-top: 1rem; }
   .pie-form textarea { font: inherit; width: min(520px, 100%); border-radius: 8px; border: 1px solid #C8D0DA; padding: .5rem; }
+  .subtitulo { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; margin: 0 0 .5rem; }
+  .subtitulo h2 { margin: 0; font-size: 1.25rem; }
+  .ayuda { color: var(--tinta-suave); font-size: .85rem; }
 </style>
 {% endblock %}
 
 {% block content %}
-<a class="volver" href="{% url 'cajas:detalle' caja_mes.anio caja_mes.mes %}">← Volver a {{ caja_mes }}</a>
-<div class="cabecera"><h1>Editar cajas {{ caja_mes }}</h1></div>
+<a class="volver" href="{% url 'cajas:resumen' %}?anio={{ anio }}">← Resumen {{ anio }}</a>
+<div class="cabecera">
+  <h1>Meses</h1>
+  <form method="get">
+    <select name="anio" onchange="this.form.submit()" aria-label="Año">
+      {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+  </form>
+  <div class="acciones">
+    <a class="btn" href="{% url 'cajas:importar' %}">Importar Excel</a>
+  </div>
+</div>
+
 {% include "cajas/_mensajes.html" %}
-<p class="nota" style="color:var(--tinta-suave); font-size:.85rem; margin-top:-.5rem;">
+
+<nav class="meses-grid" aria-label="Meses de {{ anio }}">
+  {% for t in tarjetas %}
+  <a class="mes-tarjeta{% if t.mes == mes %} activo{% endif %}{% if not t.existe %} vacio{% endif %}"
+     href="?anio={{ anio }}&mes={{ t.mes }}"{% if t.mes == mes %} aria-current="page"{% endif %}>
+    <div class="nombre">{{ t.nombre }}</div>
+    <div class="estado">{% if t.existe %}{{ t.total|euros:0 }}{% else %}Sin datos{% endif %}</div>
+  </a>
+  {% endfor %}
+</nav>
+
+{% if not mes %}
+  <div class="vacio-estado">Elige un mes para ver y completar su tabla.</div>
+{% else %}
+
+<div class="subtitulo">
+  <h2>{{ nombre_mes }} {{ anio }}</h2>
+  {% if caja_mes %}<a href="{% url 'cajas:detalle' anio mes %}">Ver resumen del mes</a>
+  {% else %}<span class="ayuda">Mes nuevo: se guardará al pulsar «Guardar».</span>{% endif %}
+</div>
+<p class="ayuda" style="margin-top:0;">
   Puedes escribir los importes con coma o con punto decimal (156,45 o 156.45). Las casillas vacías cuentan como 0.
 </p>
 
@@ -44,18 +90,18 @@
     <tbody>
       {% for form in formset %}
       <tr>
-        <td>{{ form.instance.dia }}{{ form.id }}</td>
+        <td>{{ forloop.counter }}</td>
         {% for nombre, etiqueta in puntos_venta %}{% with field=form|campo:nombre %}
           <td><input type="text" name="{{ field.html_name }}" value="{{ field.value|valor_input }}" inputmode="decimal" autocomplete="off"
                      class="importe venta{% if field.errors %} error{% endif %}" data-campo="{{ nombre }}"
-                     aria-label="{{ etiqueta }} día {{ form.instance.dia }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
+                     aria-label="{{ etiqueta }} día {{ forloop.parentloop.counter }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
         {% endwith %}{% endfor %}
         <td class="num total" data-total="ventas"></td>
         <td class="num total separador" data-total="cobros"></td>
         {% for nombre, etiqueta in otros_cobros %}{% with field=form|campo:nombre %}
           <td><input type="text" name="{{ field.html_name }}" value="{{ field.value|valor_input }}" inputmode="decimal" autocomplete="off"
-                     class="importe cobro{% if nombre != 'parking_visa' %} en-total{% endif %}{% if field.errors %} error{% endif %}" data-campo="{{ nombre }}"
-                     aria-label="{{ etiqueta }} día {{ form.instance.dia }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
+                     class="importe cobro{% if field.errors %} error{% endif %}" data-campo="{{ nombre }}"
+                     aria-label="{{ etiqueta }} día {{ forloop.parentloop.counter }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
         {% endwith %}{% endfor %}
       </tr>
       {% endfor %}
@@ -75,8 +121,7 @@
   <div class="pie-form">
     <label>{{ form_notas.notas }}</label>
     <div>
-      <a class="btn" href="{% url 'cajas:detalle' caja_mes.anio caja_mes.mes %}">Cancelar</a>
-      <button class="btn btn-primario" type="submit">Guardar cambios</button>
+      <button class="btn btn-primario" type="submit">Guardar</button>
     </div>
   </div>
 </form>
@@ -103,7 +148,7 @@
           const v = num(inp.value);
           sumas[inp.dataset.campo] = (sumas[inp.dataset.campo] || 0) + v;
           if (inp.classList.contains('venta')) ventas += v;
-          if (inp.classList.contains('en-total')) cobros += v;
+          if (inp.classList.contains('cobro')) cobros += v;
         });
         tr.querySelector('[data-total="ventas"]').textContent = show(ventas);
         tr.querySelector('[data-total="cobros"]').textContent = show(cobros);
@@ -124,4 +169,5 @@
     recalcular();
   })();
 </script>
+{% endif %}
 {% endblock %}

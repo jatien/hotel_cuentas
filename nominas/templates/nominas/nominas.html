@@ -22,7 +22,7 @@
 
   <label class="toggle-agrupar">
     <input type="checkbox" class="chk-agrupar" data-mes="{{ mes }}">
-    Agrupar por departamento (con rollup)
+    Agrupar por departamento
   </label>
 
   <div id="grid-{{ mes }}" class="ag-theme-quartz grid-mes" style="height: 500px; width: 100%; margin-top: 1rem;"></div>
@@ -81,10 +81,13 @@ function agruparPorDepartamento(datos) {
     const subtotal = filas.reduce((acc, f) => ({
       deveng: acc.deveng + f.deveng,
       s_neto: acc.s_neto + f.s_neto,
+      irpf: acc.irpf + f.irpf,
+      ss_trabaj: acc.ss_trabaj + f.ss_trabaj,
+      ss_empr: acc.ss_empr + f.ss_empr,
       cost_tot: acc.cost_tot + f.cost_tot,
       importe_extra: acc.importe_extra + f.importe_extra,
       total: acc.total + f.total,
-    }), { deveng: 0, s_neto: 0, cost_tot: 0, importe_extra: 0, total: 0 });
+    }), { deveng: 0, s_neto: 0, irpf: 0, ss_trabaj: 0, ss_empr: 0, cost_tot: 0, importe_extra: 0, total: 0 });
 
     resultado.push({
       id: null,
@@ -92,6 +95,9 @@ function agruparPorDepartamento(datos) {
       departamento: depto,
       deveng: round2(subtotal.deveng),
       s_neto: round2(subtotal.s_neto),
+      irpf: round2(subtotal.irpf),
+      ss_trabaj: round2(subtotal.ss_trabaj),
+      ss_empr: round2(subtotal.ss_empr),
       cost_tot: round2(subtotal.cost_tot),
       importe_extra: round2(subtotal.importe_extra),
       total: round2(subtotal.total),
@@ -110,12 +116,18 @@ function agruparPorDepartamento(datos) {
   },
   { field: 'deveng', headerName: 'Devengado', editable: false },
   { field: 's_neto', headerName: 'S. Neto', editable: false },
-  { field: 'cost_tot', headerName: 'Coste total', editable: false },
+  { field: 'irpf', headerName: 'IRPF', editable: false },
+  { field: 'ss_trabaj', headerName: 'SS trabajador', editable: false },
+  { field: 'ss_empr', headerName: 'SS empresa', editable: false },
+  {
+    field: 'cost_tot', headerName: 'Coste total', editable: false,
+    headerTooltip: 'Coste total para la empresa: devengado (salario neto + IRPF + SS trabajador) + seguridad social de empresa',
+  },
   {
     field: 'importe_extra', headerName: 'Extra',
     editable: (params) => !params.data.esTotal,
   },
-  { field: 'total', headerName: 'Total (S.Neto + Extra)', editable: false },
+  { field: 'total', headerName: 'Total', headerTooltip: 'Coste total + Extra', editable: false },
 ];
 
   function crearGrid(mes) {
@@ -123,6 +135,7 @@ function agruparPorDepartamento(datos) {
       columnDefs: columnDefs,
       rowData: datosPorMes[mes] || [],
       defaultColDef: { sortable: true, filter: true, resizable: true },
+      autoSizeStrategy: { type: 'fitGridWidth', defaultMinWidth: 90 },  // todas las columnas a la vista
       getRowStyle: (params) => {
         if (params.data.esTotal) {
           return { fontWeight: 'bold', background: '#f0f4ff' };

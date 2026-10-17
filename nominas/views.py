@@ -22,13 +22,16 @@ def nominas_view(request, anio=2026):
     datos_por_mes = {}
     totales_mes = {}
     for n in nominas:
-        total = float(n.s_neto) + float(n.importe_extra)  # antes era cost_tot + importe_extra
+        total = float(n.total_con_extra)  # coste total (con SS e IRPF) + extras
         datos_por_mes.setdefault(n.mes, []).append({
             'id': n.id,
             'empleado': n.empleado.nombre,
             'departamento': n.departamento,
             'deveng': float(n.deveng),
             's_neto': float(n.s_neto),
+            'irpf': float(n.irpf_esp + n.irpf_din),
+            'ss_trabaj': float(n.ss_trabaj),
+            'ss_empr': float(n.ss_empr),
             'cost_tot': float(n.cost_tot),
             'importe_extra': float(n.importe_extra),
             'total': round(total, 2),
@@ -67,7 +70,7 @@ def actualizar_campo(request):
     setattr(nomina, campo, valor)
     nomina.save(update_fields=[campo])
 
-    total = float(nomina.s_neto) + float(nomina.importe_extra)  # antes era cost_tot + importe_extra
+    total = float(nomina.total_con_extra)  # coste total (con SS e IRPF) + extras
     return JsonResponse({'ok': True, 'total': round(total, 2)})
 
 
