@@ -98,9 +98,19 @@ def resumen(request):
         ("Estancias", "estancias", ""),
         ("Extras de reservas", "extras", ""),
         ("Tasas turísticas", "tasas", ""),
-        ("Bar (estimado)", "bar", ""),
-        ("Comedor (estimado)", "comedor", ""),
     ]
+    if r["fuente_restauracion"] == "cajas":
+        filas += [
+            ("Bar y chill out (cajas)", "bar", ""),
+            ("Comedor (cajas)", "comedor", ""),
+            ("Menús (cajas)", "menus", ""),
+            ("Parking (cajas)", "parking", ""),
+        ]
+    else:
+        filas += [
+            ("Bar (estimado por IVA)", "bar", ""),
+            ("Comedor (estimado por IVA)", "comedor", ""),
+        ]
     if incluir_previsto:
         filas.append(("Reservas futuras (previsto)", "previsto", ""))
     filas += [

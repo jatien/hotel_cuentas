@@ -145,7 +145,8 @@
         </table></div>
       </div>
       <p class="nota-pie">Los proveedores se reparten por el departamento de cada albarán. Los acreedores no tienen
-        departamento y van en un bloque aparte. Solo bar y comedor tienen ingresos propios (estimados).</p>
+        departamento y van en un bloque aparte. Solo bar y comedor tienen ingresos propios
+        ({% if fuente_restauracion == "cajas" %}de la app de cajas; el bar incluye el chill out y el comedor los menús{% else %}estimados a partir del IVA{% endif %}).</p>
     </section>
 
     {# ------------------------------------------------ Categorías #}

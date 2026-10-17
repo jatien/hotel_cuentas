@@ -14,8 +14,12 @@ Criterios:
 - Ingreso de una reserva = estancias + extras + tasas, repartido por noches:
   cada noche cuenta en su mes. Las noches posteriores a hoy son «previsto» y
   solo entran en el beneficio si se pide.
-- Bar y comedor: facturas «N/FRA BAR/COMEDOR» del IVA repercutido. Solo se
-  conoce la cuota, así que la base se ESTIMA con IVA_BAR_COMEDOR. Las facturas
+- Bar, comedor, menús y parking: de la app «cajas» (cajas diarias reales).
+  Bar = bar + chill out. Los importes de caja llevan IVA: para el neto se divide
+  entre 1,10 (parking entre 1,21). Ecotasa y facturas de caja NO se suman: ya
+  están en las reservas (tasas turísticas y cobro de las facturas de estancias).
+  Si el año no tiene cajas importadas, se usa la estimación anterior: facturas
+  «N/FRA BAR/COMEDOR» del IVA repercutido, cuya base se estima con IVA_BAR_COMEDOR. Las facturas
   trimestrales (fecha a fin de trimestre) se reparten entre sus tres meses.
 - Acreedores con cuenta 2xx (inmovilizado) = inversiones: aparte, no restan.
 - Gastos adicionales (p. ej. el alquiler, que solo aparece en el libro de IVA):
@@ -38,7 +42,8 @@ from .models import (DEPARTAMENTOS, ApunteIva, AsignacionDepartamento, CompraPro
 
 CERO = Decimal("0")
 IVA_ALOJAMIENTO = Decimal("0.10")
-IVA_BAR_COMEDOR = Decimal("0.10")   # supuesto: cámbialo si el bar factura parte al 21 %
+IVA_BAR_COMEDOR = Decimal("0.10")   # bar, comedor y menús
+IVA_PARKING = Decimal("0.21")
 SIN_ASIGNAR = "Sin asignar"
 SIN_CATEGORIA = "Otros"
 ACREEDORES = "Acreedores (sin departamento)"
@@ -212,6 +217,37 @@ def _meses_de_factura(fecha: date) -> list[int]:
     return [fecha.month]
 
 
+def _modelo_cajas():
+    """CajaDia de la app cajas, o None si la app no está instalada."""
+    try:
+        from cajas.models import CajaDia
+    except ImportError:
+        return None
+    return CajaDia
+
+
+def _ingresos_cajas(anio: int, con_iva: bool):
+    """{'Bar', 'Comedor', 'Menús', 'Parking': [12]} desde las cajas diarias, o None si no hay cajas del año."""
+    CajaDia = _modelo_cajas()
+    if CajaDia is None:
+        return None
+    dias = CajaDia.objects.filter(caja_mes__anio=anio)
+    if not dias.exists():
+        return None
+    f10 = Decimal("1") if con_iva else 1 / (1 + IVA_BAR_COMEDOR)
+    f21 = Decimal("1") if con_iva else 1 / (1 + IVA_PARKING)
+    series = {"Bar": _doce(), "Comedor": _doce(), "Menús": _doce(), "Parking": _doce()}
+    campos = ("bar", "chill_out", "comedor", "menus", "parking_efectivo", "parking_visa")
+    for fila in dias.values("caja_mes__mes").annotate(**{c: Sum(c) for c in campos}):
+        m = fila["caja_mes__mes"] - 1
+        v = {c: fila[c] or CERO for c in campos}
+        series["Bar"][m] += (v["bar"] + v["chill_out"]) * f10
+        series["Comedor"][m] += v["comedor"] * f10
+        series["Menús"][m] += v["menus"] * f10
+        series["Parking"][m] += (v["parking_efectivo"] + v["parking_visa"]) * f21
+    return series
+
+
 def _ingresos_bar_comedor(anio: int, con_iva: bool):
     """{'Bar': [12], 'Comedor': [12]} a partir de las facturas N/FRA del IVA repercutido."""
     series = {"Bar": _doce(), "Comedor": _doce()}
@@ -379,9 +415,16 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
 
     # --- Ingresos
     ing, agencias, canales_mes = _ingresos_reservas(anio, hoy, incluir_previsto, mes, con_iva)
-    bar_comedor = _ingresos_bar_comedor(anio, con_iva)
+    cajas = _ingresos_cajas(anio, con_iva)
+    if cajas is not None:
+        fuente_restauracion = "cajas"
+        bar_comedor = cajas
+    else:
+        fuente_restauracion = "iva"
+        bar_comedor = {**_ingresos_bar_comedor(anio, con_iva), "Menús": _doce(), "Parking": _doce()}
     ingresos = [ing["estancias"][i] + ing["extras"][i] + ing["tasas"][i]
                 + bar_comedor["Bar"][i] + bar_comedor["Comedor"][i]
+                + bar_comedor["Menús"][i] + bar_comedor["Parking"][i]
                 + (ing["previsto"][i] if incluir_previsto else CERO) for i in range(12)]
 
     # --- Proveedores
@@ -430,6 +473,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     mensual = {
         "estancias": ing["estancias"], "extras": ing["extras"], "tasas": ing["tasas"],
         "bar": bar_comedor["Bar"], "comedor": bar_comedor["Comedor"],
+        "menus": bar_comedor["Menús"], "parking": bar_comedor["Parking"],
         "previsto": ing["previsto"], "ingresos": ingresos,
         "proveedores": proveedores, "acreedores": acreedores,
         "coste_nomina": coste_nomina, "extras_personal": extras_personal, "nominas": personal,
@@ -443,7 +487,7 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     tot = {k: sum((v[i] for i in idx), CERO) for k, v in mensual.items() if k != "acumulado"}
     tot["margen"] = _pct(tot["beneficio"], tot["ingresos"])
     tot["adr"] = tot["estancias"] / tot["noches_hab"] if tot["noches_hab"] else None
-    tot["bar_comedor"] = tot["bar"] + tot["comedor"]
+    tot["bar_comedor"] = tot["bar"] + tot["comedor"] + tot["menus"]   # ingresos con departamento
 
     # --- Fichas de terceros (categoría) para proveedores y acreedores
     terceros = Terceros()
@@ -463,10 +507,10 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     asig_pers = _asignaciones(AsignacionDepartamento.Origen.PERSONAL)
     deptos = defaultdict(lambda: {"ingresos": CERO, "proveedores": CERO, "acreedores": CERO, "nominas": CERO})
 
-    for nombre in ("Bar", "Comedor"):
-        ingreso = sum((bar_comedor[nombre][i] for i in idx), CERO)
+    for origen, depto in (("Bar", "Bar"), ("Comedor", "Comedor"), ("Menús", "Comedor")):
+        ingreso = sum((bar_comedor[origen][i] for i in idx), CERO)
         if ingreso:
-            deptos[nombre]["ingresos"] += ingreso
+            deptos[depto]["ingresos"] += ingreso
     for c in lineas_compra:
         if en_periodo(c["fecha"].month):
             deptos[c["departamento"]]["proveedores"] += c["importe"] or CERO
@@ -575,7 +619,8 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
     tot["extras_hoja"] = sum((e["importe"] for e in extras_personas), CERO)
 
     # --- Avisos de calidad de datos
-    avisos = _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor)
+    avisos = _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor,
+                     fuente_restauracion)
     revision = _revision(anio, lineas_compra, incompletos, extras_personas)
 
     return {
@@ -585,11 +630,12 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
         "cuentas_inversion": cuentas_inversion, "canales": canales,
         "top_proveedores": top_prov, "top_acreedores": top_acr, "extras_personas": extras_personas,
         "pesos_canales": _pesos_canales(canales_mes), "categorias": categorias,
-        "avisos": avisos, "revision": revision,
+        "avisos": avisos, "revision": revision, "fuente_restauracion": fuente_restauracion,
     }
 
 
-def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor):
+def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, compras, bar_comedor,
+            fuente_restauracion):
     avisos = []
     pendientes = AsignacionDepartamento.objects.filter(origen=AsignacionDepartamento.Origen.PERSONAL,
                                                        departamento="").count()
@@ -633,8 +679,30 @@ def _avisos(anio, ingresos, nominas, meses_con_hoja, tot, soportado, casadas, co
         if diario and abs(libro - diario) > max(Decimal("50"), diario * Decimal("0.02")):
             avisos.append(f"El IVA del diario de compras ({diario:,.0f} €) no coincide con el libro de IVA "
                           f"soportado de proveedores ({libro:,.0f} €).".replace(",", "."))
-    if tot["bar"] or tot["comedor"]:
-        avisos.append(f"Bar y comedor: base estimada a partir de la cuota de IVA al "
+    if fuente_restauracion == "cajas":
+        coma = lambda x: f"{1 + x:.2f}".replace(".", ",")
+        avisos.append("Bar (bar + chill out), comedor, menús y parking salen de la app de cajas. Sin IVA se divide "
+                      f"entre {coma(IVA_BAR_COMEDOR)} (parking entre {coma(IVA_PARKING)}). La ecotasa y las "
+                      "facturas de caja no se suman porque ya están en las reservas.")
+        CajaDia = _modelo_cajas()
+        meses_caja = set(CajaDia.objects.filter(caja_mes__anio=anio).values_list("caja_mes__mes", flat=True))
+        sin_caja = sorted({i + 1 for i in range(12) if ingresos[i] > 0} - meses_caja)
+        if sin_caja:
+            avisos.append("Meses con ingresos de reservas pero sin cajas importadas: "
+                          + ", ".join(MESES_LARGOS[m - 1] for m in sin_caja) + ".")
+        # Control: base de cajas frente a la base deducida del IVA repercutido (N/FRA BAR/COMEDOR)
+        estimado = _ingresos_bar_comedor(anio, False)
+        con_iva_libro = sum(estimado["Bar"]) + sum(estimado["Comedor"])
+        if con_iva_libro:
+            f10 = 1 / (1 + IVA_BAR_COMEDOR)
+            CajaDia_qs = CajaDia.objects.filter(caja_mes__anio=anio)
+            agg = CajaDia_qs.aggregate(b=Sum("bar"), c=Sum("chill_out"), m=Sum("comedor"))
+            de_cajas = ((agg["b"] or CERO) + (agg["c"] or CERO) + (agg["m"] or CERO)) * f10
+            avisos.append(f"Control: bar + chill out + comedor de cajas = {de_cajas:,.0f} € sin IVA; base deducida "
+                          f"de las facturas N/FRA BAR/COMEDOR del IVA repercutido = {con_iva_libro:,.0f} €."
+                          .replace(",", "."))
+    elif tot["bar"] or tot["comedor"]:
+        avisos.append(f"Bar y comedor: no hay cajas importadas del año; base estimada a partir de la cuota de IVA al "
                       f"{IVA_BAR_COMEDOR * 100:.0f} %; las facturas trimestrales se reparten entre sus tres meses.")
     if tot["inversiones"]:
         avisos.append("Las facturas de acreedores con cuenta 2xx (inmovilizado) se muestran como "

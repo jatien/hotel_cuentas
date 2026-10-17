@@ -317,3 +317,35 @@ class AgrupacionYCorreccionesTests(TestCase):
 
     def test_migracion_de_categorias_aplicada(self):
         self.assertEqual(Tercero.objects.get(cuenta="410000195").categoria, "Agua")
+
+
+class IngresosDeCajasTests(TestCase):
+    def _caja(self, mes, **importes):
+        from cajas.models import CajaDia, CajaMes
+        cm = CajaMes.objects.create(anio=2026, mes=mes)
+        CajaDia.objects.create(caja_mes=cm, dia=1, **{k: D(v) for k, v in importes.items()})
+
+    def test_bar_incluye_chill_out_y_no_suma_ecotasa_ni_facturas(self):
+        self._caja(5, bar="1100", chill_out="220", comedor="550", menus="110",
+                   parking_efectivo="60.5", parking_visa="60.5", ecotasa="99", facturas="999")
+        r = calcular_resumen(2026, hoy=HOY, con_iva=True)
+        t = r["totales"]
+        self.assertEqual(r["fuente_restauracion"], "cajas")
+        self.assertEqual((t["bar"], t["comedor"], t["menus"], t["parking"]),
+                         (D("1320"), D("550"), D("110"), D("121")))
+        self.assertEqual(t["ingresos"], D("2101"))           # sin ecotasa ni facturas de caja
+        sin = calcular_resumen(2026, hoy=HOY)["totales"]
+        self.assertAlmostEqual(float(sin["bar"]), 1200, places=6)      # / 1,10
+        self.assertAlmostEqual(float(sin["parking"]), 100, places=6)   # / 1,21
+
+    def test_menus_cuentan_como_ingreso_del_comedor(self):
+        self._caja(5, comedor="110", menus="55")
+        deps = {d["nombre"]: d for d in calcular_resumen(2026, hoy=HOY, con_iva=True)["departamentos"]}
+        self.assertEqual(deps["Comedor"]["ingresos"], D("165"))
+
+    def test_sin_cajas_se_usa_la_estimacion_del_iva(self):
+        ApunteIva.objects.create(libro="repercutido", fecha=date(2026, 6, 30), documento="3006",
+                                 concepto="N/FRA BAR", cuenta="430000000", cuota=D("300"))
+        r = calcular_resumen(2026, hoy=HOY)
+        self.assertEqual(r["fuente_restauracion"], "iva")
+        self.assertEqual(r["totales"]["bar"], D("3000"))
