@@ -7,4 +7,5 @@ urlpatterns = [
     path('importar/', views.importar_nomina, name='importar_nomina'),
     path('actualizar-campo/', views.actualizar_campo, name='actualizar_campo'),
     path('analisis/', views.analisis_view, name='nominas_analisis'),
+    path('importar-extras/', views.importar_extras, name='importar_extras_historico'),
 ]

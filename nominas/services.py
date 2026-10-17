@@ -139,6 +139,7 @@ def importar_nomina_mensual(file_obj, anio=None, mes=None):
                 anterior = (NominaMensual.objects
                             .filter(empleado=empleado)
                             .exclude(anio=anio, mes=mes)
+                            .exclude(departamento='')
                             .order_by('-anio', '-mes')
                             .first())
                 if anterior:
@@ -164,4 +165,65 @@ def importar_nomina_mensual(file_obj, anio=None, mes=None):
     return {
         'anio': anio, 'mes': mes, 'creadas': creadas, 'actualizadas': actualizadas,
         'sin_departamento': sin_departamento,
+    }
+
+def importar_extras_historico(file_obj, anio=2026):
+    """Importa un CSV sin cabecera: una fila por empleado, una columna por mes
+    empezando por Enero (columna 1 = Enero, columna 2 = Febrero, ...).
+    Vuelca cada valor en importe_extra de la NominaMensual correspondiente.
+
+    Las celdas vacías NO se tocan (no se asume 0). Las celdas con valor
+    SOBREESCRIBEN el extra actual — así, si reimportas el mismo archivo más
+    adelante con una columna de mes nueva añadida al final, los meses ya
+    existentes se actualizan con cualquier corrección y el mes nuevo se añade,
+    sin tener que tocar el código.
+    """
+    nombre_archivo = file_obj.name
+    if not nombre_archivo.lower().endswith('.csv'):
+        raise ImportacionInvalida(f"El archivo '{nombre_archivo}' no es un .csv.")
+
+    try:
+        contenido = file_obj.read().decode('utf-8')
+    except UnicodeDecodeError:
+        raise ImportacionInvalida('No se pudo leer el archivo como texto.')
+
+    filas = list(csv.reader(io.StringIO(contenido)))
+
+    actualizadas, creadas, sin_coincidencia = 0, 0, []
+    with transaction.atomic():
+        for fila in filas:
+            if not fila or not fila[0].strip():
+                continue
+            nombre_csv = fila[0].strip()
+
+            empleado = Empleado.objects.filter(nombre__iexact=nombre_csv).first()
+            if not empleado:
+                sin_coincidencia.append(nombre_csv)
+                continue
+
+            for col_idx in range(1, len(fila)):
+                mes = col_idx  # columna 1 = Enero, columna 2 = Febrero, ...
+                if mes > 12:
+                    break  # columna de más que no corresponde a ningún mes real
+
+                valor_celda = fila[col_idx].strip()
+                if not valor_celda:
+                    continue  # sin dato ese mes -> no se toca
+
+                importe = parse_decimal(valor_celda)
+
+                defaults = {campo: Decimal('0') for campo in CAMPOS_ALIAS}
+                defaults['departamento'] = ''
+
+                nomina, creada = NominaMensual.objects.get_or_create(
+                    empleado=empleado, anio=anio, mes=mes, defaults=defaults,
+                )
+                nomina.importe_extra = importe  # sobrescribe aunque ya hubiera un valor
+                nomina.save(update_fields=['importe_extra'])
+                creadas += creada
+                actualizadas += not creada
+
+    return {
+        'anio': anio, 'actualizadas': actualizadas, 'creadas': creadas,
+        'sin_coincidencia': sin_coincidencia,
     }

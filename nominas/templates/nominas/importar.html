@@ -1,3 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
 <a href="{% url 'nominas' %}" class="btn-volver">← Volver a nóminas</a>
 <h2>Importar nómina mensual</h2>
 {% for message in messages %}
@@ -14,21 +16,25 @@
     <label for="id_anio">Año (opcional):</label> {{ form.anio }}
     <label for="id_mes">Mes (opcional):</label> {{ form.mes }}
   </p>
-  <button type="submit">Importar</button>
+  <button type="submit" class="btn-primario">Importar</button>
 </form>
 
-<p>Si el archivo sigue el patrón <code>COSTES_MM_AAAA.csv</code>, mes y año se detectan solos.</p>
+<p class="nota">Si el archivo sigue el patrón <code>COSTES_MM_AAAA.csv</code>, mes y año se detectan solos.</p>
 
 <style>
   .dropzone {
-    border: 2px dashed #999; border-radius: 8px; padding: 40px; text-align: center;
-    cursor: pointer; background: #fafafa; transition: background 0.2s, border-color 0.2s;
+    border: 2px dashed var(--tinta-suave); border-radius: 16px; padding: 40px; text-align: center;
+    cursor: pointer; background: var(--tarjeta); transition: background .18s ease, border-color .18s ease;
   }
-  .btn-volver {
-  color: #2563eb; text-decoration: none; font-size: 14px;
-  }
+  .dropzone.dragover { background: var(--acento-tinte); border-color: var(--acento); }
+  .btn-volver { color: var(--acento); text-decoration: none; font-size: 14px; }
   .btn-volver:hover { text-decoration: underline; }
-  .dropzone.dragover { background: #e8f0fe; border-color: #2563eb; }
+  .btn-primario {
+    padding: 10px 20px; background: var(--acento); color: white; border: none;
+    border-radius: 12px; font-size: 14px; cursor: pointer; margin-top: 1rem;
+  }
+  .btn-primario:hover { opacity: .9; }
+  .nota { color: var(--tinta-suave); font-size: .85rem; margin-top: 1rem; }
 </style>
 
 <script>
@@ -59,5 +65,5 @@
       textoDropzone.textContent = 'Archivo listo: ' + inputArchivo.files[0].name;
     }
   });
-  
 </script>
+{% endblock %}

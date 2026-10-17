@@ -4,10 +4,8 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from .models import NominaMensual
-from .forms import ImportarNominaForm
-from .services import importar_nomina_mensual, ImportacionInvalida
-
-from .services import importar_nomina_mensual
+from .forms import ImportarNominaForm, ImportarExtrasForm
+from .services import importar_nomina_mensual, importar_extras_historico, ImportacionInvalida
 import json
 
 MESES_NOMBRES = {
@@ -142,3 +140,30 @@ def analisis_view(request, anio=2026):
         'chart_labels': chart_labels,
         'chart_data': chart_data,
     })
+
+def importar_extras(request):
+    if request.method == 'POST':
+        form = ImportarExtrasForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                resultado = importar_extras_historico(
+                    form.cleaned_data['archivo'],
+                    form.cleaned_data.get('anio') or 2026,
+                )
+                messages.success(
+                    request,
+                    f"Extras {resultado['anio']}: {resultado['creadas']} nóminas creadas, "
+                    f"{resultado['actualizadas']} actualizadas."
+                )
+                if resultado['sin_coincidencia']:
+                    messages.warning(
+                        request,
+                        'Sin empleado coincidente (revisa el nombre exacto): '
+                        + ', '.join(resultado['sin_coincidencia'])
+                    )
+                return redirect('nominas')
+            except ImportacionInvalida as e:
+                messages.error(request, str(e))
+    else:
+        form = ImportarExtrasForm()
+    return render(request, 'nominas/importar_extras.html', {'form': form})
