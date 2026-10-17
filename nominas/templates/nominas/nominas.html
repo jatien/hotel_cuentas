@@ -11,6 +11,7 @@
   </div>
   <div>
     <a href="{% url 'nominas_analisis' %}" class="btn-analisis">📊 Análisis</a>
+    <a href="{% url 'importar_extras_historico' %}" class="btn-analisis">💰 Importar extras</a>
     <a href="{% url 'importar_nomina' %}" class="btn-importar">+ Importar CSV</a>
   </div>
 </div>
@@ -173,15 +174,16 @@ function agruparPorDepartamento(datos) {
 </script>
 
 <style>
-  .btn-importar { padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; }
-  .btn-importar:hover { background: #1d4ed8; }
-  .btn-analisis { padding: 8px 16px; background: #16a34a; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; margin-right: 8px; }
-  .btn-analisis:hover { background: #15803d; }
-  .btn-volver { color: #2563eb; text-decoration: none; font-size: 14px; }
+  .btn-importar, .btn-analisis {
+    padding: 8px 16px; background: var(--acento); color: white;
+    text-decoration: none; border-radius: 12px; font-size: 14px; margin-right: 8px;
+  }
+  .btn-importar:hover, .btn-analisis:hover { opacity: .9; }
+  .btn-volver { color: var(--acento); text-decoration: none; font-size: 14px; }
   .btn-volver:hover { text-decoration: underline; }
-  .mes-desplegable { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 8px; padding: 8px 12px; }
-  .mes-desplegable summary { cursor: pointer; font-weight: bold; font-size: 16px; padding: 4px 0; }
-  .toggle-agrupar { display: block; margin-top: 8px; font-size: 14px; cursor: pointer; }
-  .resumen-anual { margin-top: 24px; padding: 16px; background: #f0f4ff; border-radius: 8px; text-align: right; font-size: 18px; }
+  .mes-desplegable { border: 1px solid var(--fondo); border-radius: 16px; margin-bottom: 8px; padding: 8px 12px; background: var(--tarjeta); }
+  .mes-desplegable summary { cursor: pointer; font-weight: 600; font-size: 16px; padding: 4px 0; color: var(--tinta); }
+  .toggle-agrupar { display: block; margin-top: 8px; font-size: 14px; cursor: pointer; color: var(--tinta-suave); }
+  .resumen-anual { margin-top: 24px; padding: 16px; background: var(--acento-tinte); border-radius: 16px; text-align: right; font-size: 18px; color: var(--acento); }
 </style>
 {% endblock %}

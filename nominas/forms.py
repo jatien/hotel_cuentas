@@ -17,3 +17,13 @@ class ImportarNominaForm(forms.Form):
         if archivo.size == 0:
             raise forms.ValidationError('El archivo está vacío.')
         return archivo
+
+class ImportarExtrasForm(forms.Form):
+    archivo = forms.FileField(label='Archivo CSV de extras')
+    anio = forms.IntegerField(required=False, initial=2026, label='Año')
+
+    def clean_archivo(self):
+        archivo = self.cleaned_data['archivo']
+        if not archivo.name.lower().endswith('.csv'):
+            raise forms.ValidationError(f"'{archivo.name}' no es un archivo .csv.")
+        return archivo
