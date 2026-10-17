@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+from decouple import config
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,6 +39,7 @@ INSTALLED_APPS = [
     'cuadro_cuentas.apps.CuadroCuentasConfig',
     'analisis.apps.AnalisisConfig',
     'cajas.apps.CajasConfig',
+    'invoice_agent.apps.InvoiceAgentConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -80,6 +83,22 @@ TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 # Datos de la empresa para filtrar facturas propias (NIF y nombres)
 INVOICE_OWN_NIF = ("B07794803", "E07575970")
 INVOICE_OWN_NAMES = ("INVENT HOTELES", "CATALINA Y JUAN TORRES ROSELLO")
+
+# Detección de facturas con IA (invoice_agent). Los valores sensibles vienen del fichero .env
+# (ver .env.example); el resto de opciones y sus valores por defecto están en invoice_agent/conf.py.
+INVOICE_AGENT = {
+    "PROVIDER": config("INVOICE_AGENT_PROVIDER", default="openai"),
+    "BASE_URL": config("INVOICE_AGENT_BASE_URL", default=""),
+    "API_KEY": config("INVOICE_AGENT_API_KEY", default=config("OPENAI_API_KEY", default="")),
+    "MODEL": config("INVOICE_AGENT_MODEL", default="gpt-4.1-mini"),
+    "SUPPORTS_VISION": config("INVOICE_AGENT_SUPPORTS_VISION", default=True, cast=bool),
+    "ALLOW_VISION": config("INVOICE_AGENT_ALLOW_VISION", default=True, cast=bool),
+    "PRICE_INPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_INPUT_PER_MTOK", default="0"),
+    "PRICE_OUTPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_OUTPUT_PER_MTOK", default="0"),
+    "MAX_CONCURRENT_JOBS": config("INVOICE_AGENT_MAX_CONCURRENT_JOBS", default=2, cast=int),
+    "REQUIRE_LOGIN": config("INVOICE_AGENT_REQUIRE_LOGIN", default=False, cast=bool),
+    "RETENTION_DAYS": config("INVOICE_AGENT_RETENTION_DAYS", default=None, cast=lambda v: int(v) if v else None),
+}
 
 # Prefijos de nombres de archivos de facturas y nóminas para filtrar
 MEDIA_URL = "/media/"
@@ -147,6 +166,14 @@ STATIC_URL = 'static/'
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
+
+# Logs de invoice_agent (una línea JSON por evento) a la consola
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"invoice_agent": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+}
 
 MAILERS = {
     'default': {

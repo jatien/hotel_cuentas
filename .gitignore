@@ -21,3 +21,7 @@ staticfiles/
 muestras/
 # Datos de la app analisis (exports xlsx y CSV generados)
 analisis/datos/
+
+# Originales de facturas de invoice_agent (almacenamiento privado) y carpetas de evaluación
+private_media/
+eval_*/

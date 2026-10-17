@@ -1,0 +1,186 @@
+{% extends "invoice_agent/base_ia.html" %}
+{% block title %}{{ documento.original_filename }} · Facturas con IA{% endblock %}
+{% block estilos %}
+<style>
+  .rejilla { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 1rem; align-items: start; }
+  .visor { position: sticky; top: 1rem; height: calc(100vh - 2rem); padding: 0; overflow: hidden; }
+  .visor iframe, .visor img { width: 100%; height: 100%; border: 0; object-fit: contain; background: #fff; }
+  .cabecera { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: space-between; }
+  .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .75rem 1rem; }
+  .campo label { font-size: .8rem; font-weight: 600; color: var(--tinta-suave); }
+  .ev { font-size: .75rem; color: var(--tinta-suave); margin-top: .15rem; line-height: 1.3; }
+  .ev .baja { color: var(--aviso); font-weight: 600; }
+  .ev .estado-campo { font-weight: 600; }
+  .incidencias { list-style: none; margin: 0; padding: 0; }
+  .incidencias li { padding: .45rem .6rem; border-radius: 8px; margin-bottom: .35rem; font-size: .88rem; display: flex; gap: .5rem; align-items: start; }
+  .incidencias .error { background: #F8E6EC; color: var(--aviso); }
+  .incidencias .warning { background: #FBF0D9; color: #7A5300; }
+  .incidencias .info { background: var(--acento-tinte); color: var(--acento); }
+  .incidencias .aceptado { opacity: .6; }
+  .tabla-edit td { padding: .25rem .3rem; }
+  .tabla-edit input { min-width: 4.5rem; }
+  .acciones { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .acciones form { display: flex; gap: .4rem; align-items: center; }
+  .eventos td { font-size: .82rem; vertical-align: top; }
+  @media (max-width: 1000px) { .rejilla { grid-template-columns: 1fr; } .visor { position: static; height: 70vh; } }
+</style>
+{% endblock %}
+{% block cuerpo %}
+<p><a href="{% url 'invoice_agent:index' %}">← Facturas con IA</a></p>
+<div class="rejilla">
+  <section class="caja visor" aria-label="Documento original">
+    {% if documento.mime_type == "application/pdf" %}
+      <iframe src="{{ original_url }}" title="Original"></iframe>
+    {% else %}
+      <img src="{{ original_url }}" alt="Imagen original de la factura">
+    {% endif %}
+  </section>
+
+  <section>
+    <div class="caja">
+      <div class="cabecera">
+        <div>
+          <h1 style="font-size:1.25rem;margin:0">{{ documento.original_filename }}</h1>
+          <span class="muted">{{ documento.empresa.nombre }} · {{ documento.page_count|default:"?" }} pág. · subida {{ documento.creado|date:"d/m/Y H:i" }}</span>
+        </div>
+        <span class="estado {{ documento.estado }}">{{ documento.get_estado_display }}</span>
+      </div>
+      {% if documento.error_message %}<p class="muted" style="color:var(--aviso)">{{ documento.error_message }}</p>{% endif %}
+      {% if intento %}
+      <p class="muted">Intento {{ intento.numero }} · {{ intento.modelo|default:"—" }} · prompt {{ intento.prompt_version|default:"—" }} · método {{ intento.get_metodo_display|default:"—" }}{% if intento.duracion_ms %} · {{ intento.duracion_ms }} ms{% endif %}{% if intento.tokens_entrada %} · {{ intento.tokens_entrada }}+{{ intento.tokens_salida }} tokens{% endif %}</p>
+      {% endif %}
+      {% if en_curso %}<p class="muted">Procesando… la página se actualiza sola.</p>{% endif %}
+    </div>
+
+    {% if borrador %}
+    <form method="post" action="{% url 'invoice_agent:accion' documento.public_id 'guardar' %}">
+      {% csrf_token %}
+      {% if incidencias %}
+      <div class="caja">
+        <h2>Incidencias de la validación</h2>
+        <ul class="incidencias">
+          {% for i in incidencias %}
+          <li class="{{ i.severity }}{% if i.aceptado %} aceptado{% endif %}">
+            {% if i.severity == "warning" and i.blocking %}
+              <input type="checkbox" name="aceptar" value="{{ i.code }}" {% if i.aceptado %}checked disabled{% endif %} {% if not editable %}disabled{% endif %} aria-label="Aceptar aviso">
+            {% endif %}
+            <span>{{ i.message }}{% if i.aceptado %} <em>(aceptado)</em>{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="muted">Los errores hay que corregirlos. Los avisos de revisión se pueden aceptar marcándolos y guardando. Que el total cuadre no prueba que la factura sea auténtica.</p>
+      </div>
+      {% endif %}
+
+      <div class="caja">
+        <h2>Datos de la factura</h2>
+        {{ form.non_field_errors }}
+        <div class="campos">
+          {% for field, ev, label in campos %}
+          <div class="campo">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if ev %}
+            <div class="ev">
+              {% if ev.state == "absent" %}<span class="estado-campo">No aparece en el documento</span>
+              {% elif ev.state == "unreadable" %}<span class="estado-campo baja">Ilegible</span>{% if ev.raw %}: «{{ ev.raw }}»{% endif %}
+              {% elif ev.state == "missing" %}<span class="estado-campo baja">Valor no válido</span>{% if ev.raw %}: «{{ ev.raw }}»{% endif %}
+              {% else %}Extraído: {{ ev.extracted_value|default:"—" }}{% if ev.confidence == "low" %} · <span class="baja">confianza baja</span>{% endif %}{% endif %}
+              {% if ev.page %} · pág. {{ ev.page }}{% endif %}
+              {% if ev.text %}<br>«{{ ev.text|truncatechars:90 }}»{% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="caja">
+        <h2>Líneas</h2>
+        {{ lineas.management_form }}{{ lineas.non_form_errors }}
+        <div style="overflow-x:auto">
+        <table class="tabla-edit">
+          <thead><tr><th>Descripción</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Dto.</th><th class="num">% imp.</th><th class="num">Subtotal</th><th class="num">Total</th></tr></thead>
+          <tbody>
+          {% for f in lineas %}
+            <tr>
+              <td style="min-width:16rem">{{ f.descripcion }}{{ f.descripcion.errors }}</td>
+              <td>{{ f.cantidad }}{{ f.cantidad.errors }}</td><td>{{ f.precio_unitario }}{{ f.precio_unitario.errors }}</td>
+              <td>{{ f.descuento }}{{ f.descuento.errors }}</td><td>{{ f.tipo_impositivo }}{{ f.tipo_impositivo.errors }}</td>
+              <td>{{ f.subtotal }}{{ f.subtotal.errors }}</td><td>{{ f.total }}{{ f.total.errors }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="muted">La última fila vacía sirve para añadir una línea; deja una fila en blanco para quitarla.</p>
+      </div>
+
+      <div class="caja">
+        <h2>Impuestos y retenciones</h2>
+        {{ impuestos.management_form }}{{ impuestos.non_form_errors }}
+        <table class="tabla-edit">
+          <thead><tr><th>Tipo</th><th class="num">%</th><th class="num">Base</th><th class="num">Cuota</th></tr></thead>
+          <tbody>
+          {% for f in impuestos %}
+            <tr><td>{{ f.tipo }}</td><td>{{ f.porcentaje }}{{ f.porcentaje.errors }}</td><td>{{ f.base }}{{ f.base.errors }}</td><td>{{ f.cuota }}{{ f.cuota.errors }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="caja acciones">
+        <label style="flex:1;min-width:220px">{{ form.comentario.label }}{{ form.comentario }}</label>
+        <button class="btn" type="submit" {% if not editable %}disabled{% endif %}>Guardar y revalidar</button>
+      </div>
+    </form>
+    {% endif %}
+
+    <div class="caja acciones">
+      {% if borrador and documento.estado == "pending_approval" %}
+      <form method="post" action="{% url 'invoice_agent:accion' documento.public_id 'aprobar' %}">
+        {% csrf_token %}<input name="comentario" placeholder="Comentario (opcional)">
+        <button class="btn" type="submit">Aprobar</button>
+      </form>
+      {% elif borrador and documento.estado == "needs_review" %}
+      <span class="muted">Para aprobar, resuelve las incidencias ({{ bloqueantes|length }} pendiente{{ bloqueantes|length|pluralize }}).</span>
+      {% endif %}
+      {% if borrador and editable %}
+      <form method="post" action="{% url 'invoice_agent:accion' documento.public_id 'rechazar' %}">
+        {% csrf_token %}<input name="comentario" placeholder="Motivo del rechazo">
+        <button class="btn peligro" type="submit">Rechazar</button>
+      </form>
+      {% endif %}
+      {% if reprocesable %}
+      <form method="post" action="{% url 'invoice_agent:accion' documento.public_id 'reprocesar' %}">
+        {% csrf_token %}
+        {% if borrador.corregido %}<label class="muted"><input type="checkbox" name="descartar" value="1" required> descartar mis correcciones</label>{% endif %}
+        <button class="btn sec" type="submit">Volver a extraer</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <details class="caja">
+      <summary><strong>Historial y auditoría</strong></summary>
+      <table class="eventos">
+        <thead><tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+        <tbody>
+        {% for e in eventos %}
+          <tr>
+            <td class="muted" style="white-space:nowrap">{{ e.creado|date:"d/m/Y H:i:s" }}</td>
+            <td>{{ e.actor_label }}</td>
+            <td>{{ e.get_accion_display }}</td>
+            <td>
+              {% if e.estado_nuevo %}{{ e.estado_anterior|default:"—" }} → {{ e.estado_nuevo }}{% endif %}
+              {% if e.campo %}<strong>{{ e.campo }}</strong>{% if e.accion == "corrected" and e.campo != "lineas" and e.campo != "impuestos" %}: {{ e.valor_anterior|default:"(vacío)" }} → {{ e.valor_nuevo|default:"(vacío)" }} <span class="muted">(extraído: {{ e.valor_extraido|default:"—" }})</span>{% endif %}{% endif %}
+              {% if e.comentario %}<br><span class="muted">{{ e.comentario }}</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+</div>
+{% endblock %}

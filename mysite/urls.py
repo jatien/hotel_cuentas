@@ -29,4 +29,5 @@ urlpatterns = [
     path("contabilidad/", include("cuadro_cuentas.urls")),
     path("analisis/", include("analisis.urls")),
     path("cajas/", include("cajas.urls")),
+    path("facturas-ia/", include("invoice_agent.urls")),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

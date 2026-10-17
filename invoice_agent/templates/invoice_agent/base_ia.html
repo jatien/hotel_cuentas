@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{# Diseño común de Facturas con IA: hereda la paleta del panel principal y añade estados, avisos y formularios. #}
+{% block extra_head %}
+<style>
+  main { max-width: 1400px; }
+  .sub { color: var(--tinta-suave); margin: -.5rem 0 1.25rem; }
+  .caja {
+    background: var(--tarjeta); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem;
+    box-shadow: 0 1px 2px rgb(28 39 51 / .06), 0 10px 28px -14px rgb(28 39 51 / .28);
+  }
+  .caja h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+  .btn {
+    display: inline-block; padding: .45rem .9rem; border: 0; border-radius: 8px; cursor: pointer;
+    background: var(--acento); color: #fff; font: inherit; font-size: .9rem; text-decoration: none;
+  }
+  .btn.sec { background: var(--acento-tinte); color: var(--acento); }
+  .btn.peligro { background: var(--aviso); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .msgs { list-style: none; padding: 0; margin: 0 0 1rem; }
+  .msgs li { padding: .55rem .8rem; border-radius: 8px; margin-bottom: .35rem; font-size: .92rem; }
+  .msgs .success { background: #E3F4EA; color: #1E6B3E; }
+  .msgs .error { background: #F8E6EC; color: var(--aviso); }
+  .msgs .info, .msgs .warning { background: var(--acento-tinte); color: var(--acento); }
+  .estado { display: inline-block; padding: .1rem .6rem; border-radius: 999px; font-size: .8rem; white-space: nowrap; }
+  .estado.queued, .estado.processing { background: var(--acento-tinte); color: var(--acento); }
+  .estado.needs_review { background: #FBF0D9; color: #7A5300; }
+  .estado.pending_approval { background: #E6EEFB; color: #24439F; }
+  .estado.approved { background: #E3F4EA; color: #1E6B3E; }
+  .estado.rejected, .estado.failed { background: #F8E6EC; color: var(--aviso); }
+  .filtros { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; }
+  .filtros a { text-decoration: none; padding: .3rem .7rem; border-radius: 999px; background: var(--tarjeta); font-size: .85rem; }
+  .filtros a.activo { background: var(--acento); color: #fff; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  input[type=text], input:not([type]), select, textarea {
+    font: inherit; font-size: .9rem; padding: .3rem .45rem; border: 1px solid #C9D1DC; border-radius: 6px; width: 100%;
+    background: #fff; color: var(--tinta);
+  }
+  input.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .errorlist { color: var(--aviso); margin: .2rem 0; padding-left: 1rem; font-size: .82rem; }
+  .muted { color: var(--tinta-suave); font-size: .82rem; }
+  @media (max-width: 700px) { body { padding: 1rem; } }
+</style>
+{% if en_curso %}<meta http-equiv="refresh" content="6">{% endif %}
+{% block estilos %}{% endblock %}
+{% endblock %}
+{% block content %}
+{% if messages %}<ul class="msgs">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+{% block cuerpo %}{% endblock %}
+{% endblock %}
