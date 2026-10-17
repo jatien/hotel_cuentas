@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'nominas.apps.NominasConfig',
     'cuadro_cuentas.apps.CuadroCuentasConfig',
     'analisis.apps.AnalisisConfig',
+    'cajas.apps.CajasConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
