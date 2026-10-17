@@ -49,8 +49,9 @@ class ImportarCajasForm(forms.Form):
         choices=[("", "Todos los meses del libro")] + MESES,
     )
     reemplazar = forms.BooleanField(
-        label="Reemplazar los meses que ya existen", required=False,
-        help_text="Si no se marca, los meses que ya están en la app no se tocan.",
+        label="Reemplazar los meses que ya existen", required=False, initial=True,
+        help_text="Desmárcalo para no tocar los meses que ya tienen datos en la app "
+                  "(por ejemplo, si los has corregido a mano).",
     )
 
     def clean_archivo(self):

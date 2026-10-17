@@ -157,6 +157,19 @@ class ImportarLibroTests(TestCase):
         importar_libro(self._subido(), "cajas_26.xlsx", mes=5, reemplazar=True)
         self.assertEqual(CajaDia.objects.get(caja_mes__mes=5, dia=1).bar, Decimal("10"))
 
+    def test_mes_vacio_se_rellena_aunque_no_se_reemplace(self):
+        CajaMes.objects.create(anio=2026, mes=5).crear_dias()   # creado a mano desde Meses, sin datos
+        res = importar_libro(self._subido(), "cajas_26.xlsx", mes=5)
+        self.assertEqual(res[0]["estado"], "importado")
+        self.assertEqual(CajaDia.objects.get(caja_mes__mes=5, dia=1).bar, Decimal("10"))
+
+    def test_vista_reemplaza_por_defecto_y_avisa_de_omitidos(self):
+        form = self.client.get(reverse("cajas:importar")).context["form"]
+        self.assertTrue(form["reemplazar"].value())
+        importar_libro(self._subido(), "cajas_26.xlsx", mes=5)
+        r = self.client.post(reverse("cajas:importar"), {"archivo": self._subido(), "anio": ""}, follow=True)
+        self.assertContains(r, "No se han tocado porque ya tenían datos: Mayo")
+
     def test_mes_sin_hoja(self):
         with self.assertRaises(ErrorImportacion):
             importar_libro(self._subido(), "cajas_26.xlsx", mes=12)

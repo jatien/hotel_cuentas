@@ -250,13 +250,18 @@ def hojas_mensuales(libro: CalamineWorkbook) -> list[tuple[str, int]]:
     return [(h, m) for h in libro.sheet_names if (m := mes_de_hoja(h))]
 
 
+def _tiene_datos(caja_mes: CajaMes) -> bool:
+    return any(not d.vacio for d in caja_mes.dias.all())
+
+
 def importar_libro(archivo, nombre_fichero: str, anio: int | None = None, mes: int | None = None,
                    reemplazar: bool = False) -> list[dict]:
     """Importa un mes (si se indica `mes`) o todas las hojas mensuales con datos.
 
     Devuelve una lista de resultados, uno por hoja:
     {hoja, anio, mes, estado ('importado'|'omitido'|'vacio'|'error'), dias, avisos, error}
-    Si `reemplazar` es False, los meses que ya existen en la base de datos se omiten.
+    Si `reemplazar` es False, los meses que ya tienen datos en la app se omiten
+    (un mes que existe pero está vacío se rellena siempre).
     """
     libro = abrir_libro(archivo)
     hojas = hojas_mensuales(libro)
@@ -294,7 +299,8 @@ def importar_libro(archivo, nombre_fichero: str, anio: int | None = None, mes: i
         if not con_datos:
             res["estado"] = "vacio"
             continue
-        if not reemplazar and CajaMes.objects.filter(anio=anio_hoja, mes=mes_hoja).exists():
+        existente = CajaMes.objects.filter(anio=anio_hoja, mes=mes_hoja).first()
+        if not reemplazar and existente and _tiene_datos(existente):
             res["estado"] = "omitido"
             continue
         guardar_mes(anio_hoja, mes_hoja, dias, origen=f"{nombre_fichero} · {hoja}")

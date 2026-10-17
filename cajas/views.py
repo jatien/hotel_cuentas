@@ -139,6 +139,13 @@ def importar(request):
                 importados = [r for r in resultados if r["estado"] == "importado"]
                 if importados:
                     messages.success(request, f"{len(importados)} mes(es) importado(s).")
+                omitidos = [r["nombre_mes"] for r in resultados if r["estado"] == "omitido"]
+                if omitidos:
+                    messages.warning(
+                        request,
+                        f"No se han tocado porque ya tenían datos: {', '.join(omitidos)}. "
+                        "Marca «Reemplazar los meses que ya existen» y vuelve a importar para sobrescribirlos.",
+                    )
                 # Si solo hay un mes importado y sin avisos, directo a su detalle
                 if len(resultados) == 1 and importados and not importados[0]["avisos"]:
                     return redirect("cajas:detalle", anio=importados[0]["anio"], mes=importados[0]["mes"])
