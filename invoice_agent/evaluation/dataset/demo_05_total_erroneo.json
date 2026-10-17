@@ -1,0 +1,26 @@
+{
+  "render": [
+    "TALLER INVENTADO SL   CIF B65410011",
+    "Fra. T-88   Fecha 05/10/2026",
+    "Reparación lavadora   200,00",
+    "Base 200,00   IVA 21% 42,00   TOTAL 250,00 EUR"
+  ],
+  "fields": {
+    "supplier_tax_id": "B65410011",
+    "invoice_number": "T-88",
+    "invoice_date": "2026-10-05",
+    "net_subtotal": "200.00",
+    "tax_total": "42.00",
+    "gross_total": "250.00"
+  },
+  "lines": 1,
+  "taxes": [
+    {
+      "kind": "vat",
+      "rate": "21",
+      "base": "200.00",
+      "amount": "42.00"
+    }
+  ],
+  "reconciles": false
+}

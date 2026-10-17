@@ -1,0 +1,51 @@
+{% extends "invoice_agent/base_ia.html" %}
+{% block title %}Facturas con IA{% endblock %}
+{% block cuerpo %}
+<h1>Facturas con IA</h1>
+<p class="sub">Sube facturas de proveedores: la IA extrae los datos, el sistema comprueba las cuentas y una persona revisa y aprueba. Nada se contabiliza automáticamente.</p>
+
+<div class="caja">
+  <h2>Subir facturas</h2>
+  <form method="post" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:end">
+    {% csrf_token %}
+    <label style="min-width:240px">{{ form.empresa.label }}<br>{{ form.empresa }}</label>
+    <label style="flex:1;min-width:260px">{{ form.ficheros.label }}<br>{{ form.ficheros }}</label>
+    <button class="btn" type="submit">Subir y extraer</button>
+    {{ form.non_field_errors }}{{ form.ficheros.errors }}{{ form.empresa.errors }}
+  </form>
+  {% if en_curso %}<p class="muted">Hay {{ en_curso }} documento(s) en cola o procesándose; la página se actualiza sola. El procesado lo hace el worker (<code>python manage.py invoice_agent_worker</code>).</p>{% endif %}
+</div>
+
+<nav class="filtros" aria-label="Filtrar por estado">
+  <a href="{% url 'invoice_agent:index' %}" class="{% if not estado %}activo{% endif %}">Todos</a>
+  {% for value, label, n in estados %}
+  <a href="?estado={{ value }}" class="{% if estado == value %}activo{% endif %}">{{ label }} · {{ n }}</a>
+  {% endfor %}
+</nav>
+
+<table>
+  <thead><tr><th>Fichero</th><th>Empresa</th><th>Proveedor</th><th>Nº factura</th><th class="num">Total</th><th>Estado</th><th>Subida</th></tr></thead>
+  <tbody>
+  {% for d in page %}
+    <tr>
+      <td><a href="{% url 'invoice_agent:detalle' d.public_id %}">{{ d.original_filename }}</a></td>
+      <td>{{ d.empresa.nombre }}</td>
+      <td>{{ d.borrador.proveedor_nombre|default:"—" }}</td>
+      <td>{{ d.borrador.numero_factura|default:"—" }}</td>
+      <td class="num">{% if d.borrador and d.borrador.total_bruto is not None %}{{ d.borrador.total_bruto }} {{ d.borrador.moneda }}{% else %}—{% endif %}</td>
+      <td><span class="estado {{ d.estado }}">{{ d.get_estado_display }}</span></td>
+      <td class="muted">{{ d.creado|date:"d/m/Y H:i" }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="muted">No hay documentos{% if estado %} en este estado{% endif %}.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if page.has_other_pages %}
+<p>
+  {% if page.has_previous %}<a href="?estado={{ estado }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}
+  Página {{ page.number }} de {{ page.paginator.num_pages }}
+  {% if page.has_next %}<a href="?estado={{ estado }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}
+</p>
+{% endif %}
+{% endblock %}

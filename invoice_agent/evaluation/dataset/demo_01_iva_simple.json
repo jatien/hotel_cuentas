@@ -1,0 +1,34 @@
+{
+  "render": [
+    "SUMINISTROS DEMO, S.L.   CIF: B12345674",
+    "Calle Ficticia 1, 07000 Palma",
+    "FACTURA Nº: F-2026/0042     Fecha: 15/09/2026",
+    "Cliente: HOTEL PRUEBA S.A.   NIF: A58818501",
+    "Toallas de baño   10 x 8,00   80,00",
+    "Detergente industrial   2 x 10,00   20,00",
+    "Base imponible 100,00   IVA 21% 21,00   TOTAL 121,00 EUR"
+  ],
+  "fields": {
+    "supplier_name": "Suministros Demo, S.L.",
+    "supplier_tax_id": "B12345674",
+    "invoice_number": "F-2026/0042",
+    "invoice_date": "2026-09-15",
+    "due_date": null,
+    "currency": "EUR",
+    "net_subtotal": "100.00",
+    "tax_total": "21.00",
+    "gross_total": "121.00",
+    "withholding_total": null
+  },
+  "lines": 2,
+  "taxes": [
+    {
+      "kind": "vat",
+      "rate": "21",
+      "base": "100.00",
+      "amount": "21.00"
+    }
+  ],
+  "reconciles": true,
+  "duplicate_group": "g1"
+}

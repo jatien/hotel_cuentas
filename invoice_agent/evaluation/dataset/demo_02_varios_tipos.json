@@ -1,0 +1,44 @@
+{
+  "render": [
+    "ALIMENTACION FICTICIA, S.A.   CIF: A08001851",
+    "FACTURA 2026-A-7781   Fecha 02/10/2026   Vence 01/11/2026",
+    "Cliente NIF A58818501",
+    "Aceite oliva   10,00 x 5,00   50,00  (10%)",
+    "Fruta variada   25,00  (4%)",
+    "Limpiacristales   100,00 (21%)",
+    "Base 10%: 50,00  IVA 5,00 | Base 4%: 25,00  IVA 1,00 | Base 21%: 100,00  IVA 21,00",
+    "Total 202,00 EUR"
+  ],
+  "fields": {
+    "supplier_tax_id": "A08001851",
+    "invoice_number": "2026-A-7781",
+    "invoice_date": "2026-10-02",
+    "due_date": "2026-11-01",
+    "currency": "EUR",
+    "net_subtotal": "175.00",
+    "tax_total": "27.00",
+    "gross_total": "202.00"
+  },
+  "lines": 3,
+  "taxes": [
+    {
+      "kind": "vat",
+      "rate": "10",
+      "base": "50.00",
+      "amount": "5.00"
+    },
+    {
+      "kind": "vat",
+      "rate": "4",
+      "base": "25.00",
+      "amount": "1.00"
+    },
+    {
+      "kind": "vat",
+      "rate": "21",
+      "base": "100.00",
+      "amount": "21.00"
+    }
+  ],
+  "reconciles": true
+}

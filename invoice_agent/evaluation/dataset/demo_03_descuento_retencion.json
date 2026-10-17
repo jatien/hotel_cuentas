@@ -1,0 +1,38 @@
+{
+  "render": [
+    "Asesoría Imaginaria   NIF 12345678Z",
+    "Factura nº 15/2026   Fecha 30/09/2026",
+    "Honorarios septiembre   1.000,00",
+    "Descuento cliente   -100,00",
+    "Base imponible 900,00   IVA 21% 189,00   Retención IRPF 15% -135,00",
+    "Total factura 1.089,00   A pagar 954,00 EUR"
+  ],
+  "fields": {
+    "supplier_tax_id": "12345678Z",
+    "invoice_number": "15/2026",
+    "invoice_date": "2026-09-30",
+    "net_subtotal": "1000.00",
+    "discount_total": "100.00",
+    "tax_total": "189.00",
+    "withholding_total": "135.00",
+    "gross_total": "1089.00",
+    "amount_due": "954.00",
+    "currency": "EUR"
+  },
+  "lines": 1,
+  "taxes": [
+    {
+      "kind": "vat",
+      "rate": "21",
+      "base": "900.00",
+      "amount": "189.00"
+    },
+    {
+      "kind": "withholding",
+      "rate": "15",
+      "base": "900.00",
+      "amount": "135.00"
+    }
+  ],
+  "reconciles": true
+}

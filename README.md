@@ -29,6 +29,7 @@ El panel principal (`/`) enlaza con todas las apps.
 | `cuadro_cuentas` | `/contabilidad/` | Contabilidad por partida doble según el PGC 2007 |
 | `analisis` | `/analisis/` | Análisis de beneficios: ingresos frente a proveedores, acreedores y nóminas |
 | `cajas` | `/cajas/` | Cajas diarias por punto de venta y otros cobros |
+| `invoice_agent` | `/facturas-ia/` | Facturas con IA: extracción con un modelo, validación en Python y aprobación humana |
 
 `albaranes` y `reservas` existen en el repositorio pero todavía no están activadas en `INSTALLED_APPS`.
 
@@ -49,6 +50,15 @@ El panel principal (`/`) enlaza con todas las apps.
 - La extracción es genérica: nada específico de un proveedor concreto en el código.
 - `check_invoices` comprueba la extracción sobre una carpeta sin tocar la base de datos.
 - Exportación de facturas y líneas a CSV.
+
+### Facturas con IA (`invoice_agent`)
+- Subida de PDF o imágenes; un worker (`python manage.py invoice_agent_worker`) extrae los datos con un
+  modelo de IA (OpenAI o un servidor local compatible) usando salida estructurada.
+- Validación en Python: sumas, impuestos (IVA, IGIC, IPSI, recargo, IRPF), NIF y duplicados.
+- Revisión en pantalla con el original al lado, evidencias de cada campo, correcciones auditadas y
+  aprobación humana. **No contabiliza nada.**
+- Configuración en `.env` (ver `.env.example`). Detalles, API y operación en
+  [`invoice_agent/README.md`](invoice_agent/README.md).
 
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos
@@ -101,4 +111,5 @@ El panel principal (`/`) enlaza con todas las apps.
 - Alimentar la contabilidad automáticamente desde facturas y albaranes; completar las cuentas anuales
   (estado de flujos de efectivo y memoria).
 - Integración con el motor de reservas Neobookings (pendiente de credenciales de la API).
-- Probar un LLM pequeño en local como apoyo a la extracción de facturas.
+- Probar un LLM en local como proveedor de `invoice_agent` (misma API, cambiando `INVOICE_AGENT_BASE_URL`).
+- Contabilizar en `cuadro_cuentas` las facturas aprobadas en `invoice_agent`.
