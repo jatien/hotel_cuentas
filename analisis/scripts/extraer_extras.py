@@ -1,10 +1,17 @@
 """Convierte la hoja de extras de personal (.numbers o .xlsx) en un CSV limpio.
 
 La hoja del año (p. ej. «26») tiene una fila por persona y una columna por mes.
-Las personas van en bloques separados por filas vacías, más o menos uno por
-departamento. El departamento se propone a partir de la hoja «cash 26» (que
-tiene encabezados Cocina / Bar / Comedor): cada bloque toma el departamento
-que más se repite entre sus personas. Revisa la columna antes de importar.
+El departamento de cada persona sale, por este orden:
+  1. de los encabezados de la propia hoja (filas «COMEDOR», «COCINA», «BAR» en
+     mayúsculas, o el nombre de departamento en la celda A de la fila de meses);
+     una fila «TOTAL» cierra la sección;
+  2. si no hay encabezado, de la hoja «cash 26» (encabezados Cocina / Bar /
+     Comedor): cada bloque de personas, separado por filas vacías, toma el
+     departamento que más se repite entre sus personas.
+Revisa la columna antes de importar.
+
+Los importes de menos de 10 € no se toman como extras: en la hoja son marcas
+(p. ej. «2» o «2*» en la columna de enero) y salen como aviso.
 
 Uso (desde la raíz del proyecto):
     python analisis/scripts/extraer_extras.py analisis/datos/2026/extras_personal.numbers analisis/datos/2026/extras.csv --anio 2026
@@ -28,6 +35,7 @@ MESES = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
          "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12}
 DEPARTAMENTOS = ["Cocina", "Bar", "Comedor", "Recepción", "Pisos", "Mantenimiento", "Lavandería"]
 CENT = Decimal("0.01")
+IMPORTE_MINIMO = 10   # por debajo, el número es una marca de la hoja, no un extra
 
 
 def normaliza(texto) -> str:
@@ -89,6 +97,14 @@ def departamentos_de_cash(filas) -> dict[str, str]:
 
 # ------------------------------------------------------------------ extracción
 
+def encabezado_departamento(celda) -> str:
+    """'COCINA' -> 'Cocina' si la celda es un encabezado de sección (en mayúsculas)."""
+    texto = " ".join(str(celda or "").split())
+    if texto and texto.isupper() and normaliza(texto) in DEPTOS:
+        return DEPTOS[normaliza(texto)]
+    return ""
+
+
 def extraer(filas, anio: int, cash: dict[str, str]):
     # Cabecera: la primera fila con al menos tres meses reconocibles
     cab_idx, columnas = None, {}
@@ -103,6 +119,9 @@ def extraer(filas, anio: int, cash: dict[str, str]):
     registros, avisos, bloques, bloque = [], [], [], []
     vistos = Counter()
     fila_totales = None
+    # Departamento por encabezado de la propia hoja (vacío si no hay)
+    seccion = encabezado_departamento(filas[cab_idx][0]) if filas[cab_idx] else ""
+    seccion_de: dict[str, str] = {}
 
     for n, f in enumerate(filas[cab_idx + 1:], start=cab_idx + 2):
         if vacia(f) or not str(f[0] or "").strip():
@@ -119,6 +138,13 @@ def extraer(filas, anio: int, cash: dict[str, str]):
             if bloque:          # fila «TOTAL» intermedia: también separa bloques
                 bloques.append(bloque)
                 bloque = []
+            seccion = ""        # y cierra la sección de departamento
+            continue
+        if encabezado_departamento(nombre):
+            if bloque:
+                bloques.append(bloque)
+                bloque = []
+            seccion = encabezado_departamento(nombre)
             continue
 
         vistos[nombre] += 1
@@ -126,9 +152,13 @@ def extraer(filas, anio: int, cash: dict[str, str]):
             avisos.append(f"fila {n}: «{nombre}» aparece repetido; se guarda como «{nombre} ({vistos[nombre]})»")
             nombre = f"{nombre} ({vistos[nombre]})"
 
+        if seccion:
+            seccion_de[nombre] = seccion
         for j, mes in columnas.items():
             v = f[j] if j < len(f) else None
-            if es_numero(v) and v != 0:
+            if es_numero(v) and 0 < abs(v) < IMPORTE_MINIMO:
+                avisos.append(f"fila {n} ({nombre}), mes {mes}: «{v:g}» no parece un importe; se ignora")
+            elif es_numero(v) and v != 0:
                 registros.append({"anio": anio, "mes": mes, "persona": nombre,
                                   "importe": Decimal(repr(float(v))).quantize(CENT)})
             elif isinstance(v, str) and v.strip():
@@ -144,15 +174,15 @@ def extraer(filas, anio: int, cash: dict[str, str]):
         depto = votos.most_common(1)[0][0] if votos else ""
         for p in b:
             # «pisos» y similares: el propio nombre es un departamento
-            depto_de[p] = DEPTOS.get(normaliza(p), depto)
+            depto_de[p] = seccion_de.get(p) or DEPTOS.get(normaliza(p), depto)
     for r in registros:
         r["departamento"] = depto_de.get(r["persona"], "")
 
-    # Control con la fila «totales» (solo en los meses en que tiene número)
+    # Control con la fila «totales» (solo en los meses en que tiene un importe)
     if fila_totales:
         for j, mes in columnas.items():
             v = fila_totales[j] if j < len(fila_totales) else None
-            if es_numero(v) and v:
+            if es_numero(v) and abs(v) >= IMPORTE_MINIMO:
                 suma = sum((r["importe"] for r in registros if r["mes"] == mes), Decimal("0"))
                 if abs(suma - Decimal(repr(float(v)))) > Decimal("0.5"):
                     avisos.append(f"mes {mes}: la suma ({suma}) no coincide con la fila totales ({v})")
