@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load cajas_tags %}
+{% block title %}Editar cajas {{ caja_mes }}{% endblock %}
+{% block extra_head %}
+{% include "cajas/_estilos.html" %}
+<style>
+  table.editar td { padding: .2rem .3rem; }
+  table.editar input.importe { width: 6.5rem; text-align: right; font-variant-numeric: tabular-nums; padding: .25rem .4rem; }
+  table.editar input.importe.error { border-color: var(--aviso); background: #F8EDF1; }
+  table.editar th.grupo { text-align: center; border-bottom: 2px solid var(--fondo); }
+  table.editar .separador { border-left: 2px solid var(--fondo); }
+  .pie-form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-top: 1rem; }
+  .pie-form textarea { font: inherit; width: min(520px, 100%); border-radius: 8px; border: 1px solid #C8D0DA; padding: .5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="volver" href="{% url 'cajas:detalle' caja_mes.anio caja_mes.mes %}">← Volver a {{ caja_mes }}</a>
+<div class="cabecera"><h1>Editar cajas {{ caja_mes }}</h1></div>
+{% include "cajas/_mensajes.html" %}
+<p class="nota" style="color:var(--tinta-suave); font-size:.85rem; margin-top:-.5rem;">
+  Puedes escribir los importes con coma o con punto decimal (156,45 o 156.45). Las casillas vacías cuentan como 0.
+</p>
+
+<form method="post" id="form-cajas">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="tabla-scroll">
+  <table class="cajas editar">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="grupo" colspan="{{ puntos_venta|length|add:1 }}">Puntos de venta</th>
+        <th class="grupo separador" colspan="{{ otros_cobros|length|add:1 }}">Otros cobros</th>
+      </tr>
+      <tr>
+        <th>Día</th>
+        {% for campo, etiqueta in puntos_venta %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+        <th class="num total">Total</th>
+        <th class="num total separador">Total</th>
+        {% for campo, etiqueta in otros_cobros %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for form in formset %}
+      <tr>
+        <td>{{ form.instance.dia }}{{ form.id }}</td>
+        {% for nombre, etiqueta in puntos_venta %}{% with field=form|campo:nombre %}
+          <td><input type="text" name="{{ field.html_name }}" value="{{ field.value|valor_input }}" inputmode="decimal" autocomplete="off"
+                     class="importe venta{% if field.errors %} error{% endif %}" data-campo="{{ nombre }}"
+                     aria-label="{{ etiqueta }} día {{ form.instance.dia }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
+        {% endwith %}{% endfor %}
+        <td class="num total" data-total="ventas"></td>
+        <td class="num total separador" data-total="cobros"></td>
+        {% for nombre, etiqueta in otros_cobros %}{% with field=form|campo:nombre %}
+          <td><input type="text" name="{{ field.html_name }}" value="{{ field.value|valor_input }}" inputmode="decimal" autocomplete="off"
+                     class="importe cobro{% if nombre != 'parking_visa' %} en-total{% endif %}{% if field.errors %} error{% endif %}" data-campo="{{ nombre }}"
+                     aria-label="{{ etiqueta }} día {{ form.instance.dia }}"{% if field.errors %} title="{{ field.errors|join:' ' }}"{% endif %}></td>
+        {% endwith %}{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        {% for campo, etiqueta in puntos_venta %}<td class="num" data-suma="{{ campo }}"></td>{% endfor %}
+        <td class="num" data-suma="ventas"></td>
+        <td class="num separador" data-suma="cobros"></td>
+        {% for campo, etiqueta in otros_cobros %}<td class="num" data-suma="{{ campo }}"></td>{% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+  <div class="pie-form">
+    <label>{{ form_notas.notas }}</label>
+    <div>
+      <a class="btn" href="{% url 'cajas:detalle' caja_mes.anio caja_mes.mes %}">Cancelar</a>
+      <button class="btn btn-primario" type="submit">Guardar cambios</button>
+    </div>
+  </div>
+</form>
+
+<script>
+  (function () {
+    const form = document.getElementById('form-cajas');
+    const fmt = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // «1.234,56» o «1234.56» -> 1234.56
+    function num(texto) {
+      let t = (texto || '').replace(/[€\s]/g, '');
+      if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+      const n = parseFloat(t);
+      return isNaN(n) ? 0 : n;
+    }
+    const show = n => (Math.abs(n) < 0.005 ? '' : fmt.format(n));
+
+    function recalcular() {
+      const sumas = { ventas: 0, cobros: 0 };
+      form.querySelectorAll('tbody tr').forEach(tr => {
+        let ventas = 0, cobros = 0;
+        tr.querySelectorAll('input.importe').forEach(inp => {
+          const v = num(inp.value);
+          sumas[inp.dataset.campo] = (sumas[inp.dataset.campo] || 0) + v;
+          if (inp.classList.contains('venta')) ventas += v;
+          if (inp.classList.contains('en-total')) cobros += v;
+        });
+        tr.querySelector('[data-total="ventas"]').textContent = show(ventas);
+        tr.querySelector('[data-total="cobros"]').textContent = show(cobros);
+        sumas.ventas += ventas; sumas.cobros += cobros;
+      });
+      form.querySelectorAll('[data-suma]').forEach(td => { td.textContent = fmt.format(sumas[td.dataset.suma] || 0); });
+    }
+
+    form.addEventListener('input', recalcular);
+    // Enter baja a la misma columna del día siguiente, como en Excel
+    form.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.classList.contains('importe')) return;
+      e.preventDefault();
+      const fila = e.target.closest('tr').nextElementSibling;
+      const sig = fila && fila.querySelector(`input[data-campo="${e.target.dataset.campo}"]`);
+      if (sig) { sig.focus(); sig.select(); }
+    });
+    recalcular();
+  })();
+</script>
+{% endblock %}

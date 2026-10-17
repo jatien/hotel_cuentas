@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load cajas_tags %}
+{% block title %}Cajas {{ anio }}{% endblock %}
+{% block extra_head %}{% include "cajas/_estilos.html" %}{% endblock %}
+
+{% block content %}
+<div class="cabecera">
+  <h1>Cajas {{ anio }}</h1>
+  <form method="get">
+    <select name="anio" onchange="this.form.submit()" aria-label="Año">
+      {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+  </form>
+  <div class="acciones">
+    <a class="btn" href="{% url 'cajas:importar' %}">Importar Excel</a>
+    <a class="btn btn-primario" href="{% url 'cajas:nuevo' %}">+ Nuevo mes</a>
+  </div>
+</div>
+
+{% include "cajas/_mensajes.html" %}
+
+{% if not r.filas %}
+  <div class="vacio-estado">
+    <p>No hay cajas de {{ anio }}.</p>
+    <p><a class="btn" href="{% url 'cajas:importar' %}">Importar Excel</a>
+       <a class="btn btn-primario" href="{% url 'cajas:nuevo' %}">Crear un mes a mano</a></p>
+  </div>
+{% else %}
+
+<div class="kpis">
+  <div class="kpi"><div class="etq">Ventas del año</div><div class="val">{{ r.total.total_ventas|euros:0 }}</div>
+    <div class="sub">{{ r.filas|length }} mes{{ r.filas|length|pluralize:"es" }}</div></div>
+  <div class="kpi bar"><div class="etq">Bar</div><div class="val">{{ r.total.bar|euros:0 }}</div>
+    <div class="sub">{{ r.pesos.bar|pct }} de las ventas</div></div>
+  <div class="kpi comedor"><div class="etq">Comedor</div><div class="val">{{ r.total.comedor|euros:0 }}</div>
+    <div class="sub">{{ r.pesos.comedor|pct }} de las ventas</div></div>
+  <div class="kpi chill"><div class="etq">Chill out</div><div class="val">{{ r.total.chill_out|euros:0 }}</div>
+    <div class="sub">{{ r.pesos.chill_out|pct }} de las ventas</div></div>
+  <div class="kpi cobros"><div class="etq">Otros cobros (col. G)</div><div class="val">{{ r.total.total_cobros|euros:0 }}</div>
+    <div class="sub">+ {{ r.total.parking_visa|euros:0 }} parking visa</div></div>
+</div>
+
+<div class="grafico"><canvas id="grafico-ventas" aria-label="Ventas mensuales por punto de venta"></canvas></div>
+
+<div class="bloques bloques-resumen">
+  <section class="bloque">
+    <h2>Puntos de venta</h2>
+    <div class="tabla-scroll">
+    <table class="cajas">
+      <thead><tr>
+        <th>Mes</th>
+        {% for campo, etiqueta in puntos_venta %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+        <th class="num total">Total</th>
+      </tr></thead>
+      <tbody>
+        {% for f in r.filas %}
+        <tr>
+          <td><a href="{% url 'cajas:detalle' anio f.mes %}">{{ f.nombre }}</a></td>
+          {% for campo, etiqueta in puntos_venta %}<td class="num">{{ f|attr:campo|euros }}</td>{% endfor %}
+          <td class="num total">{{ f.total_ventas|euros }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td>Total {{ anio }}</td>
+        {% for campo, etiqueta in puntos_venta %}<td class="num">{{ r.total|attr:campo|euros }}</td>{% endfor %}
+        <td class="num">{{ r.total.total_ventas|euros }}</td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>Otros cobros</h2>
+    <p class="nota">Total = ecotasa + menús + facturas + parking efectivo (columna G del Excel). El parking visa va aparte.</p>
+    <div class="tabla-scroll">
+    <table class="cajas">
+      <thead><tr>
+        <th>Mes</th>
+        <th class="num total">Total</th>
+        {% for campo, etiqueta in otros_cobros %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for f in r.filas %}
+        <tr>
+          <td><a href="{% url 'cajas:detalle' anio f.mes %}">{{ f.nombre }}</a></td>
+          <td class="num total">{{ f.total_cobros|euros }}</td>
+          {% for campo, etiqueta in otros_cobros %}<td class="num">{{ f|attr:campo|euros }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td>Total {{ anio }}</td>
+        <td class="num">{{ r.total.total_cobros|euros }}</td>
+        {% for campo, etiqueta in otros_cobros %}<td class="num">{{ r.total|attr:campo|euros }}</td>{% endfor %}
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+</div>
+
+{{ grafico|json_script:"datos-grafico" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script>
+  (function () {
+    const datos = JSON.parse(document.getElementById('datos-grafico').textContent);
+    const estilos = getComputedStyle(document.documentElement);
+    const colores = ['--bar', '--comedor', '--chill'].map(v => estilos.getPropertyValue(v).trim());
+    const fmt = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+    new Chart(document.getElementById('grafico-ventas'), {
+      type: 'bar',
+      data: {
+        labels: datos.meses,
+        datasets: datos.series.map((s, i) => ({
+          label: s.etiqueta, data: s.valores, backgroundColor: colores[i], borderRadius: 4, maxBarThickness: 48,
+        })),
+      },
+      options: {
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: { stacked: true, grid: { display: false } },
+                  y: { stacked: true, ticks: { callback: v => fmt.format(v) } } },
+        plugins: {
+          legend: { position: 'top', align: 'end' },
+          tooltip: { callbacks: {
+            label: c => `${c.dataset.label}: ${fmt.format(c.parsed.y)}`,
+            footer: items => 'Total: ' + fmt.format(items.reduce((s, c) => s + c.parsed.y, 0)),
+          } },
+        },
+      },
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

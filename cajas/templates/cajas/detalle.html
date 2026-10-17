@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load cajas_tags %}
+{% block title %}Cajas {{ caja_mes }}{% endblock %}
+{% block extra_head %}{% include "cajas/_estilos.html" %}{% endblock %}
+
+{% block content %}
+<a class="volver" href="{% url 'cajas:resumen' %}?anio={{ caja_mes.anio }}">← Resumen {{ caja_mes.anio }}</a>
+<div class="cabecera">
+  <h1>Cajas {{ caja_mes }}</h1>
+  <span>
+    {% if anterior %}<a class="btn" href="{% url 'cajas:detalle' anterior.anio anterior.mes %}">← {{ anterior }}</a>{% endif %}
+    {% if siguiente %}<a class="btn" href="{% url 'cajas:detalle' siguiente.anio siguiente.mes %}">{{ siguiente }} →</a>{% endif %}
+  </span>
+  <div class="acciones">
+    <a class="btn btn-primario" href="{% url 'cajas:editar' caja_mes.anio caja_mes.mes %}">Editar</a>
+    <form method="post" action="{% url 'cajas:borrar' caja_mes.anio caja_mes.mes %}"
+          onsubmit="return confirm('¿Borrar todas las cajas de {{ caja_mes }}? No se puede deshacer.');">
+      {% csrf_token %}<button class="btn btn-peligro" type="submit">Borrar mes</button>
+    </form>
+  </div>
+</div>
+
+{% include "cajas/_mensajes.html" %}
+
+<div class="kpis">
+  <div class="kpi"><div class="etq">Ventas del mes</div><div class="val">{{ total.total_ventas|euros }}</div></div>
+  <div class="kpi bar"><div class="etq">Bar</div><div class="val">{{ total.bar|euros }}</div></div>
+  <div class="kpi comedor"><div class="etq">Comedor</div><div class="val">{{ total.comedor|euros }}</div></div>
+  <div class="kpi chill"><div class="etq">Chill out</div><div class="val">{{ total.chill_out|euros }}</div></div>
+  <div class="kpi cobros"><div class="etq">Otros cobros (col. G)</div><div class="val">{{ total.total_cobros|euros }}</div></div>
+</div>
+
+<div class="bloques">
+  <section class="bloque">
+    <h2>Puntos de venta</h2>
+    <div class="tabla-scroll">
+    <table class="cajas">
+      <thead><tr>
+        <th>Día</th>
+        {% for campo, etiqueta in puntos_venta %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+        <th class="num total">Total</th>
+      </tr></thead>
+      <tbody>
+        {% for d in dias %}
+        <tr{% if d.vacio %} class="vacio"{% endif %}>
+          <td>{{ d.dia }}</td>
+          {% for campo, etiqueta in puntos_venta %}<td class="num">{{ d|attr:campo|importe }}</td>{% endfor %}
+          <td class="num total">{{ d.total_ventas|importe }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td>Total</td>
+        {% for campo, etiqueta in puntos_venta %}<td class="num">{{ total|attr:campo|euros }}</td>{% endfor %}
+        <td class="num">{{ total.total_ventas|euros }}</td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>Otros cobros</h2>
+    <div class="tabla-scroll">
+    <table class="cajas">
+      <thead><tr>
+        <th>Día</th>
+        <th class="num total">Total</th>
+        {% for campo, etiqueta in otros_cobros %}<th class="num">{{ etiqueta }}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for d in dias %}
+        <tr{% if d.vacio %} class="vacio"{% endif %}>
+          <td>{{ d.dia }}</td>
+          <td class="num total">{{ d.total_cobros|importe }}</td>
+          {% for campo, etiqueta in otros_cobros %}<td class="num">{{ d|attr:campo|importe }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td>Total</td>
+        <td class="num">{{ total.total_cobros|euros }}</td>
+        {% for campo, etiqueta in otros_cobros %}<td class="num">{{ total|attr:campo|euros }}</td>{% endfor %}
+      </tr></tfoot>
+    </table>
+    </div>
+  </section>
+</div>
+
+{% if caja_mes.notas or caja_mes.origen %}
+<p style="margin-top:1.5rem; color: var(--tinta-suave); font-size:.88rem;">
+  {% if caja_mes.notas %}<strong>Notas:</strong> {{ caja_mes.notas|linebreaksbr }}<br>{% endif %}
+  {% if caja_mes.origen %}Importado de: {{ caja_mes.origen }}{% endif %}
+</p>
+{% endif %}
+{% endblock %}

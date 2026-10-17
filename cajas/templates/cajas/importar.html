@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Importar cajas{% endblock %}
+{% block extra_head %}
+{% include "cajas/_estilos.html" %}
+<style>
+  .dropzone {
+    border: 2px dashed var(--tinta-suave); border-radius: 16px; padding: 40px; text-align: center;
+    cursor: pointer; background: var(--tarjeta); transition: background .18s ease, border-color .18s ease;
+  }
+  .dropzone.dragover { background: var(--acento-tinte); border-color: var(--acento); }
+  .opciones { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: flex-end; margin: 1rem 0; }
+  .opciones .ayuda { display: block; font-size: .8rem; color: var(--tinta-suave); max-width: 280px; }
+  .estado-importado { color: var(--ok); font-weight: 600; }
+  .estado-error { color: var(--aviso); font-weight: 600; }
+  .estado-omitido, .estado-vacio { color: var(--tinta-suave); }
+  .avisos { margin: .3rem 0 0; padding-left: 1.1rem; font-size: .82rem; color: var(--comedor); }
+  pre.error { white-space: pre-wrap; margin: .3rem 0 0; font: inherit; font-size: .82rem; color: var(--aviso); }
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="volver" href="{% url 'cajas:resumen' %}">← Resumen de cajas</a>
+<div class="cabecera"><h1>Importar cajas desde Excel</h1></div>
+{% include "cajas/_mensajes.html" %}
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div id="dropzone" class="dropzone">
+    <p id="dropzone-texto">Arrastra aquí el Excel de cajas, o haz clic para seleccionarlo</p>
+    <input type="file" name="archivo" id="id_archivo" accept=".xlsx,.xlsm,.xls,.ods" style="display:none;">
+  </div>
+  {{ form.archivo.errors }}
+  <div class="opciones">
+    <label>Mes<br>{{ form.mes }}</label>
+    <label>Año<br>{{ form.anio }}<span class="ayuda">{{ form.anio.help_text }}</span></label>
+    <label>{{ form.reemplazar }} {{ form.reemplazar.label }}<span class="ayuda">{{ form.reemplazar.help_text }}</span></label>
+  </div>
+  {{ form.anio.errors }}{{ form.mes.errors }}
+  <button type="submit" class="btn btn-primario">Importar</button>
+</form>
+
+<p style="color:var(--tinta-suave); font-size:.85rem; margin-top:1rem;">
+  Una hoja por mes, con nombre que empiece por el mes («Mayo 26», «abril 26_Tabla 1»…). De cada hoja se leen las columnas
+  <em>dia, Bar, Comedor, chill, Ecotasa, Menús, fras, Park, Parkvis</em>. «Total» y la columna sin nombre (G) solo se usan
+  para comprobar que la suma cuadra.
+</p>
+
+{% if resultados %}
+<h2 style="font-size:1.1rem; margin-top:1.5rem;">Resultado</h2>
+<table class="cajas">
+  <thead><tr><th>Hoja</th><th>Mes</th><th>Estado</th><th class="num">Días con datos</th></tr></thead>
+  <tbody>
+  {% for r in resultados %}
+    <tr>
+      <td>{{ r.hoja }}</td>
+      <td>{% if r.estado == "importado" or r.estado == "omitido" %}<a href="{% url 'cajas:detalle' r.anio r.mes %}">{{ r.nombre_mes }} {{ r.anio }}</a>{% else %}{{ r.nombre_mes }} {{ r.anio|default:"?" }}{% endif %}</td>
+      <td>
+        <span class="estado-{{ r.estado }}">
+          {% if r.estado == "importado" %}Importado{% elif r.estado == "omitido" %}Ya existía, no se ha tocado{% elif r.estado == "vacio" %}Hoja vacía{% else %}Error{% endif %}
+        </span>
+        {% if r.error %}<pre class="error">{{ r.error }}</pre>{% endif %}
+        {% if r.avisos %}<ul class="avisos">{% for a in r.avisos %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
+      </td>
+      <td class="num">{{ r.dias }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const inputArchivo = document.getElementById('id_archivo');
+  const textoDropzone = document.getElementById('dropzone-texto');
+  dropzone.addEventListener('click', () => inputArchivo.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) {
+      inputArchivo.files = e.dataTransfer.files;
+      textoDropzone.textContent = 'Archivo listo: ' + e.dataTransfer.files[0].name;
+    }
+  });
+  inputArchivo.addEventListener('change', () => {
+    if (inputArchivo.files.length > 0) textoDropzone.textContent = 'Archivo listo: ' + inputArchivo.files[0].name;
+  });
+</script>
+{% endblock %}
