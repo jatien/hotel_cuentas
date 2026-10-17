@@ -12,7 +12,7 @@
     {% if siguiente %}<a class="btn" href="{% url 'cajas:detalle' siguiente.anio siguiente.mes %}">{{ siguiente }} →</a>{% endif %}
   </span>
   <div class="acciones">
-    <a class="btn btn-primario" href="{% url 'cajas:editar' caja_mes.anio caja_mes.mes %}">Editar</a>
+    <a class="btn btn-primario" href="{% url 'cajas:meses' %}?anio={{ caja_mes.anio }}&mes={{ caja_mes.mes }}">Editar</a>
     <form method="post" action="{% url 'cajas:borrar' caja_mes.anio caja_mes.mes %}"
           onsubmit="return confirm('¿Borrar todas las cajas de {{ caja_mes }}? No se puede deshacer.');">
       {% csrf_token %}<button class="btn btn-peligro" type="submit">Borrar mes</button>
@@ -27,7 +27,7 @@
   <div class="kpi bar"><div class="etq">Bar</div><div class="val">{{ total.bar|euros }}</div></div>
   <div class="kpi comedor"><div class="etq">Comedor</div><div class="val">{{ total.comedor|euros }}</div></div>
   <div class="kpi chill"><div class="etq">Chill out</div><div class="val">{{ total.chill_out|euros }}</div></div>
-  <div class="kpi cobros"><div class="etq">Otros cobros (col. G)</div><div class="val">{{ total.total_cobros|euros }}</div></div>
+  <div class="kpi cobros"><div class="etq">Otros cobros</div><div class="val">{{ total.total_cobros|euros }}</div></div>
 </div>
 
 <div class="bloques">

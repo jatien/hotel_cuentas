@@ -1,4 +1,6 @@
+import calendar
 from datetime import date
+from decimal import Decimal
 
 from django.contrib import messages
 from django.db import transaction
@@ -6,9 +8,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .forms import CajaDiaFormSet, ImportarCajasForm, NotasMesForm, NuevoMesForm
+from .forms import DiasFormSet, ImportarCajasForm, NotasMesForm
 from .importacion import ErrorImportacion, importar_libro
-from .models import MESES_NOMBRES, OTROS_COBROS, PUNTOS_VENTA, CajaMes
+from .models import CAMPOS_IMPORTE, MESES, MESES_NOMBRES, OTROS_COBROS, PUNTOS_VENTA, CajaDia, CajaMes
 from .resumen import anios_disponibles, resumen_anual, totales_dias
 
 
@@ -56,46 +58,53 @@ def detalle(request, anio, mes):
     })
 
 
-def editar(request, anio, mes):
-    caja_mes = get_object_or_404(CajaMes, anio=anio, mes=mes)
-    caja_mes.crear_dias()   # por si el mes se creó incompleto
-    queryset = caja_mes.dias.all()
+def meses(request):
+    """Año + los 12 meses; el mes elegido muestra su tabla para rellenarla o corregirla.
+
+    Un mes que aún no existe no se crea hasta que se guarda la tabla.
+    """
+    anios = anios_disponibles()
+    anio = _anio_param(request, anios)
+    anios = sorted(set(anios) | {anio, date.today().year}, reverse=True)
+    try:
+        mes = int(request.GET.get("mes", ""))
+        mes = mes if 1 <= mes <= 12 else None
+    except ValueError:
+        mes = None
+
+    totales = {f["mes"]: f["total_ventas"] for f in resumen_anual(anio)["filas"]}
+    tarjetas = [{"mes": n, "nombre": nombre, "existe": n in totales, "total": totales.get(n)}
+                for n, nombre in MESES]
+
+    contexto = {"anio": anio, "anios": anios, "mes": mes, "tarjetas": tarjetas,
+                "puntos_venta": PUNTOS_VENTA, "otros_cobros": OTROS_COBROS}
+    if not mes:
+        return render(request, "cajas/meses.html", contexto)
+
+    caja_mes = CajaMes.objects.filter(anio=anio, mes=mes).first()
+    num_dias = calendar.monthrange(anio, mes)[1]
+    existentes = {d.dia: d for d in caja_mes.dias.all()} if caja_mes else {}
+    inicial = [{c: getattr(existentes[d], c) if d in existentes else None for c in CAMPOS_IMPORTE}
+               for d in range(1, num_dias + 1)]
 
     if request.method == "POST":
-        formset = CajaDiaFormSet(request.POST, queryset=queryset)
-        form_notas = NotasMesForm(request.POST, instance=caja_mes)
-        if formset.is_valid() and form_notas.is_valid():
+        formset = DiasFormSet(request.POST, initial=inicial)
+        form_notas = NotasMesForm(request.POST, instance=caja_mes or CajaMes(anio=anio, mes=mes))
+        if formset.is_valid() and form_notas.is_valid() and len(formset.forms) == num_dias:
             with transaction.atomic():
-                formset.save()
-                form_notas.save()
+                caja_mes = form_notas.save()
+                for dia, form in enumerate(formset.forms, start=1):
+                    valores = {c: form.cleaned_data.get(c) or Decimal("0") for c in CAMPOS_IMPORTE}
+                    CajaDia.objects.update_or_create(caja_mes=caja_mes, dia=dia, defaults=valores)
             messages.success(request, f"{caja_mes}: cambios guardados.")
-            return redirect("cajas:detalle", anio=anio, mes=mes)
+            return redirect(f"{reverse('cajas:meses')}?anio={anio}&mes={mes}")
         messages.error(request, "Hay importes no válidos; revisa las casillas marcadas en rojo.")
     else:
-        formset = CajaDiaFormSet(queryset=queryset)
+        formset = DiasFormSet(initial=inicial)
         form_notas = NotasMesForm(instance=caja_mes)
 
-    return render(request, "cajas/editar.html", {
-        "caja_mes": caja_mes, "formset": formset, "form_notas": form_notas,
-        "puntos_venta": PUNTOS_VENTA, "otros_cobros": OTROS_COBROS,
-    })
-
-
-def nuevo(request):
-    if request.method == "POST":
-        form = NuevoMesForm(request.POST)
-        if form.is_valid():
-            anio, mes = form.cleaned_data["anio"], form.cleaned_data["mes"]
-            caja_mes, creado = CajaMes.objects.get_or_create(anio=anio, mes=mes)
-            if creado:
-                caja_mes.crear_dias()
-                messages.success(request, f"{caja_mes} creado. Rellena las cajas de cada día.")
-                return redirect("cajas:editar", anio=anio, mes=mes)
-            messages.info(request, f"{caja_mes} ya existía.")
-            return redirect("cajas:detalle", anio=anio, mes=mes)
-    else:
-        form = NuevoMesForm()
-    return render(request, "cajas/nuevo.html", {"form": form})
+    contexto.update(caja_mes=caja_mes, nombre_mes=MESES_NOMBRES[mes], formset=formset, form_notas=form_notas)
+    return render(request, "cajas/meses.html", contexto)
 
 
 @require_POST

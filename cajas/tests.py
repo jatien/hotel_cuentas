@@ -58,11 +58,17 @@ class LeerHojaTests(TestCase):
         self.assertEqual(dias[1]["parking_efectivo"], Decimal("2"))
         self.assertEqual(dias[2]["parking_visa"], Decimal("8"))
 
-    def test_aviso_si_columna_g_no_cuadra(self):
+    def test_aviso_si_total_no_cuadra(self):
+        filas = hoja_basica()
+        filas[1] = fila(1, 100.5, 50, "", 10, "", 5, 2, 4, total=999)
+        _, avisos = leer_hoja(filas, 2026, 4)
+        self.assertTrue(any("día 1" in a for a in avisos))
+
+    def test_columna_g_se_ignora(self):
         filas = hoja_basica()
         filas[1] = fila(1, 100.5, 50, "", 10, "", 5, 2, 4, g=999)
         _, avisos = leer_hoja(filas, 2026, 4)
-        self.assertTrue(any("columna G" in a for a in avisos))
+        self.assertEqual(avisos, [])
 
     def test_error_si_importe_no_valido(self):
         filas = hoja_basica()
@@ -98,7 +104,7 @@ class GuardarYResumenTests(TestCase):
         r = resumen_anual(2026)
         self.assertEqual([f["mes"] for f in r["filas"]], [4, 5])
         self.assertEqual(r["filas"][0]["total_ventas"], Decimal("380.75"))
-        self.assertEqual(r["filas"][0]["total_cobros"], Decimal("42"))   # parking visa fuera
+        self.assertEqual(r["filas"][0]["total_cobros"], Decimal("54"))   # incluye parking visa
         self.assertEqual(r["total"]["bar"], Decimal("310.50"))
         self.assertEqual(r["total"]["parking_visa"], Decimal("15"))
 
@@ -171,35 +177,51 @@ class VistasTests(TestCase):
         self.assertContains(r, "380,75 €")
         r = self.client.get(reverse("cajas:detalle", args=[2026, 4]))
         self.assertContains(r, "Chill out")
-        self.assertContains(r, "42,00 €")
+        self.assertContains(r, "54,00 €")
 
-    def test_nuevo_mes(self):
-        r = self.client.post(reverse("cajas:nuevo"), {"anio": 2026, "mes": 2})
-        self.assertRedirects(r, reverse("cajas:editar", args=[2026, 2]))
-        self.assertEqual(CajaMes.objects.get(anio=2026, mes=2).dias.count(), 28)
+    def _url_mes(self, anio, mes):
+        return f"{reverse('cajas:meses')}?anio={anio}&mes={mes}"
+
+    def _datos(self, num_dias, **valores):
+        datos = {"form-TOTAL_FORMS": str(num_dias), "form-INITIAL_FORMS": str(num_dias), "notas": ""}
+        datos.update(valores)
+        return datos
+
+    def test_meses_lista_los_doce(self):
+        r = self.client.get(reverse("cajas:meses") + "?anio=2026")
+        self.assertContains(r, "Diciembre")
+        self.assertContains(r, "Sin datos")
+        self.assertContains(r, "Elige un mes")
+
+    def test_mes_nuevo_no_se_crea_hasta_guardar(self):
+        r = self.client.get(self._url_mes(2026, 2))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.context["formset"].forms), 28)
+        self.assertFalse(CajaMes.objects.filter(anio=2026, mes=2).exists())
+        r = self.client.post(self._url_mes(2026, 2), self._datos(28, **{"form-4-bar": "12,5"}))
+        self.assertRedirects(r, self._url_mes(2026, 2))
+        cm = CajaMes.objects.get(anio=2026, mes=2)
+        self.assertEqual(cm.dias.count(), 28)
+        self.assertEqual(cm.dias.get(dia=5).bar, Decimal("12.50"))
 
     def test_editar_acepta_coma_decimal(self):
         cm = CajaMes.objects.get(anio=2026, mes=4)
-        r = self.client.get(reverse("cajas:editar", args=[2026, 4]))
-        self.assertEqual(r.status_code, 200)
-        datos = {"form-TOTAL_FORMS": "30", "form-INITIAL_FORMS": "30", "notas": "prueba"}
-        for i, d in enumerate(cm.dias.all()):
-            datos[f"form-{i}-id"] = d.id
-        datos["form-0-bar"] = "1.234,56"
-        datos["form-1-ecotasa"] = "7.5"
-        r = self.client.post(reverse("cajas:editar", args=[2026, 4]), datos)
-        self.assertRedirects(r, reverse("cajas:detalle", args=[2026, 4]))
+        r = self.client.get(self._url_mes(2026, 4))
+        self.assertContains(r, 'value="100,50"')
+        r = self.client.post(self._url_mes(2026, 4), self._datos(
+            30, **{"form-0-bar": "1.234,56", "form-1-ecotasa": "7.5", "notas": "prueba"}))
+        self.assertRedirects(r, self._url_mes(2026, 4))
         self.assertEqual(cm.dias.get(dia=1).bar, Decimal("1234.56"))
         self.assertEqual(cm.dias.get(dia=2).ecotasa, Decimal("7.50"))
         self.assertEqual(cm.dias.get(dia=1).comedor, Decimal("0"))   # casilla vacía = 0
+        cm.refresh_from_db()
+        self.assertEqual(cm.notas, "prueba")
 
     def test_editar_importe_no_valido(self):
-        cm = CajaMes.objects.get(anio=2026, mes=4)
-        datos = {"form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1", "form-0-id": cm.dias.get(dia=1).id,
-                 "form-0-bar": "abc"}
-        r = self.client.post(reverse("cajas:editar", args=[2026, 4]), datos)
+        r = self.client.post(self._url_mes(2026, 4), self._datos(30, **{"form-0-bar": "abc"}))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'value="abc"')
+        self.assertEqual(CajaDia.objects.get(caja_mes__mes=4, dia=1).bar, Decimal("100.50"))
 
     def test_borrar(self):
         self.client.post(reverse("cajas:borrar", args=[2026, 4]))

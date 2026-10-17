@@ -5,8 +5,8 @@ de cajas (un día). Se guardan dos bloques de importes:
 
 - Puntos de venta: bar, comedor y chill out (columnas B-D del Excel).
 - Otros cobros: ecotasa, menús, facturas, parking efectivo y parking visa
-  (columnas H-L). La columna G del Excel, sin nombre, es su total y aquí se
-  calcula, no se guarda.
+  (columnas H-L). Su total se calcula, no se guarda; la columna G del Excel
+  (sin nombre) se ignora.
 """
 
 import calendar
@@ -33,8 +33,8 @@ OTROS_COBROS = [
     ("parking_efectivo", "Parking efectivo"),
     ("parking_visa", "Parking visa"),
 ]
-# Campos que suman la columna G del Excel (=H+I+J+K): el parking visa NO entra.
-CAMPOS_TOTAL_COBROS = ["ecotasa", "menus", "facturas", "parking_efectivo"]
+# Campos que suman el total de otros cobros
+CAMPOS_TOTAL_COBROS = [c for c, _ in OTROS_COBROS]
 
 CAMPOS_IMPORTE = [c for c, _ in PUNTOS_VENTA + OTROS_COBROS]
 
@@ -111,7 +111,7 @@ class CajaDia(models.Model):
 
     @property
     def total_cobros(self):
-        """Ecotasa + menús + facturas + parking efectivo (columna G del Excel)."""
+        """Ecotasa + menús + facturas + parking efectivo + parking visa."""
         return sum((getattr(self, c) for c in CAMPOS_TOTAL_COBROS), Decimal("0"))
 
     @property

@@ -1,10 +1,9 @@
-from datetime import date
 from decimal import Decimal
 
 from django import forms
-from django.forms import modelformset_factory
+from django.forms import formset_factory
 
-from .models import CAMPOS_IMPORTE, MESES, CajaDia, CajaMes
+from .models import CAMPOS_IMPORTE, MESES, CajaMes
 
 
 class ImporteField(forms.DecimalField):
@@ -20,23 +19,16 @@ class ImporteField(forms.DecimalField):
         return valor if valor is not None else Decimal("0")
 
 
-def _campo_importe(campo, **kwargs):
-    if campo.name in CAMPOS_IMPORTE:
-        return ImporteField(
-            max_digits=12, decimal_places=2, required=False, label=campo.verbose_name,
-            widget=forms.TextInput(attrs={"inputmode": "decimal", "class": "importe", "autocomplete": "off"}),
-        )
-    return campo.formfield(**kwargs)
+class DiaForm(forms.Form):
+    """Una fila (un día) de la tabla de cajas del mes."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for nombre in CAMPOS_IMPORTE:
+            self.fields[nombre] = ImporteField(max_digits=12, decimal_places=2, required=False)
 
 
-CajaDiaFormSet = modelformset_factory(
-    CajaDia, fields=CAMPOS_IMPORTE, extra=0, formfield_callback=_campo_importe,
-)
-
-
-class NuevoMesForm(forms.Form):
-    anio = forms.IntegerField(label="Año", min_value=2000, max_value=2100, initial=lambda: date.today().year)
-    mes = forms.TypedChoiceField(label="Mes", choices=MESES, coerce=int, initial=lambda: date.today().month)
+DiasFormSet = formset_factory(DiaForm, extra=0)
 
 
 class NotasMesForm(forms.ModelForm):

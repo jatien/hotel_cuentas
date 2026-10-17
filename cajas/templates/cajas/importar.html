@@ -36,13 +36,13 @@
     <label>{{ form.reemplazar }} {{ form.reemplazar.label }}<span class="ayuda">{{ form.reemplazar.help_text }}</span></label>
   </div>
   {{ form.anio.errors }}{{ form.mes.errors }}
-  <button type="submit" class="btn btn-primario">Importar</button>
+  <button type="submit" class="btn btn-primario">Importar Excel</button>
 </form>
 
 <p style="color:var(--tinta-suave); font-size:.85rem; margin-top:1rem;">
   Una hoja por mes, con nombre que empiece por el mes («Mayo 26», «abril 26_Tabla 1»…). De cada hoja se leen las columnas
-  <em>dia, Bar, Comedor, chill, Ecotasa, Menús, fras, Park, Parkvis</em>. «Total» y la columna sin nombre (G) solo se usan
-  para comprobar que la suma cuadra.
+  <em>dia, Bar, Comedor, chill, Ecotasa, Menús, fras, Park, Parkvis</em>. «Total» solo se usa para comprobar
+  que la suma cuadra.
 </p>
 
 {% if resultados %}
