@@ -157,6 +157,21 @@ Códigos HTTP: 202 en cola · 400 petición mal formada · 401 sin sesión · 40
 404 no existe o es de otra empresa · 409 transición no permitida / duplicado aprobado / ya en cola ·
 413 fichero grande · 415 tipo no admitido · 422 datos no válidos.
 
+## Afinar un modelo propio (Qwen2.5-VL)
+
+Las facturas aprobadas sirven como ejemplos de entrenamiento. Flujo completo en
+[`training/README.md`](../training/README.md):
+
+```powershell
+python manage.py invoice_agent_import "C:\ruta\facturas" --empresa B07794803 --recursive   # carga por lotes
+python manage.py invoice_agent_export_dataset C:\datasets\dataset_facturas                   # train/val/test
+python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --vision-mode always
+```
+
+`INVOICE_AGENT_VISION_MODE` decide qué imágenes recibe el modelo: `auto` (solo páginas difíciles, lo
+mínimo para un proveedor externo), `always` (todas; obligatorio con el modelo afinado, que se entrenó
+así) o `never`.
+
 ## Tests y evaluación
 
 ```powershell

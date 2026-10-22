@@ -89,7 +89,9 @@ def _tax_tuple(kind, rate, base, amount) -> tuple:
     return (kind, q(rate), q(base), q(amount))
 
 
-def evaluate_folder(folder: Path, provider: ExtractionProvider, ocr_engine=None, own_nif: str = "") -> dict:
+def evaluate_folder(
+    folder: Path, provider: ExtractionProvider, ocr_engine=None, own_nif: str = "", vision_mode: str | None = None
+) -> dict:
     results = []
     for name, document, truth in load_cases(Path(folder)):
         if isinstance(provider, OracleProvider):
@@ -97,8 +99,14 @@ def evaluate_folder(folder: Path, provider: ExtractionProvider, ocr_engine=None,
         started = time.monotonic()
         tipo = "pdf" if document.suffix.lower() == ".pdf" else "image"
         try:
-            prepared = prepare(document, tipo, ocr_engine, provider.supports_vision)
-            extraction = run_extraction(prepared, empresa_nombre="", empresa_nif=own_nif, provider=provider)
+            prepared = prepare(document, tipo, ocr_engine, provider.supports_vision, vision_mode)
+            empresa = truth.get("empresa") or {}  # la exportación del dataset guarda la empresa receptora
+            extraction = run_extraction(
+                prepared,
+                empresa_nombre=empresa.get("nombre", ""),
+                empresa_nif=empresa.get("nif", own_nif),
+                provider=provider,
+            )
         except (PreparationError, ExtractionFailed) as error:
             results.append(
                 CaseResult(name, {}, truth.get("fields", {}), [], 0, truth.get("lines"), [], None,
@@ -106,7 +114,10 @@ def evaluate_folder(folder: Path, provider: ExtractionProvider, ocr_engine=None,
             )
             continue
         data = from_model_output(extraction.output)
-        issues = [i.to_dict() for i in validate(data, ValidationContext(empresa_nif=own_nif))]
+        issues = [
+            i.to_dict()
+            for i in validate(data, ValidationContext(empresa_nif=(truth.get("empresa") or {}).get("nif", own_nif)))
+        ]
         stats = extraction.stats
         results.append(
             CaseResult(

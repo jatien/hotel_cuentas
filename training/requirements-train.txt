@@ -1,0 +1,6 @@
+# Entorno de ENTRENAMIENTO (en el pod de RunPod, no en el PC del hotel).
+# Instalar con: bash setup_pod.sh   (crea /workspace/venv-train)
+unsloth            # carga Qwen2.5-VL, LoRA/QLoRA y el colador de datos de visión (trae torch, transformers, peft, trl)
+datasets
+pillow
+jsonschema         # comprueba que las respuestas del modelo cumplen el esquema exportado

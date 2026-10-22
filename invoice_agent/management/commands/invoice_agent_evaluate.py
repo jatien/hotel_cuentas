@@ -51,6 +51,10 @@ class Command(BaseCommand):
         parser.add_argument("--oracle", action="store_true", help="Usa la verdad como respuesta (prueba de la tubería).")
         parser.add_argument("--own-nif", default="", help="NIF de la empresa receptora para las comprobaciones.")
         parser.add_argument("--output", help="Guarda el informe JSON en este fichero.")
+        parser.add_argument(
+            "--vision-mode", choices=["auto", "always", "never"],
+            help="Imágenes al modelo (por defecto, INVOICE_AGENT_VISION_MODE). Usa «always» con el modelo afinado.",
+        )
 
     def handle(self, *args, **options):
         if options["build_demo"]:
@@ -63,7 +67,7 @@ class Command(BaseCommand):
         if not folder.is_dir():
             raise CommandError(f"No existe la carpeta {folder}")
         provider = OracleProvider() if options["oracle"] else get_provider()
-        report = evaluate_folder(folder, provider, own_nif=options["own_nif"])
+        report = evaluate_folder(folder, provider, own_nif=options["own_nif"], vision_mode=options["vision_mode"])
         text = json.dumps(report, ensure_ascii=False, indent=2)
         if options["output"]:
             Path(options["output"]).write_text(text, encoding="utf-8")
