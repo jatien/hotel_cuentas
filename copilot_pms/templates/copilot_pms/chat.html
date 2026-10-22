@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}PMS Copilot{% endblock %}
+
+{% block extra_head %}
+<style>
+  .copilot { display: grid; grid-template-columns: 240px 1fr; gap: 1.5rem; max-width: 1200px; }
+  @media (max-width: 800px) { .copilot { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--tarjeta); border-radius: 16px; padding: 1rem 1.2rem;
+           box-shadow: 0 1px 2px rgb(28 39 51 / .06), 0 10px 28px -14px rgb(28 39 51 / .28); }
+  .lateral h2 { font-size: 1rem; margin: 0 0 .6rem; }
+  .lateral ul { list-style: none; margin: 0; padding: 0; }
+  .lateral li { margin: .35rem 0; font-size: .9rem; line-height: 1.3; }
+  .lateral li.activa a { font-weight: 600; }
+  .nueva { display: inline-block; margin-bottom: 1rem; font-weight: 600; text-decoration: none; }
+
+  h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+  .sub { color: var(--tinta-suave); margin: 0 0 1.2rem; }
+
+  .mensajes { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.2rem; }
+  .msg { border-radius: 14px; padding: .8rem 1rem; line-height: 1.5; max-width: 900px; }
+  .msg.user { background: var(--acento-tinte); align-self: flex-end; }
+  .msg.assistant { background: var(--tarjeta); box-shadow: 0 1px 2px rgb(28 39 51 / .06); }
+  .msg.error { border-left: 4px solid var(--aviso); }
+  .msg .meta { font-size: .78rem; color: var(--tinta-suave); margin-top: .5rem; }
+
+  details.consultas { margin-top: .7rem; font-size: .88rem; }
+  details.consultas summary { cursor: pointer; color: var(--acento); font-weight: 500; }
+  .consulta { border-top: 1px solid var(--fondo); padding: .5rem 0; }
+  .consulta code { font-size: .8rem; background: var(--fondo); padding: .1rem .3rem; border-radius: 4px;
+                   word-break: break-word; }
+  .etiqueta { display: inline-block; font-size: .75rem; padding: .05rem .45rem; border-radius: 999px;
+              background: #E3F1EE; color: #0E7A6D; font-weight: 600; }
+  .etiqueta.mal { background: #F6E7EC; color: var(--aviso); }
+  .aviso { color: var(--aviso); }
+
+  form.pregunta { display: flex; gap: .6rem; align-items: flex-end; }
+  form.pregunta textarea { flex: 1; min-height: 3.2rem; font: inherit; padding: .7rem .9rem;
+                           border-radius: 12px; border: 1px solid #C9D2DE; resize: vertical; }
+  form.pregunta button { font: inherit; font-weight: 600; padding: .7rem 1.2rem; border: 0;
+                         border-radius: 12px; background: var(--acento); color: #fff; cursor: pointer; }
+  form.pregunta button[disabled] { opacity: .6; cursor: progress; }
+  .ejemplos { font-size: .88rem; color: var(--tinta-suave); margin-top: .6rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="copilot">
+  <aside class="lateral">
+    <a class="nueva" href="{% url 'copilot_pms:index' %}">+ Nueva conversación</a>
+    <div class="panel">
+      <h2>Recientes</h2>
+      <ul>
+        {% for c in recientes %}
+          <li class="{% if conversacion and c.pk == conversacion.pk %}activa{% endif %}">
+            <a href="{% url 'copilot_pms:conversacion' c.public_id %}">{{ c.titulo|truncatechars:60 }}</a>
+          </li>
+        {% empty %}
+          <li>Todavía no hay conversaciones.</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <details class="panel" style="margin-top:1rem">
+      <summary><strong>Qué puedo consultar</strong></summary>
+      <ul>
+        {% for h in herramientas %}<li><code>{{ h.nombre }}</code> {{ h.descripcion|truncatechars:90 }}</li>{% endfor %}
+      </ul>
+      <h2 style="margin-top:.8rem">Aún no conectado</h2>
+      <ul>{% for que, motivo in pendientes %}<li>{{ que }}</li>{% endfor %}</ul>
+    </details>
+  </aside>
+
+  <section>
+    <h1>PMS Copilot</h1>
+    <p class="sub">Preguntas sobre contabilidad, facturas e informes. Solo consulta; no modifica nada.</p>
+
+    <div class="mensajes">
+      {% for m in mensajes %}
+        <div class="msg {{ m.rol }}{% if m.estado != 'ok' %} error{% endif %}" {% if forloop.last %}id="ultimo"{% endif %}>
+          {{ m.contenido|linebreaksbr }}
+          {% if m.rol == 'assistant' %}
+            {% if m.consultas %}
+              <details class="consultas">
+                <summary>Datos consultados ({{ m.consultas|length }})</summary>
+                {% for c in m.consultas %}
+                  <div class="consulta">
+                    <span class="etiqueta{% if not c.ok %} mal{% endif %}">{{ c.llamada.get_estado_display }}</span>
+                    <strong>{{ c.llamada.herramienta }}</strong>
+                    <code>{{ c.llamada.argumentos }}</code>
+                    {% if c.llamada.fuente %}<div>Fuente: {{ c.llamada.fuente }}{% if c.fecha_datos %} · Datos a {{ c.fecha_datos }}{% endif %}</div>{% endif %}
+                    {% if c.llamada.codigo %}<div class="aviso">{{ c.llamada.codigo }}: {{ c.llamada.resultado.mensaje }}</div>{% endif %}
+                    {% for a in c.avisos %}<div class="aviso">{{ a }}</div>{% endfor %}
+                    {% for nombre, url in c.enlaces %}<div><a href="{{ url }}" target="_blank" rel="noopener">Abrir {{ nombre }}</a></div>{% endfor %}
+                  </div>
+                {% endfor %}
+              </details>
+            {% endif %}
+            <div class="meta">{{ m.creado|date:"d/m/Y H:i" }}{% if m.modelo %} · {{ m.modelo }}{% endif %}{% if m.duracion_ms %} · {{ m.duracion_ms }} ms{% endif %}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <form class="pregunta" method="post" action="{% url 'copilot_pms:preguntar' %}"
+          onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Consultando…';">
+      {% csrf_token %}
+      {% if conversacion %}<input type="hidden" name="conversacion" value="{{ conversacion.public_id }}">{% endif %}
+      <textarea name="pregunta" required maxlength="4000" placeholder="Pregunta algo…" autofocus
+                onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.form.requestSubmit(); }"></textarea>
+      <button type="submit">Preguntar</button>
+    </form>
+    {% if not mensajes %}
+      <p class="ejemplos">Ejemplos: «¿Saldo de la cuenta 572 a 30 de septiembre?» · «Busca la factura de Makro de agosto
+        y dame el PDF» · «Cuenta de pérdidas y ganancias de 2026» · «Ventas del bar en julio».</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
