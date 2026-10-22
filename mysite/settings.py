@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'analisis.apps.AnalisisConfig',
     'cajas.apps.CajasConfig',
     'invoice_agent.apps.InvoiceAgentConfig',
+    'copilot_pms.apps.CopilotPmsConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -99,6 +100,16 @@ INVOICE_AGENT = {
     "MAX_CONCURRENT_JOBS": config("INVOICE_AGENT_MAX_CONCURRENT_JOBS", default=2, cast=int),
     "REQUIRE_LOGIN": config("INVOICE_AGENT_REQUIRE_LOGIN", default=False, cast=bool),
     "RETENTION_DAYS": config("INVOICE_AGENT_RETENTION_DAYS", default=None, cast=lambda v: int(v) if v else None),
+}
+
+# PMS Copilot (copilot_pms): preguntas en lenguaje natural respondidas con herramientas de solo
+# lectura. Valores sensibles en .env (ver .env.example); el resto en copilot_pms/conf.py.
+COPILOT_PMS = {
+    "PROVIDER": config("COPILOT_PROVIDER", default="openai"),
+    "BASE_URL": config("COPILOT_BASE_URL", default=""),
+    "API_KEY": config("COPILOT_API_KEY", default=config("OPENAI_API_KEY", default="")),
+    "MODEL": config("COPILOT_MODEL", default="gpt-4.1-mini"),
+    "REQUIRE_LOGIN": config("COPILOT_REQUIRE_LOGIN", default=False, cast=bool),
 }
 
 # Prefijos de nombres de archivos de facturas y nóminas para filtrar
@@ -173,7 +184,10 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "loggers": {"invoice_agent": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+    "loggers": {
+        "invoice_agent": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "copilot_pms": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
 }
 
 MAILERS = {

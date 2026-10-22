@@ -30,6 +30,7 @@ El panel principal (`/`) enlaza con todas las apps.
 | `analisis` | `/analisis/` | Análisis de beneficios: ingresos frente a proveedores, acreedores y nóminas |
 | `cajas` | `/cajas/` | Cajas diarias por punto de venta y otros cobros |
 | `invoice_agent` | `/facturas-ia/` | Facturas con IA: extracción con un modelo, validación en Python y aprobación humana |
+| `copilot_pms` | `/copilot/` | PMS Copilot: preguntas en lenguaje natural sobre saldos, facturas e informes (solo lectura) |
 
 `albaranes` y `reservas` existen en el repositorio pero todavía no están activadas en `INSTALLED_APPS`.
 
@@ -61,6 +62,17 @@ El panel principal (`/`) enlaza con todas las apps.
   [`invoice_agent/README.md`](invoice_agent/README.md).
 - Afinado de un modelo propio (Qwen2.5-VL-7B) con las facturas aprobadas, en una GPU alquilada:
   scripts y guía en [`training/`](training/README.md).
+
+### PMS Copilot (`copilot_pms`)
+- Preguntas en lenguaje natural («¿saldo del banco a 30 de septiembre?», «PDF de la factura de Makro de
+  agosto», «PyG de 2026», «ventas del bar en julio»). Un modelo de IA (OpenAI o local compatible, con
+  llamadas a funciones) elige qué consultar; **los datos solo salen de herramientas registradas** que usan
+  el mismo código que las pantallas.
+- Saldos con apertura, movimiento y saldo final, naturaleza deudora/acreedora, ejercicio, entidad y avisos
+  (borradores, ejercicio abierto). Enlaces firmados y auditados a los PDF de facturas.
+- Solo lectura. Cada consulta queda auditada. Disponibilidad de habitaciones y horarios aún no están
+  conectados y el copilot lo dice.
+- Configuración en `.env` (`COPILOT_*`). Detalles en [`copilot_pms/README.md`](copilot_pms/README.md).
 
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos
@@ -115,3 +127,4 @@ El panel principal (`/`) enlaza con todas las apps.
 - Integración con el motor de reservas Neobookings (pendiente de credenciales de la API).
 - Probar un LLM en local como proveedor de `invoice_agent` (misma API, cambiando `INVOICE_AGENT_BASE_URL`).
 - Contabilizar en `cuadro_cuentas` las facturas aprobadas en `invoice_agent`.
+- PMS Copilot: herramientas de disponibilidad de habitaciones y horarios del personal cuando existan esos datos.
