@@ -94,7 +94,6 @@ def preguntar(pregunta: str, ctx: Contexto, conversacion: Conversacion | None = 
     historial = _historial(conversacion)
     Mensaje.objects.create(conversacion=conversacion, rol=Mensaje.Rol.USUARIO, contenido=pregunta)
 
-    proveedor = proveedor or get_provider()
     herramientas = [h.esquema() for h in disponibles(ctx)]
     mensajes = [{"role": "system", "content": prompts.sistema(hoy=ctx.hoy, entidad=_entidad(), pendientes=PENDIENTES)},
                 *historial, {"role": "user", "content": pregunta}]
@@ -102,10 +101,12 @@ def preguntar(pregunta: str, ctx: Contexto, conversacion: Conversacion | None = 
     inicio = time.monotonic()
     registros: list[tuple[str, dict | str, Resultado]] = []
     uso = {"llamadas_modelo": 0, "tokens_entrada": 0, "tokens_salida": 0}
-    estado, error_code, modelo, texto = Mensaje.Estado.OK, "", getattr(proveedor, "model", ""), ""
+    estado, error_code, modelo, texto = Mensaje.Estado.OK, "", "", ""
     max_llamadas = int(conf.get("MAX_LLAMADAS_HERRAMIENTA"))
 
     try:
+        proveedor = proveedor or get_provider()
+        modelo = getattr(proveedor, "model", "")
         for _ in range(int(conf.get("MAX_PASOS"))):
             respuesta = _llamar_modelo(proveedor, mensajes, herramientas)
             uso["llamadas_modelo"] += 1

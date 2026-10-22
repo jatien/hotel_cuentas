@@ -117,3 +117,11 @@ class PermisosTests(ContabilidadBase):
         self.assertIn("saldo_cuenta", nombres)
         self.assertNotIn("coste_personal", nombres)
         self.assertEqual(ejecutar("saldo_cuenta", '{"cuenta": "572"}', con_permisos).estado, EstadoLlamada.OK)
+
+
+@override_settings(COPILOT_PMS={"PROVIDER": "openai", "MODEL": "Qwen/Qwen3.5-9B", "BASE_URL": ""})
+class ConfiguracionTests(ContabilidadBase):
+    def test_qwen_sin_servidor_configurado(self):
+        mensaje = preguntar("¿Saldo?", ctx())
+        self.assertEqual((mensaje.estado, mensaje.error_code), (Mensaje.Estado.ERROR, "PROVIDER_CONFIG"))
+        self.assertIn("No se ha dado ningún dato", mensaje.contenido)

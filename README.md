@@ -65,8 +65,8 @@ El panel principal (`/`) enlaza con todas las apps.
 
 ### PMS Copilot (`copilot_pms`)
 - Preguntas en lenguaje natural («¿saldo del banco a 30 de septiembre?», «PDF de la factura de Makro de
-  agosto», «PyG de 2026», «ventas del bar en julio»). Un modelo de IA (OpenAI o local compatible, con
-  llamadas a funciones) elige qué consultar; **los datos solo salen de herramientas registradas** que usan
+  agosto», «PyG de 2026», «ventas del bar en julio»). El modelo (**Qwen3.5-9B** servido en local con
+  vLLM; OpenAI como alternativa) elige qué consultar; **los datos solo salen de herramientas registradas** que usan
   el mismo código que las pantallas.
 - Saldos con apertura, movimiento y saldo final, naturaleza deudora/acreedora, ejercicio, entidad y avisos
   (borradores, ejercicio abierto). Enlaces firmados y auditados a los PDF de facturas.

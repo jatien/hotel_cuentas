@@ -70,20 +70,26 @@ def disponibilidad(p, ctx):
 
 Importarla en `tools/__init__.py` y quitarla de `PENDIENTES`. Ni el agente ni las vistas cambian.
 
-## Configuración
+## Modelo y configuración
+
+Modelo principal: **Qwen3.5-9B** (Apache 2.0), servido con vLLM en el servidor local. Cómo
+arrancarlo, cuantización FP8 para 16 GB, razonamiento y alternativa con Ollama:
+[`deploy/README.md`](deploy/README.md).
 
 En `.env` (ver `.env.example`):
 
 ```
-COPILOT_PROVIDER=openai          # "fake" = sin modelo (pruebas)
-COPILOT_API_KEY=sk-…
-COPILOT_MODEL=gpt-4.1-mini
-COPILOT_BASE_URL=                # vacío = OpenAI; http://IP:11434/v1 para Ollama
+COPILOT_BASE_URL=http://IP-DEL-SERVIDOR:8000/v1
+COPILOT_API_KEY=<clave de vLLM>
+COPILOT_MODEL=Qwen/Qwen3.5-9B
+COPILOT_ENABLE_THINKING=False      # Qwen3.5 razona por defecto; aquí se desactiva
 COPILOT_REQUIRE_LOGIN=False
 ```
 
-Con un modelo local, tiene que admitir llamadas a funciones (por ejemplo `qwen2.5:7b-instruct` en
-Ollama). El resto de opciones (pasos máximos, llamadas por pregunta, historial…) están en `conf.py`.
+El muestreo (`COPILOT_TEMPERATURE`, `TOP_P`, `TOP_K`, `PRESENCE_PENALTY`) viene con los valores que
+recomienda Qwen. Para usar OpenAI en la nube mientras no hay servidor basta con vaciar `BASE_URL`,
+poner la clave y el modelo (ejemplo en `.env.example`). El resto de opciones (pasos máximos, llamadas
+por pregunta, historial…) están en `conf.py`.
 
 ## Consola
 

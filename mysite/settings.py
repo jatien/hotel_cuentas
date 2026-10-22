@@ -104,11 +104,21 @@ INVOICE_AGENT = {
 
 # PMS Copilot (copilot_pms): preguntas en lenguaje natural respondidas con herramientas de solo
 # lectura. Valores sensibles en .env (ver .env.example); el resto en copilot_pms/conf.py.
+def _opcional(cast):
+    """Vacío en el .env = None (no se envía el parámetro al modelo)."""
+    return lambda v: cast(v) if str(v).strip() else None
+
+
 COPILOT_PMS = {
     "PROVIDER": config("COPILOT_PROVIDER", default="openai"),
     "BASE_URL": config("COPILOT_BASE_URL", default=""),
-    "API_KEY": config("COPILOT_API_KEY", default=config("OPENAI_API_KEY", default="")),
-    "MODEL": config("COPILOT_MODEL", default="gpt-4.1-mini"),
+    "API_KEY": config("COPILOT_API_KEY", default=""),
+    "MODEL": config("COPILOT_MODEL", default="Qwen/Qwen3.5-9B"),
+    "TEMPERATURE": config("COPILOT_TEMPERATURE", default="0.7", cast=_opcional(float)),
+    "TOP_P": config("COPILOT_TOP_P", default="0.8", cast=_opcional(float)),
+    "TOP_K": config("COPILOT_TOP_K", default="20", cast=_opcional(int)),
+    "PRESENCE_PENALTY": config("COPILOT_PRESENCE_PENALTY", default="1.5", cast=_opcional(float)),
+    "ENABLE_THINKING": config("COPILOT_ENABLE_THINKING", default=False, cast=bool),
     "REQUIRE_LOGIN": config("COPILOT_REQUIRE_LOGIN", default=False, cast=bool),
 }
 
