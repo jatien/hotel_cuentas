@@ -140,7 +140,8 @@ ALLOWED_HOSTS = ["*"]
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': "cuentas",
+        # DB_NAME en el .env permite trabajar con otra base (p. ej. cuentas_ficticio para el copilot)
+        'NAME': config("DB_NAME", default="cuentas"),
         'USER': "postgres",
         'PASSWORD': "1234",
         'HOST': "localhost",

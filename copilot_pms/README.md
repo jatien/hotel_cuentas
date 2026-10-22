@@ -147,6 +147,18 @@ GET  /copilot/api/herramientas  → herramientas disponibles para quien pregunta
 
 Errores: `{"error": {"code", "message"}}`. Las escrituras requieren la cabecera `X-CSRFToken`.
 
+## Entrenamiento y evaluación
+
+- `python manage.py copilot_hotel_ficticio`: llena una base de datos **aparte** (`DB_NAME=cuentas_ficticio`)
+  con un hotel inventado (contabilidad, facturas con PDF, cajas, nóminas, análisis).
+- `python manage.py copilot_dataset`: genera conversaciones de entrenamiento ejecutando las herramientas
+  de verdad sobre ese hotel (`entrenamiento/escenarios.py`: 20 escenarios, incluidos los casos de
+  aclarar, no conectado, solo lectura e instrucciones escondidas en los datos).
+- `python manage.py copilot_evaluar`: mide el modelo configurado sobre el test (herramienta, argumentos,
+  no llamar cuando no toca, cifras inventadas).
+- El afinado en GPU y la mezcla con datasets públicos (When2Call, ToolACE, Toucan) están en
+  [`training/copilot/`](../training/copilot/README.md).
+
 ## Tests
 
 `python manage.py test copilot_pms` (proveedor falso, sin red y con datos ficticios).
