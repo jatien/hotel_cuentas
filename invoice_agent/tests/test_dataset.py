@@ -69,7 +69,7 @@ class ImportCommandTests(IsolatedTestCase):
         (folder / "notas.txt").write_text("no es una factura")
         out = io.StringIO()
         call_command("invoice_agent_import", str(folder), empresa=self.empresa.nif, recursive=True, stdout=out)
-        self.assertIn("2 en cola", out.getvalue())
+        self.assertIn("2 nuevas", out.getvalue())
         call_command("invoice_agent_import", str(folder), empresa=self.empresa.nif, recursive=True, stdout=out)
         self.assertEqual(Documento.objects.count(), 2)
         self.assertIn("2 ya estaban", out.getvalue())
