@@ -1,0 +1,3 @@
+# Entorno para SERVIR el modelo con vLLM (API compatible con OpenAI, la que usa Django).
+# Va en un entorno separado del de entrenamiento: vLLM fija sus propias versiones de torch.
+vllm

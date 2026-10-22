@@ -25,3 +25,8 @@ analisis/datos/
 # Originales de facturas de invoice_agent (almacenamiento privado) y carpetas de evaluación
 private_media/
 eval_*/
+
+# Datasets de entrenamiento exportados (contienen facturas reales) y salidas del afinado
+dataset_*/
+training/outputs/
+training/data/

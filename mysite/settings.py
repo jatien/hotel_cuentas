@@ -93,6 +93,7 @@ INVOICE_AGENT = {
     "MODEL": config("INVOICE_AGENT_MODEL", default="gpt-4.1-mini"),
     "SUPPORTS_VISION": config("INVOICE_AGENT_SUPPORTS_VISION", default=True, cast=bool),
     "ALLOW_VISION": config("INVOICE_AGENT_ALLOW_VISION", default=True, cast=bool),
+    "VISION_MODE": config("INVOICE_AGENT_VISION_MODE", default="auto"),
     "PRICE_INPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_INPUT_PER_MTOK", default="0"),
     "PRICE_OUTPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_OUTPUT_PER_MTOK", default="0"),
     "MAX_CONCURRENT_JOBS": config("INVOICE_AGENT_MAX_CONCURRENT_JOBS", default=2, cast=int),

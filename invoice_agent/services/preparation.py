@@ -28,6 +28,7 @@ from invoice_agent.models import MetodoExtraccion, TipoFuente
 logger = logging.getLogger("invoice_agent")
 
 OCR_SCALE = 300 / 72  # ~300 ppp para OCR
+VISION_SCALE = 200 / 72  # ~200 ppp; luego se reduce a VISION_MAX_SIDE_PX
 MIN_OCR_CHARS = 40  # menos texto que esto en una página escaneada = lectura pobre
 
 
@@ -113,7 +114,7 @@ def _downscale_jpeg(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _ocr_page(number: int, image: Image.Image, engine: OcrEngine, allow_vision: bool) -> PreparedPage:
+def _ocr_page(number: int, image: Image.Image, engine: OcrEngine, allow_vision: bool, always: bool = False) -> PreparedPage:
     problems = []
     rotation = engine.rotation(image)
     if rotation:
@@ -132,7 +133,7 @@ def _ocr_page(number: int, image: Image.Image, engine: OcrEngine, allow_vision: 
         problems.append(f"resolución baja ({width}×{height} px)")
         poor = True
     page = PreparedPage(number, MetodoExtraccion.OCR, text, chars, confidence, rotation, problems)
-    if allow_vision and (poor or rotation):
+    if allow_vision and (always or poor or rotation):
         page.image_jpeg = _downscale_jpeg(image)
         page.method = MetodoExtraccion.VISION
     return page
@@ -145,9 +146,29 @@ def _summary_method(pages: list[PreparedPage]) -> str:
     return MetodoExtraccion.MIXED
 
 
-def prepare(path: Path, tipo_fuente: str, engine: OcrEngine | None = None, vision_supported: bool = False) -> PreparedDocument:
+VISION_MODES = ("auto", "always", "never")
+
+
+def prepare(
+    path: Path,
+    tipo_fuente: str,
+    engine: OcrEngine | None = None,
+    vision_supported: bool = False,
+    vision_mode: str | None = None,
+) -> PreparedDocument:
+    """
+    vision_mode (por defecto settings VISION_MODE):
+        auto    imagen solo de las páginas con OCR pobre o giradas (mínimo de datos al proveedor)
+        always  imagen de TODAS las páginas, también las de texto nativo. Es el modo para un
+                modelo de visión afinado: debe ver en producción lo mismo que vio al entrenar.
+        never   solo texto
+    """
     engine = engine or TesseractEngine()
-    allow_vision = bool(conf.get("ALLOW_VISION")) and vision_supported
+    vision_mode = vision_mode or conf.get("VISION_MODE")
+    if vision_mode not in VISION_MODES:
+        raise PreparationError("BAD_CONFIG", f"VISION_MODE no válido: {vision_mode!r}")
+    allow_vision = bool(conf.get("ALLOW_VISION")) and vision_supported and vision_mode != "never"
+    always = allow_vision and vision_mode == "always"
     min_native = int(conf.get("MIN_NATIVE_CHARS_PER_PAGE"))
     pages: list[PreparedPage] = []
     try:
@@ -158,10 +179,14 @@ def prepare(path: Path, tipo_fuente: str, engine: OcrEngine | None = None, visio
                     page = pdf[index]
                     text = page.get_textpage().get_text_range()
                     if len(text.strip()) >= min_native:
-                        pages.append(PreparedPage(index + 1, MetodoExtraccion.NATIVE, text, len(text.strip())))
+                        prepared = PreparedPage(index + 1, MetodoExtraccion.NATIVE, text, len(text.strip()))
+                        if always:
+                            prepared.image_jpeg = _downscale_jpeg(page.render(scale=VISION_SCALE).to_pil())
+                            prepared.method = MetodoExtraccion.VISION
+                        pages.append(prepared)
                     else:
                         image = page.render(scale=OCR_SCALE).to_pil()
-                        pages.append(_ocr_page(index + 1, image, engine, allow_vision))
+                        pages.append(_ocr_page(index + 1, image, engine, allow_vision, always))
             finally:
                 pdf.close()
         else:
@@ -170,7 +195,7 @@ def prepare(path: Path, tipo_fuente: str, engine: OcrEngine | None = None, visio
                 for index in range(frames):
                     source.seek(index)
                     image = ImageOps.exif_transpose(source.convert("RGB"))
-                    pages.append(_ocr_page(index + 1, image, engine, allow_vision))
+                    pages.append(_ocr_page(index + 1, image, engine, allow_vision, always))
     except PreparationError:
         raise
     except FileNotFoundError as error:

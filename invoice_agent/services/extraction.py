@@ -92,6 +92,27 @@ def _validation_summary(error: ValidationError) -> str:
     return "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['type']}" for e in error.errors()[:10])
 
 
+USER_INSTRUCTION = "Extrae los datos de esta factura según el esquema.\n\n"
+
+
+def build_request(prepared: PreparedDocument, empresa_nombre: str, empresa_nif: str, with_images: bool) -> ModelRequest:
+    """
+    La petición exacta que recibe el modelo. La usa también la exportación del
+    dataset de entrenamiento, para que el modelo afinado vea en producción lo
+    mismo que vio al entrenar (mismo prompt, mismo texto, mismas imágenes).
+    """
+    document_text = build_document_text(
+        prepared, int(conf.get("MAX_TEXT_CHARS")), bool(conf.get("REDACT_BEFORE_MODEL"))
+    )
+    return ModelRequest(
+        system=build_system_prompt(empresa_nombre, empresa_nif),
+        user_text=USER_INSTRUCTION + document_text,
+        json_schema=strict_json_schema(ExtractionOutput),
+        schema_name="factura",
+        images=prepared.images if with_images else [],
+    )
+
+
 def run_extraction(
     prepared: PreparedDocument,
     *,
@@ -100,17 +121,7 @@ def run_extraction(
     provider: ExtractionProvider,
     sleep=time.sleep,
 ) -> ExtractionResult:
-    document_text = build_document_text(
-        prepared, int(conf.get("MAX_TEXT_CHARS")), bool(conf.get("REDACT_BEFORE_MODEL"))
-    )
-    images = prepared.images if provider.supports_vision else []
-    base_request = ModelRequest(
-        system=build_system_prompt(empresa_nombre, empresa_nif),
-        user_text="Extrae los datos de esta factura según el esquema.\n\n" + document_text,
-        json_schema=strict_json_schema(ExtractionOutput),
-        schema_name="factura",
-        images=images,
-    )
+    base_request = build_request(prepared, empresa_nombre, empresa_nif, provider.supports_vision)
     stats = CallStats()
     request = base_request
     repairs = int(conf.get("MALFORMED_OUTPUT_RETRIES"))

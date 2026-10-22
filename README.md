@@ -59,6 +59,8 @@ El panel principal (`/`) enlaza con todas las apps.
   aprobación humana. **No contabiliza nada.**
 - Configuración en `.env` (ver `.env.example`). Detalles, API y operación en
   [`invoice_agent/README.md`](invoice_agent/README.md).
+- Afinado de un modelo propio (Qwen2.5-VL-7B) con las facturas aprobadas, en una GPU alquilada:
+  scripts y guía en [`training/`](training/README.md).
 
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos
