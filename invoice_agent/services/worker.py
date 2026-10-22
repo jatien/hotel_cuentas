@@ -66,7 +66,8 @@ class Claimed:
     started: float
 
 
-def claim_next(worker_id: str) -> Claimed | None:
+def claim_next(worker_id: str, documento_id: int | None = None) -> Claimed | None:
+    """Siguiente trabajo de la cola; con documento_id, solo el de ese documento (importación con etiquetas)."""
     now = timezone.now()
     lease = timedelta(seconds=int(conf.get("JOB_LEASE_SECONDS")))
     with transaction.atomic():
@@ -76,15 +77,13 @@ def claim_next(worker_id: str) -> Claimed | None:
         running = Trabajo.objects.filter(estado=EstadoTrabajo.RUNNING, bloqueado_en__gte=now - lease).count()
         if running >= int(conf.get("MAX_CONCURRENT_JOBS")):
             return None
-        trabajo = (
-            Trabajo.objects.select_for_update(skip_locked=True)
-            .filter(
-                Q(estado=EstadoTrabajo.PENDING, ejecutar_desde__lte=now)
-                | Q(estado=EstadoTrabajo.RUNNING, bloqueado_en__lt=now - lease)
-            )
-            .order_by("ejecutar_desde", "id")
-            .first()
+        candidates = Trabajo.objects.select_for_update(skip_locked=True).filter(
+            Q(estado=EstadoTrabajo.PENDING, ejecutar_desde__lte=now)
+            | Q(estado=EstadoTrabajo.RUNNING, bloqueado_en__lt=now - lease)
         )
+        if documento_id is not None:
+            candidates = candidates.filter(documento_id=documento_id)
+        trabajo = candidates.order_by("ejecutar_desde", "id").first()
         if trabajo is None:
             return None
         recovered = trabajo.estado == EstadoTrabajo.RUNNING

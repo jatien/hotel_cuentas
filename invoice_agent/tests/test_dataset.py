@@ -75,6 +75,29 @@ class ImportCommandTests(IsolatedTestCase):
         self.assertIn("2 ya estaban", out.getvalue())
 
 
+class LabelImportTests(IsolatedTestCase):
+    def test_import_with_labels_goes_straight_to_review(self):
+        folder, labels = self.work / "pdf", self.work / "json"
+        folder.mkdir()
+        labels.mkdir()
+        make_pdf(folder / "f1.pdf", lines=INVOICE_LINES + ["1"])
+        make_pdf(folder / "f2.pdf", lines=INVOICE_LINES + ["2"])
+        make_pdf(folder / "f3.pdf", lines=INVOICE_LINES + ["3"])
+        (labels / "f1.json").write_text(model_json(customer_tax_id=field(self.empresa.nif)), encoding="utf-8")
+        (labels / "f2.json").write_text("{no es json", encoding="utf-8")
+        out = io.StringIO()
+        from unittest import mock
+
+        with mock.patch("invoice_agent.services.preparation.TesseractEngine", FakeOcr):
+            call_command("invoice_agent_import", str(folder), empresa=self.empresa.nif, labels=str(labels), stdout=out)
+        states = {d.original_filename: d.estado for d in Documento.objects.all()}
+        self.assertEqual(states["f1.pdf"], "pending_approval")
+        self.assertEqual(states["f2.pdf"], "queued")  # etiqueta mala: reintento programado; nunca entra un dato inventado
+        self.assertEqual(states["f3.pdf"], "queued")  # sin etiqueta: espera al worker
+        self.assertEqual(Borrador.objects.get(documento__original_filename="f1.pdf").total_bruto, Decimal("121.00"))
+        self.assertIn("2 con etiqueta", out.getvalue())
+
+
 class HelperTests(IsolatedTestCase):
     def test_number_text(self):
         self.assertEqual(number_text(Decimal("10.0000")), "10")
