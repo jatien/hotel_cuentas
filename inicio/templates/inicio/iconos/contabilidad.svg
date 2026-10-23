@@ -1,0 +1,39 @@
+<svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+  {# Contabilidad: libro de debe y haber con una calculadora retro encima (como en el boceto) #}
+  <ellipse class="sombra" cx="80" cy="149" rx="58" ry="4.5"/>
+
+  {# Libro diario: dos hojas ladeadas con columnas de debe y haber #}
+  <g transform="rotate(-14 56 92)">
+    <rect class="p" x="26" y="38" width="66" height="100" rx="3"/>
+    <rect class="p" x="20" y="34" width="66" height="100" rx="3"/>
+    <path d="M53 40 V128" stroke-width="2.2"/>
+    <g class="trazo-acento" stroke-width="2.4">
+      <path d="M28 50 H46"/><path d="M60 50 H78"/>
+      <path d="M28 64 H44"/><path d="M60 64 H76"/>
+      <path d="M28 78 H46"/><path d="M60 78 H74"/>
+      <path d="M28 92 H42"/>
+    </g>
+    <g stroke-width="2.2"><path d="M30 108 h8 M34 104 v8"/><path d="M62 108 h8 M66 104 v8"/></g>
+    <path class="trazo-oro" d="M28 122 H78" stroke-width="3.2"/>
+  </g>
+
+  {# Calculadora retro #}
+  <g transform="rotate(9 100 92)">
+    {# Tira de papel con el borde rasgado, como en las sumadoras antiguas #}
+    <path class="p" d="M88 42 V21 l3.5 -4 l3.5 4 l3.5 -4 l3.5 4 l3.5 -4 l3.5 4 V42 Z" stroke-width="2.4"/>
+    <path class="suave" d="M92 27 H105 M92 33 H102" stroke-width="2"/>
+
+    <path class="crema" d="M68 44 Q68 38 74 38 H128 Q134 38 134 44 V136 Q134 142 128 142 H74 Q68 142 68 136 Z"/>
+    <rect class="relleno-tinta" x="73" y="46" width="56" height="25" rx="3.5" stroke="none"/>
+    <rect class="lcd" x="77" y="50" width="48" height="17" rx="2" stroke="none"/>
+    <path class="digitos" d="M89 53 L89 59 M89 59 L89 65 M93 53 L100 53 M100 53 L100 59 M93 59 L100 59 M93 59 L93 65 M93 65 L100 65 M104 53 L111 53 M104 53 L104 59 M104 59 L111 59 M111 59 L111 65 M104 65 L111 65 M115 53 L122 53 M122 53 L122 59 M122 59 L122 65 M115 65 L122 65 M115 59 L115 65 M115 53 L115 59" stroke-width="1.8"/>
+    <circle class="relleno-oro" cx="126" cy="76" r="1.6" stroke="none"/>
+    <rect class="tinte" x="73" y="80" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="tinte" x="87" y="80" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="tinte" x="101" y="80" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="73" y="93" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="87" y="93" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="101" y="93" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="73" y="106" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="87" y="106" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="101" y="106" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="73" y="119" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="87" y="119" width="11" height="9" rx="2.5" stroke-width="2.2"/><rect class="p" x="101" y="119" width="11" height="9" rx="2.5" stroke-width="2.2"/>
+    <rect class="trazo-acento tinte" x="115" y="80" width="13" height="9" rx="2.5" stroke-width="2.2"/>
+    <rect class="oro" x="115" y="93" width="13" height="22" rx="2.5" stroke-width="2.2"/>
+    <path d="M118 104 h7 M121.5 100.5 v7" stroke-width="2"/>
+    <rect class="relleno-acento" x="115" y="119" width="13" height="9" rx="2.5" stroke-width="2.2"/>
+    <path class="trazo-papel" d="M118.5 122.5 h6 M118.5 125 h6" stroke-width="1.6"/>
+    <path class="suave" d="M76 135 H98" stroke-width="2"/>
+  </g>
+</svg>

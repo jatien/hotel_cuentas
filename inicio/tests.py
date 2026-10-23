@@ -27,16 +27,16 @@ class RegistroModulosTests(TestCase):
 
 
 class GeometriaTests(TestCase):
-    def test_ovalo_inclinado_hacia_la_derecha(self):
+    def test_ovalo_alargado_con_el_lado_izquierdo_mas_alto(self):
         derecha, izquierda = posicion(90), posicion(270)
-        self.assertLess(derecha[1], izquierda[1])          # el lado derecho queda más alto
-        self.assertGreater(abs(derecha[0]), abs(posicion(0)[1]))  # más ancho que alto
+        self.assertLess(izquierda[1], derecha[1])                        # el lado izquierdo queda más alto
+        self.assertGreater(abs(derecha[0]), 2 * abs(posicion(0)[1]))    # bastante más ancho que alto
 
     def test_imagenes_dentro_del_lienzo(self):
         for angulo in range(0, 360, 15):
             x, y = posicion(angulo)
-            self.assertLess(abs(x) + 26, ELIPSE["ancho"] / 2)
-            self.assertLess(abs(y) + 26, ELIPSE["alto"] / 2)
+            self.assertLess(abs(x) + ELIPSE["img"] / 2, ELIPSE["ancho"] / 2)
+            self.assertLess(abs(y) + ELIPSE["img"] / 2, ELIPSE["alto"] / 2)
 
 
 class PaginaInicioTests(TestCase):
@@ -53,6 +53,38 @@ class PaginaInicioTests(TestCase):
         self.assertEqual(html.count('class="rueda-lineas"'), 1)
         self.assertNotIn("rueda-flechas", html)               # las flechas del boceto eran solo guía
         self.assertNotIn('class="pista"', html)               # sin texto bajo la rueda
+
+    def test_iconos_en_linea_con_colores_del_tema(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertEqual(html.count('class="icono"'), len(MODULOS))
+        self.assertIn('data-tema="abrat"', html)
+
+    def test_rama_abierta(self):
+        r = self.client.get(reverse("home_modulo", args=["contabilidad"]) + "?seccion=1")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('data-clave="contabilidad"', html)
+        self.assertIn(f'src="{reverse("cuadro_cuentas:plan_cuentas")}"', html)   # sección pedida en el marco
+        self.assertIn('class="app-volver"', html)
+        self.assertNotIn('id="app" hidden', html)
+
+    def test_contabilidad_abre_el_diario_y_agrupa_su_menu(self):
+        html = self.client.get(reverse("home_modulo", args=["contabilidad"])).content.decode()
+        self.assertIn(f'src="{reverse("cuadro_cuentas:diario")}"', html)
+        for grupo in ("Configuración", "Registro", "Consultas", "Balances"):
+            self.assertIn(f'<li class="app-grupo">{grupo}</li>', html)
+
+    def test_rama_sin_pantallas(self):
+        html = self.client.get(reverse("home_modulo", args=["reservas"])).content.decode()
+        self.assertIn("Todavía en preparación", html)
+        self.assertNotIn('<div class="app-vacio" id="app-vacio" hidden', html)
+
+    def test_rama_inexistente(self):
+        self.assertEqual(self.client.get("/m/bar/").status_code, 404)
+
+    def test_las_pantallas_se_pueden_enmarcar(self):
+        r = self.client.get(reverse("cajas:resumen"))
+        self.assertEqual(r.get("X-Frame-Options"), "SAMEORIGIN")
 
     def test_vista_clasica(self):
         self.assertEqual(self.client.get(reverse("home_clasico")).status_code, 200)
@@ -73,6 +105,7 @@ class HerramientaCopilotTests(TestCase):
         rama, = r.datos["ramas"]
         cajas = next(s for s in rama["secciones"] if s["nombre"] == "Cajas")
         self.assertEqual(cajas["enlace_Cajas"], reverse("cajas:resumen"))
+        self.assertEqual(rama["enlace_Análisis"], "/m/analisis/")
 
     def test_rama_inexistente_no_valida(self):
         self.assertNotEqual(self.run_tool(modulo="bar").estado, EstadoLlamada.OK)

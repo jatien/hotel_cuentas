@@ -1,0 +1,35 @@
+<svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+  {# Gestión de facturas: ordenador que imprime una factura por la ranura de la unidad inferior #}
+  <ellipse class="sombra" cx="86" cy="151" rx="50" ry="4"/>
+
+  {# Pantalla #}
+  <rect class="p" x="38" y="8" width="84" height="54" rx="6"/>
+  <rect class="tinte trazo-acento" x="46" y="16" width="68" height="38" rx="3"/>
+  <path class="trazo-acento" d="M54 27 H78"/>
+  <path class="trazo-acento suave" d="M54 36 H98"/>
+  <path class="trazo-acento suave" d="M54 44 H90"/>
+  <path d="M80 62 V72"/><path d="M68 72 H92"/>
+
+  {# Unidad inferior #}
+  <rect class="crema" x="20" y="72" width="120" height="30" rx="6"/>
+  <circle class="relleno-oro" cx="31" cy="82" r="3" stroke="none"/>
+  <path class="suave" d="M30 94 H50" stroke-width="2.4"/>
+
+  {# Folio: sale de la ranura, se ladea y se curva hacia la derecha #}
+  <path class="p" d="M66 97 L112 97
+                     C116 112 128 122 138 128
+                     C140 134 134 140 126 138
+                     C118 140 104 145 94 150
+                     C88 136 80 120 70 110
+                     C67 106 66 101 66 97 Z"/>
+  <path class="crema" d="M126 138 C134 140 140 134 138 128 C131 127 126 131 126 138 Z" stroke-width="2.4"/>
+  <g class="trazo-acento" stroke-width="2.6">
+    <path d="M76 106 Q88 104 100 106"/>
+    <path class="suave" d="M80 115 Q95 113 110 116"/>
+    <path class="suave" d="M85 124 Q101 122 118 126"/>
+  </g>
+  <path class="trazo-oro" d="M95 136 Q106 133 118 134" stroke-width="3.4"/>
+
+  {# Ranura (encima del folio: parece que sale de dentro) #}
+  <rect class="relleno-tinta" x="60" y="93" width="58" height="7" rx="3.5" stroke="none"/>
+</svg>
