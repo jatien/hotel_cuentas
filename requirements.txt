@@ -2,7 +2,7 @@
 
 # Web / base de datos
 Django>=6.1,<6.2
-psycopg[binary]>=3.2
+psycopg[binary]>=3.3.6
 whitenoise>=6.9              # sirve /static/ desde Django en producción
 
 # Servidor WSGI de producción (detrás de Caddy, ver docs/security.md)
