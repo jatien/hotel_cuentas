@@ -2,7 +2,7 @@
 Configuración de invoice_agent.
 
 Todo se lee de settings.INVOICE_AGENT (un dict) con estos valores por
-defecto; en mysite/settings.py los valores sensibles vienen del entorno
+defecto; en mysite/settings/base.py los valores sensibles vienen del entorno
 (.env), nunca escritos en el código. Ver invoice_agent/README.md.
 """
 
