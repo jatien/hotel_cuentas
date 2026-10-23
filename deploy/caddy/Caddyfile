@@ -1,0 +1,58 @@
+# Proxy HTTPS delante de Django (Waitress en Windows, Gunicorn en Docker).
+#
+# Variables de entorno:
+#   CUENTAS_HOSTS     nombres/IPs con los que se entra, separados por comas y espacio,
+#                     p. ej. "pms.hotel.lan, 192.168.1.20"
+#   CUENTAS_UPSTREAM  dónde escucha Django (por defecto 127.0.0.1:8001; en Docker "web:8001")
+#   CUENTAS_LOG_DIR   carpeta del log de accesos (por defecto ./logs)
+#
+# "tls internal" = Caddy crea su propia autoridad de certificación y emite los certificados.
+# Su certificado raíz (root.crt) se instala una vez en cada PC/móvil: ver docs/security.md §4.
+#
+# Caddy no confía en las cabeceras X-Forwarded-* que manden los clientes: pone las suyas con la IP
+# real. Django solo las acepta si vienen del proxy (TRUSTED_PROXIES, seguridad/middleware.py).
+{
+	# API de administración de Caddy solo en el propio equipo
+	admin localhost:2019
+}
+
+{$CUENTAS_HOSTS:localhost} {
+	tls internal
+
+	encode zstd gzip
+
+	# Tamaño máximo de una petición (subidas de facturas por lotes). Django rechaza el resto.
+	request_body {
+		max_size 100MB
+	}
+
+	header {
+		# HSTS y el resto de cabeceras las pone Django (mysite/settings/prod.py)
+		-Server
+		-Via
+	}
+
+	reverse_proxy {$CUENTAS_UPSTREAM:127.0.0.1:8001} {
+		# Comprobación periódica; "localhost" tiene que estar en ALLOWED_HOSTS
+		health_uri /seguridad/health/
+		health_interval 10s
+		health_headers {
+			Host localhost
+		}
+		# Si Django aún arranca o se reinicia, esperar hasta 15 s en vez de devolver 503 al momento
+		lb_try_duration 15s
+		# El copilot y la extracción de facturas pueden tardar
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	log {
+		output file {$CUENTAS_LOG_DIR:./logs}/caddy-access.log {
+			roll_size 10MiB
+			roll_keep 10
+		}
+		format json
+	}
+}

@@ -39,6 +39,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Primero: corrige REMOTE_ADDR y descarta X-Forwarded-* que no vengan del proxy (ver middleware).
+    'seguridad.middleware.ProxyClientIPMiddleware',
     'django.middleware.security.SecurityMiddleware',
     # Sirve /static/ desde el propio proceso (también con DEBUG=False), sin depender del proxy.
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -125,6 +127,16 @@ MEDIA_ROOT = BASE_DIR / "media"
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 FILE_UPLOAD_PERMISSIONS = 0o640
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750
+
+
+# --- Proxy inverso -------------------------------------------------------------------
+# IPs o redes de los proxies (Caddy) cuyas cabeceras X-Forwarded-* son de fiar. Vacío = sin proxy
+# (runserver). prod.py usa 127.0.0.1 por defecto; con Docker, la red interna de compose.
+TRUSTED_PROXIES = config("TRUSTED_PROXIES", default="", cast=Csv())
+
+# Extensiones de /media/ que se muestran en el navegador; el resto se descarga como adjunto
+# (un .html o .svg subido no puede ejecutar código en la app). Ver seguridad/views.py.
+MEDIA_INLINE_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 # --- Cabeceras de seguridad (todas las respuestas) -----------------------------------

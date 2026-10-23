@@ -18,7 +18,8 @@ from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import TemplateView
 from django.conf import settings
-from django.conf.urls.static import static
+
+from seguridad import views as seguridad_views
 
 
 urlpatterns = [
@@ -32,4 +33,6 @@ urlpatterns = [
     path("facturas-ia/", include("invoice_agent.urls")),
     path("copilot/", include("copilot_pms.urls")),
     path("seguridad/", include("seguridad.urls")),
-]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Ficheros subidos: siempre a través de Django (también en producción), ver seguridad/views.py
+    path(settings.MEDIA_URL.strip("/") + "/<path:ruta>", seguridad_views.media, name="media"),
+]

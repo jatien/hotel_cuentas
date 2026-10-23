@@ -36,7 +36,8 @@ def contexto_para(request) -> Contexto:
         actor = user.get_username()
     else:
         user = None
-        # REMOTE_ADDR y no X-Forwarded-For: en la LAN no hay proxy y esa cabecera la pone el cliente.
+        # REMOTE_ADDR y nunca X-Forwarded-For (la escribe el cliente). Detrás del proxy, Waitress o
+        # seguridad.middleware.ProxyClientIPMiddleware ya ponen aquí la IP real del cliente.
         actor = f"LAN {request.META.get('REMOTE_ADDR') or 'desconocido'}"
     return Contexto(hoy=timezone.localdate(), user=user, actor_label=actor, login_requerido=login,
                     empresas_facturas=_empresas_facturas(user, login))
