@@ -1,0 +1,20 @@
+# Avisos y PRs automáticos con actualizaciones de seguridad. Ver docs/security.md §7.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      django:
+        patterns: ["django*", "whitenoise", "gunicorn", "waitress"]
+  - package-ecosystem: docker
+    directory: "/deploy/docker"
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

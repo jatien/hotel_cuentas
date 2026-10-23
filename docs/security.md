@@ -24,7 +24,8 @@ Vista → servicio → PostgreSQL (rol propio de la app)
 | Registro de eventos de seguridad | ✅ §3 |
 | Servidor WSGI + proxy + HTTPS | ✅ §4 |
 | Cifrado en reposo y copias cifradas | ✅ §5 |
-| Llamadas a APIs externas y servidor del modelo | ver §6 (PR aparte) |
+| Llamadas a APIs externas, VPN y servidor del modelo | ✅ §6 |
+| CI: tests, dependencias, secretos, Docker | ✅ §7 |
 | Autenticación y autorización de usuarios | **pendiente** (se hará más adelante) |
 
 ---
@@ -408,6 +409,108 @@ Huesped.objects.filter(documento_indice=indice_ciego("12345678Z"))
 
 ---
 
+## 6. Llamadas a APIs externas, VPN y servidor del modelo
+
+### Qué sale de la app y hacia dónde
+
+| Desde | Hacia | Qué viaja |
+|---|---|---|
+| Facturas con IA (`invoice_agent`) | OpenAI en la nube, o el servidor local (vLLM/Ollama) | Texto e imágenes de facturas |
+| PMS Copilot (`copilot_pms`) | Servidor local con Qwen3.5-9B (o OpenAI) | Preguntas y resultados de las herramientas (saldos, cajas, coste de personal…) |
+| Futuro: Neobookings, banco | APIs de terceros | Reservas, movimientos |
+
+Reglas, ya aplicadas en el código:
+
+- Claves solo en el `.env` (nunca en git; el CI lo vigila, §7).
+- Tiempos de espera explícitos y reintentos acotados en los dos clientes de IA (90–120 s, 2–3
+  reintentos solo ante errores transitorios).
+- Verificación TLS siempre activa (el cliente de OpenAI no la desactiva en ningún sitio).
+
+`check --deploy` revisa a dónde apuntan los modelos:
+
+| Aviso | Cuándo |
+|---|---|
+| `seguridad.W010` | Sin `BASE_URL`: los datos van a OpenAI en la nube. No es un error, pero tiene que ser una decisión consciente: salen facturas o cifras del hotel |
+| `seguridad.E010` | `http://` hacia una máquina fuera de la LAN: la clave y los datos viajarían en claro por Internet |
+| `seguridad.W011` | `http://` dentro de la LAN: cualquiera en la red del hotel podría leerlo. Se evita usando la IP de la VPN |
+| `seguridad.W012` | El servidor del modelo no pide clave (Ollama, o vLLM sin `--api-key`) |
+
+`http://127.0.0.1` (modelo en el mismo equipo) no avisa.
+
+**Qué datos se pueden mandar a la nube** sigue siendo tu decisión. Recomendación: nóminas,
+documentos de identidad y datos bancarios, nunca; facturas de proveedores, solo si se acepta que
+OpenAI las procese. Con el servidor local nada sale del hotel.
+
+### VPN para el acceso remoto y el servidor del modelo
+
+Nada de abrir puertos del router a Internet. Para entrar desde casa, o para que el PC de la oficina
+hable con el servidor Debian si están en sitios distintos, se usa una VPN:
+
+| | Tailscale | WireGuard |
+|---|---|---|
+| Instalación | App en cada equipo, cuenta y listo | Configuración a mano (claves y `wg0.conf`) |
+| Puertos en el router | Ninguno | Uno UDP hacia el servidor |
+| Depende de un tercero | Sí (coordinación; el tráfico va cifrado de extremo a extremo) | No |
+| Recomendado para | Empezar ya, varios PCs y móviles | Control total, sin cuentas externas |
+
+Con cualquiera de las dos:
+
+- el servidor del modelo escucha en su IP de la VPN: `BIND_IP=<ip-vpn> bash copilot_pms/deploy/serve_qwen35.sh`
+  (por defecto ahora publica solo en `127.0.0.1`);
+- `COPILOT_BASE_URL=http://<ip-vpn>:8000/v1`. El tráfico va cifrado por el túnel aunque la URL sea
+  `http`. Tailscale (`100.64.0.0/10`) se reconoce solo; para WireGuard se añade su red a
+  `OUTBOUND_VPN_NETWORKS` (p. ej. `10.8.0.0/24`);
+- cortafuegos del servidor Debian:
+  ```bash
+  sudo ufw default deny incoming
+  sudo ufw allow in on tailscale0      # o: sudo ufw allow in on wg0
+  sudo ufw allow from 192.168.1.0/24 to any port 443 proto tcp   # la app, solo LAN
+  sudo ufw enable
+  ```
+- a la app se entra desde casa por la VPN con el mismo `https://pms.hotel.lan` (o la IP de la VPN
+  añadida a `CUENTAS_HOSTS` y `ALLOWED_HOSTS`).
+
+### Webhooks entrantes
+
+Para cuando un servicio externo llame a la app (Neobookings avisando de una reserva, una pasarela de
+pago…), `seguridad.webhooks.firma_webhook` ya está listo:
+
+- exige una firma HMAC-SHA256 del cuerpo con un secreto compartido (en el `.env`);
+- exige una marca de tiempo de menos de 5 minutos, para que no se pueda reenviar una petición
+  capturada;
+- descarta identificadores ya vistos. La caché por defecto es por proceso; con varios procesos
+  de Gunicorn, la marca de tiempo sigue limitando la ventana de repetición.
+
+Cada proveedor firma a su manera: se adapta al integrar cada uno. Los rechazos van a
+`logs/security.log`.
+
+---
+
+## 7. Integración continua
+
+`.github/workflows/ci.yml` se ejecuta en cada pull request, en cada push a `master` y cada lunes:
+
+| Trabajo | Qué comprueba |
+|---|---|
+| Tests y checks de Django | `check`, migraciones al día, `check --deploy` con ajustes de producción, `collectstatic` y toda la suite de tests (con PostgreSQL y Tesseract en español) |
+| Vulnerabilidades en dependencias | `pip-audit` sobre `requirements.txt`; el lunes detecta las publicadas durante la semana |
+| Secretos en el código | `gitleaks` sobre los ficheros y sobre los commits del PR |
+| Imagen de Docker | Que la imagen se construye, arranca y pasa `check --deploy`; que `compose.yaml` es válido |
+
+`.github/dependabot.yml` abre PRs semanales con actualizaciones de las dependencias de Python y
+mensuales de la imagen base y de las Actions.
+
+**Protección de la rama `master`** (en GitHub → Settings → Branches → Add rule, la tienes que activar
+tú):
+
+- *Require a pull request before merging*;
+- *Require status checks to pass*: marcar los cuatro trabajos del CI;
+- *Do not allow bypassing the above settings* si quieres que también te aplique a ti.
+
+En Settings → Code security, activar *Secret scanning* y *Dependabot alerts*.
+
+---
+
 ## PMS Copilot
 
 Cada componente nuevo se revisa por si encaja como herramienta del copilot (function calling):
@@ -421,3 +524,5 @@ Cada componente nuevo se revisa por si encaja como herramienta del copilot (func
 | Servir `/media/` | No como herramienta nueva | `documento_factura` ya da enlaces firmados a los originales; cuando haya permisos, la misma comprobación protegerá `/media/` |
 | Copias de seguridad | **Sí: `estado_copias_seguridad`** | Solo lectura: última copia correcta de la BD y de los ficheros, tamaño, verificación y fallos recientes, con avisos si la última tiene más de 26 h o lleva más de 30 días sin verificar. Nunca devuelve rutas, huellas ni claves. Permiso `seguridad.view_copiaseguridad` cuando haya login |
 | Campos cifrados / roles de PostgreSQL / TLS | No | Las herramientas existentes leerán los campos cifrados en claro a través del ORM, con los permisos de siempre |
+| Comprobación de APIs salientes, VPN, webhooks | No | Configuración y transporte. Cuando exista la integración con Neobookings, sus datos (reservas, disponibilidad) sí serán herramientas: ya están en `PENDIENTES` del copilot |
+| CI / Dependabot | No | Proceso de desarrollo. El CI ejecuta los tests del copilot en cada PR, también los de permisos de las herramientas |

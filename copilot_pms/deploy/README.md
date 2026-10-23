@@ -7,7 +7,7 @@ razonamiento opcional.
 ```
  PC del hotel (Django)                        Servidor Debian (GPU 16 GB)
  ─────────────────────                        ───────────────────────────
- .env  COPILOT_BASE_URL ─── HTTP (LAN) ─────► vLLM :8000  (Docker)
+ .env  COPILOT_BASE_URL ─── HTTP por VPN ───► vLLM :8000  (Docker)
        COPILOT_API_KEY                         └─ Qwen3.5-9B en FP8 (~10 GB)
 ```
 
@@ -30,7 +30,7 @@ bash copilot_pms/deploy/serve_qwen35.sh
 En el `.env` del PC del hotel (ver `.env.example`):
 
 ```
-COPILOT_BASE_URL=http://IP-DEL-SERVIDOR:8000/v1
+COPILOT_BASE_URL=http://IP-VPN-DEL-SERVIDOR:8000/v1
 COPILOT_API_KEY=<la clave que imprimió el script>
 COPILOT_MODEL=Qwen/Qwen3.5-9B
 COPILOT_TEMPERATURE=0.7
@@ -73,6 +73,12 @@ razonamiento llega dentro de la respuesta (`<think>…</think>`), el copilot lo 
 
 ## Seguridad
 
-- Exponer el puerto 8000 solo a la LAN (cortafuegos del servidor); nunca a Internet.
+- El script publica el puerto solo en `BIND_IP` (por defecto `127.0.0.1`). Lo recomendado es la IP
+  de la VPN del servidor (Tailscale o WireGuard): el tráfico va cifrado aunque la URL sea `http://`.
+  Si se usa la IP de la LAN, `check --deploy` avisa (`seguridad.W011`) porque las preguntas y los
+  resultados viajan en claro por la red del hotel.
+- Cortafuegos del servidor: el 8000 solo desde la VPN o desde el PC de Django, nunca desde Internet.
+- vLLM exige `COPILOT_API_KEY`; Ollama no tiene clave, así que con Ollama el cortafuegos es la única barrera.
 - El modelo no accede a la base de datos: solo recibe la pregunta y los resultados de las herramientas
   que Django ejecuta.
+- Guía completa: [`docs/security.md`](../../docs/security.md) §6.

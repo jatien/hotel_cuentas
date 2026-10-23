@@ -113,6 +113,12 @@ BACKUP_KEEP_DAYS = config("BACKUP_KEEP_DAYS", default=30, cast=int)
 BACKUP_PG_BIN_DIR = config("BACKUP_PG_BIN_DIR", default="")
 
 
+# --- Llamadas salientes ----------------------------------------------------------------
+# Redes de VPN (WireGuard) por las que HTTP sin TLS sí va cifrado; Tailscale (100.64.0.0/10) ya se
+# reconoce. Lo usa check --deploy para no avisar de los modelos de IA servidos por la VPN.
+OUTBOUND_VPN_NETWORKS = config("OUTBOUND_VPN_NETWORKS", default="", cast=Csv())
+
+
 # --- Validación de contraseñas -------------------------------------------------------
 
 AUTH_PASSWORD_VALIDATORS = [
