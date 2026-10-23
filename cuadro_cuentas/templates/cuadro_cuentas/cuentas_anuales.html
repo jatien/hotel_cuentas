@@ -9,7 +9,7 @@
     <h1>Balance de situación, PyG y PN</h1>
     {% if ejercicio %}
       <form method="get" class="filtros">
-        <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
+        <select name="ejercicio" aria-label="Ejercicio" data-autosubmit>
           {% for e in ejercicios %}
             <option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>Ejercicio {{ e.anio }}</option>
           {% endfor %}
@@ -20,7 +20,7 @@
         <a href="?ejercicio={{ ejercicio.anio }}&modelo=normal" {% if modelo == "normal" %}aria-current="true"{% endif %}>Normal</a>
         <a href="?ejercicio={{ ejercicio.anio }}&modelo=abreviado" {% if modelo == "abreviado" %}aria-current="true"{% endif %}>Abreviado</a>
       </nav>
-      <button type="button" class="btn-primario" onclick="window.print()">Imprimir o guardar en PDF</button>
+      <button type="button" class="btn-primario" data-print>Imprimir o guardar en PDF</button>
     {% endif %}
   </header>
 

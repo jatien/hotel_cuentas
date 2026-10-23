@@ -38,7 +38,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   const zona = document.getElementById("zona");
   const entrada = document.getElementById("archivos");
   const lista = document.getElementById("lista-archivos");

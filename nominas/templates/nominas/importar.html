@@ -37,7 +37,7 @@
   .nota { color: var(--tinta-suave); font-size: .85rem; margin-top: 1rem; }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
   const dropzone = document.getElementById('dropzone');
   const inputArchivo = document.getElementById('id_archivo');
   const textoDropzone = document.getElementById('dropzone-texto');

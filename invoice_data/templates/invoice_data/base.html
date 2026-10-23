@@ -1,4 +1,4 @@
-{# Shared layout of Gestión de Facturas: styles, messages, and the blocks each page fills. #}
+{% load static %}{# Shared layout of Gestión de Facturas: styles, messages, and the blocks each page fills. #}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -39,6 +39,7 @@
   td.nw { white-space: nowrap; }
 </style>
 {% block estilos %}{% endblock %}
+  <script src="{% static 'seguridad/acciones.js' %}" defer></script>
 </head>
 <body>
 {% block contenido %}{% endblock %}

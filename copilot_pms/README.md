@@ -18,6 +18,7 @@ flowchart LR
     E --> T1[contabilidad.py] --> CC[(cuadro_cuentas)]
     E --> T2[facturas.py] --> FA[(invoice_agent ·<br/>invoice_data)]
     E --> T3[informes.py] --> IN[(cuentas anuales ·<br/>cajas · nóminas)]
+    E --> T4[sistema.py] --> SG[(seguridad ·<br/>copias)]
     A -->|pregunta, respuesta,<br/>cada llamada| DB[(Conversacion · Mensaje ·<br/>LlamadaHerramienta)]
 ```
 
@@ -49,6 +50,7 @@ flowchart LR
 | `cuentas_anuales` | Balance o PyG del PGC 2007 con el ejercicio anterior | `cuadro_cuentas.view_apunte` |
 | `resumen_cajas` | Ventas por punto de venta y otros cobros, por mes o año | `cajas.view_cajames` |
 | `coste_personal` | Coste de nóminas por departamento (sin datos por empleado) | `nominas.view_nominamensual` |
+| `estado_copias_seguridad` | Última copia correcta de la base de datos y de los ficheros, verificación y fallos recientes (sin rutas ni claves) | `seguridad.view_copiaseguridad` |
 
 **Aún no conectado** (el copilot lo dice en vez de inventar; lista en `tools/__init__.py`): disponibilidad
 de habitaciones y reservas, horarios del personal, extractos bancarios, cualquier escritura.

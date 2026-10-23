@@ -14,7 +14,7 @@
   <div class="acciones">
     <a class="btn btn-primario" href="{% url 'cajas:meses' %}?anio={{ caja_mes.anio }}&mes={{ caja_mes.mes }}">Editar</a>
     <form method="post" action="{% url 'cajas:borrar' caja_mes.anio caja_mes.mes %}"
-          onsubmit="return confirm('¿Borrar todas las cajas de {{ caja_mes }}? No se puede deshacer.');">
+          data-confirm="¿Borrar todas las cajas de {{ caja_mes }}? No se puede deshacer.">
       {% csrf_token %}<button class="btn btn-peligro" type="submit">Borrar mes</button>
     </form>
   </div>

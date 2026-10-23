@@ -7,7 +7,7 @@
 <div class="cabecera">
   <h1>Cajas {{ anio }}</h1>
   <form method="get">
-    <select name="anio" onchange="this.form.submit()" aria-label="Año">
+    <select name="anio" data-autosubmit aria-label="Año">
       {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
     </select>
   </form>
@@ -98,7 +98,7 @@
 
 {{ grafico|json_script:"datos-grafico" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
   (function () {
     const datos = JSON.parse(document.getElementById('datos-grafico').textContent);
     const estilos = getComputedStyle(document.documentElement);

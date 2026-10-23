@@ -142,7 +142,7 @@
         {% endif %}
         <form method="post" class="acciones" style="margin-top:1rem">{% csrf_token %}
           <button class="btn-sec" name="accion" value="duplicar">Duplicar</button>
-          <button class="btn-sec btn-peligro" name="accion" value="borrar" onclick="return confirm('¿Eliminar este borrador?')">Eliminar borrador</button>
+          <button class="btn-sec btn-peligro" name="accion" value="borrar" data-confirm="¿Eliminar este borrador?">Eliminar borrador</button>
         </form>
       {% elif asiento.estado == "contabilizado" and not asiento.ejercicio.cerrado %}
         <h3>Corregir</h3>

@@ -5,7 +5,7 @@ Para añadir una capacidad: crear un módulo con funciones decoradas con
 `@herramienta(...)` e importarlo aquí. Cuando exista, quitarla de PENDIENTES.
 """
 
-from copilot_pms.tools import contabilidad, facturas, informes  # noqa: F401  (registran las herramientas)
+from copilot_pms.tools import contabilidad, facturas, informes, navegacion, sistema  # noqa: F401  (registran las herramientas)
 from copilot_pms.tools.base import REGISTRO, Contexto, Resultado, disponibles, ejecutar  # noqa: F401
 
 # Lo que el copilot debe saber que TODAVÍA no puede consultar, para decirlo en vez de inventar.
