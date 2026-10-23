@@ -21,10 +21,12 @@ x-app: &app
     DB_PORT: "5432"
     # Solo Caddy (IPs fijas abajo) puede indicar la IP real del cliente
     TRUSTED_PROXIES: 172.30.1.10,172.30.3.10
+    BACKUP_DIR: /app/backups
   volumes:
     - ${CUENTAS_DATA_DIR:-/srv/cuentas}/media:/app/media
     - ${CUENTAS_DATA_DIR:-/srv/cuentas}/private_media:/app/private_media
     - ${CUENTAS_DATA_DIR:-/srv/cuentas}/logs:/app/logs
+    - ${CUENTAS_BACKUP_DIR:-/srv/cuentas/backups}:/app/backups
   depends_on:
     db:
       condition: service_healthy
@@ -62,6 +64,7 @@ services:
       - ${CUENTAS_DATA_DIR:-/srv/cuentas}/media:/app/media
       - ${CUENTAS_DATA_DIR:-/srv/cuentas}/private_media:/app/private_media
       - ${CUENTAS_DATA_DIR:-/srv/cuentas}/logs:/app/logs
+      - ${CUENTAS_BACKUP_DIR:-/srv/cuentas/backups}:/app/backups
       - staticfiles:/app/staticfiles
     networks: [proxy, datos, salida]
 
