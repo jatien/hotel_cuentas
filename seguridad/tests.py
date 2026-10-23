@@ -244,3 +244,18 @@ class ServirTests(TestCase):
 
         with self.assertRaisesMessage(CommandError, "DEBUG"):
             call_command("servir")
+
+
+class AjustesDesarrolloTests(TestCase):
+    """Con DJANGO_ENV=dev, un .env recién copiado de .env.example (SECRET_KEY vacía) debe arrancar."""
+
+    def test_dev_arranca_con_secret_key_vacia(self):
+        env = {k: v for k, v in os.environ.items() if k != "DJANGO_SETTINGS_MODULE"}
+        env.update({"DJANGO_ENV": "dev", "DB_PASSWORD": "x", "SECRET_KEY": "", "DJANGO_SETTINGS_MODULE": "mysite.settings"})
+        r = subprocess.run(
+            [sys.executable, "-c", "import django; django.setup(); from django.conf import settings; "
+                                   "print(settings.SECRET_KEY.startswith('dev-solo-local'))"],
+            cwd=BASE_DIR, env=env, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "True")
