@@ -28,7 +28,7 @@ pytesseract>=0.3.13
 reportlab>=4.0
 
 # Limpieza de imagen antes de OCR (invoice_data/services/preprocessing.py)
-opencv-python-headless>=4.9
+opencv-python-headless>=5.0.0.93
 numpy>=1.26
 # Detección de facturas con IA (invoice_agent)
 pydantic>=2.7                # esquemas de la salida del modelo y de la API
