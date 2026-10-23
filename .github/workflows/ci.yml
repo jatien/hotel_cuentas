@@ -1,0 +1,116 @@
+# Integración continua: tests, comprobaciones de despliegue, dependencias con vulnerabilidades,
+# secretos en el código e imagen de Docker. Ver docs/security.md §7.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "23 5 * * 1"   # cada lunes: vulnerabilidades nuevas en dependencias ya fijadas
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests y checks de Django
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # Misma versión mayor que el pg_dump del runner (los tests de copias lo usan)
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cuentas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      TESSERACT_CMD: /usr/bin/tesseract
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Tesseract (OCR) en español
+        run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr tesseract-ocr-spa
+      - name: Dependencias
+        run: pip install -r requirements.txt
+      - name: Check (desarrollo)
+        run: python manage.py check
+      - name: Migraciones al día
+        run: python manage.py makemigrations --check --dry-run
+      - name: Check de despliegue (producción)
+        env:
+          DJANGO_ENV: prod
+          SECRET_KEY: ci-solo-para-comprobar-ajustes-de-produccion-no-es-un-secreto-real-0123456789
+          ALLOWED_HOSTS: pms.hotel.lan,localhost
+        run: |
+          python manage.py check --deploy --fail-level ERROR
+          python manage.py collectstatic --noinput -v 0
+      - name: Tests
+        run: python manage.py test --parallel 1
+
+  dependencias:
+    name: Vulnerabilidades en dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install pip-audit
+      - name: pip-audit (requirements.txt)
+        run: pip-audit -r requirements.txt --progress-spinner off
+
+  secretos:
+    name: Secretos en el código
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Instalar gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz \
+            | tar xz gitleaks
+      - name: Ficheros actuales
+        run: ./gitleaks dir . --redact --no-banner
+      - name: Commits del pull request
+        if: github.event_name == 'pull_request'
+        run: >-
+          ./gitleaks git . --redact --no-banner
+          --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  docker:
+    name: Imagen de Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir (sin publicar)
+        run: docker build -f deploy/docker/Dockerfile -t cuentas-app:ci .
+      - name: La app arranca y pasa check --deploy dentro de la imagen
+        run: >-
+          docker run --rm
+          -e SECRET_KEY=ci-solo-para-comprobar-ajustes-de-produccion-no-es-un-secreto-real-0123456789
+          -e ALLOWED_HOSTS=pms.hotel.lan -e DB_PASSWORD=x
+          cuentas-app:ci python manage.py check --deploy --fail-level ERROR
+      - name: Compose válido
+        run: |
+          printf 'DB_USER=cuentas\nDB_PASSWORD=x\nCUENTAS_HOSTS=pms.hotel.lan\n' > .env
+          docker compose -f deploy/docker/compose.yaml --env-file .env config --quiet
