@@ -4,7 +4,7 @@
 <canvas id="graficoDepartamento"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
   const labels = JSON.parse(document.getElementById('chart-labels').textContent);
   const data = JSON.parse(document.getElementById('chart-data').textContent);
   new Chart(document.getElementById('graficoDepartamento'), {

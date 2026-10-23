@@ -1,9 +1,11 @@
+{% load static %}
+<script src="{% static 'seguridad/acciones.js' %}" defer></script>
 <a href="{% url 'nominas' %}" class="btn-volver">← Volver a nóminas</a>
 <h2>Análisis {{ anio }}</h2>
 
 <form method="get" class="form-analisis">
   <label for="mes">Periodo:</label>
-  <select name="mes" id="mes" onchange="this.form.submit()">
+  <select name="mes" id="mes" data-autosubmit>
     <option value="todos" {% if mes_seleccionado == 'todos' %}selected{% endif %}>Todo el año</option>
     {% for m, nombre in meses_opciones %}
       <option value="{{ m }}" {% if mes_seleccionado == m|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>
@@ -11,7 +13,7 @@
   </select>
 
   <label for="parametro">Parámetro:</label>
-  <select name="parametro" id="parametro" onchange="this.form.submit()">
+  <select name="parametro" id="parametro" data-autosubmit>
     <option value="departamento" {% if parametro_seleccionado == 'departamento' %}selected{% endif %}>Departamento</option>
     <option value="total_impositivo" {% if parametro_seleccionado == 'total_impositivo' %}selected{% endif %}>Total impositivo</option>
   </select>
@@ -25,7 +27,7 @@
 {{ chart_data|json_script:"chart-data" }}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
   const labels = JSON.parse(document.getElementById('chart-labels').textContent);
   const data = JSON.parse(document.getElementById('chart-data').textContent);
   const tipo = "{{ chart_type }}";

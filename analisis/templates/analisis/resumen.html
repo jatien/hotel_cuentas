@@ -9,25 +9,26 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'analisis/resumen.css' %}">
+  <script src="{% static 'seguridad/acciones.js' %}" defer></script>
 </head>
 <body>
   <header class="barra">
     <a href="{% url 'home' %}" class="volver">Inicio</a>
     <h1>Análisis de beneficios</h1>
     <form method="get" class="filtros">
-      <select name="anio" aria-label="Año" onchange="this.form.submit()">
+      <select name="anio" aria-label="Año" data-autosubmit>
         {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
       </select>
-      <select name="mes" aria-label="Periodo" onchange="this.form.submit()">
+      <select name="mes" aria-label="Periodo" data-autosubmit>
         <option value="">Todo el año</option>
         {% for n, nombre in meses_opciones %}<option value="{{ n }}" {% if n == mes %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
       </select>
-      <select name="iva" aria-label="IVA" onchange="this.form.submit()">
+      <select name="iva" aria-label="IVA" data-autosubmit>
         <option value="">Sin IVA</option>
         <option value="con" {% if con_iva %}selected{% endif %}>Con IVA</option>
       </select>
       <label class="check">
-        <input type="checkbox" name="previsto" value="1" {% if incluir_previsto %}checked{% endif %} onchange="this.form.submit()">
+        <input type="checkbox" name="previsto" value="1" {% if incluir_previsto %}checked{% endif %} data-autosubmit>
         Incluir reservas futuras
       </label>
     </form>

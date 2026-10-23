@@ -5,7 +5,8 @@ septiembre?», «dame el PDF de la factura de Makro de agosto», «PyG de 2026»
 consultar, pero **los datos solo salen de herramientas registradas** que llaman al mismo código que las
 pantallas de la aplicación. El copilot es **de solo lectura**.
 
-- Pantalla: `/copilot/` · API JSON: `/copilot/api/…` · Consola: `python manage.py copilot …`
+- Pantalla: `/copilot/` · Plantillas de gráficos: `/copilot/graficos/` · API JSON: `/copilot/api/…` ·
+  Consola: `python manage.py copilot …`
 
 ## Arquitectura
 
@@ -18,6 +19,7 @@ flowchart LR
     E --> T1[contabilidad.py] --> CC[(cuadro_cuentas)]
     E --> T2[facturas.py] --> FA[(invoice_agent ·<br/>invoice_data)]
     E --> T3[informes.py] --> IN[(cuentas anuales ·<br/>cajas · nóminas)]
+    E --> T4[sistema.py] --> SG[(seguridad ·<br/>copias)]
     A -->|pregunta, respuesta,<br/>cada llamada| DB[(Conversacion · Mensaje ·<br/>LlamadaHerramienta)]
 ```
 
@@ -49,9 +51,42 @@ flowchart LR
 | `cuentas_anuales` | Balance o PyG del PGC 2007 con el ejercicio anterior | `cuadro_cuentas.view_apunte` |
 | `resumen_cajas` | Ventas por punto de venta y otros cobros, por mes o año | `cajas.view_cajames` |
 | `coste_personal` | Coste de nóminas por departamento (sin datos por empleado) | `nominas.view_nominamensual` |
+| `estado_copias_seguridad` | Última copia correcta de la base de datos y de los ficheros, verificación y fallos recientes (sin rutas ni claves) | `seguridad.view_copiaseguridad` |
+| `resumen_beneficio` | Análisis de beneficios de gestión: ingresos por origen, gastos, beneficio, margen, departamentos, categorías y canales | `analisis.view_reserva` |
+| `grafico` | Gráfico de una plantilla con datos reales (ver abajo) | el de cada plantilla |
 
 **Aún no conectado** (el copilot lo dice en vez de inventar; lista en `tools/__init__.py`): disponibilidad
 de habitaciones y reservas, horarios del personal, extractos bancarios, cualquier escritura.
+
+### Gráficos
+
+El modelo nunca escribe código de gráficos: elige una **plantilla** y unos **parámetros validados** y
+el servidor calcula los datos con las mismas funciones que las pantallas (`graficos.py`). El chat lo
+dibuja con Chart.js, con los colores del análisis de beneficios.
+
+| Plantilla | Datos | Eje |
+|---|---|---|
+| `beneficio_mensual` | Ingresos, gastos, beneficio y acumulado (análisis) | meses |
+| `gastos_mensuales` | Proveedores, acreedores y personal (análisis) | meses |
+| `ingresos_mensuales` | Estancias, extras, tasas, bar, comedor, menús, parking (análisis) | meses |
+| `gastos_por_departamento` | Gasto por departamento (análisis) | categorías |
+| `gastos_por_categoria` | Gasto por categoría: comida, bebida, luz... (análisis) | categorías |
+| `ventas_cajas_mensuales` | Bar, comedor, chill out y otros cobros (cajas) | meses |
+| `coste_personal_mensual` | Coste de nóminas por departamento (nóminas) | meses |
+| `saldo_cuenta_mensual` | Saldo a fin de mes de una cuenta (contabilidad) | meses |
+| `resultado_contable_mensual` | Grupos 7 y 6 y resultado (contabilidad) | meses |
+
+Parámetros: `anio`, `series`, `tipo` (barras, barras_apiladas, barras_horizontales, lineas, area,
+tarta), `comparar_con` (hasta 2 años), `desde_mes`/`hasta_mes`, `mes`, `cuenta`, `con_iva`, `titulo`.
+
+- **Editar con palabras**: «ponlo en líneas», «solo bar y comedor», «compáralo con 2025». El historial
+  que recibe el modelo incluye los parámetros del último gráfico (`[Gráfico mostrado: grafico {…}]`) y
+  vuelve a llamar a `grafico` con el cambio. Lo que no encaja en los parámetros se rechaza con
+  `aclarar` (p. ej. una tarta por meses o series que no existen, con la lista de las disponibles).
+- **Plantillas sin IA**: `/copilot/graficos/` permite elegir plantilla y parámetros en un formulario;
+  usa la misma herramienta (validación y permisos).
+- Añadir una plantilla: una función `(anio, opciones) -> (etiquetas, {serie: [Decimal]})` y una
+  entrada en `PLANTILLAS`.
 
 ### Añadir una herramienta
 
@@ -115,6 +150,18 @@ GET  /copilot/api/herramientas  → herramientas disponibles para quien pregunta
 ```
 
 Errores: `{"error": {"code", "message"}}`. Las escrituras requieren la cabecera `X-CSRFToken`.
+
+## Entrenamiento y evaluación
+
+- `python manage.py copilot_hotel_ficticio`: llena una base de datos **aparte** (`DB_NAME=cuentas_ficticio`)
+  con un hotel inventado (contabilidad, facturas con PDF, cajas, nóminas, análisis).
+- `python manage.py copilot_dataset`: genera conversaciones de entrenamiento ejecutando las herramientas
+  de verdad sobre ese hotel (`entrenamiento/escenarios.py`: 20 escenarios, incluidos los casos de
+  aclarar, no conectado, solo lectura e instrucciones escondidas en los datos).
+- `python manage.py copilot_evaluar`: mide el modelo configurado sobre el test (herramienta, argumentos,
+  no llamar cuando no toca, cifras inventadas).
+- El afinado en GPU y la mezcla con datasets públicos (When2Call, ToolACE, Toucan) están en
+  [`training/copilot/`](../training/copilot/README.md).
 
 ## Tests
 

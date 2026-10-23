@@ -10,11 +10,16 @@ oficina; no está desplegada en producción.
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.example .env                    # y rellena DB_PASSWORD, SECRET_KEY, ALLOWED_HOSTS…
 python manage.py migrate
-python manage.py runserver 0.0.0.0:8000   # accesible desde otros PCs de la red local
+python manage.py runserver                # solo desarrollo
 ```
 
-- Base de datos: PostgreSQL local (`cuentas`), configurada en `mysite/settings.py`.
+Para usarla desde otros PCs de la red: Waitress + Caddy con HTTPS (`deploy/`, guía en
+[`docs/security.md`](docs/security.md) §4). `runserver 0.0.0.0` envía todo sin cifrar.
+
+- Base de datos: PostgreSQL local (`cuentas`); credenciales en el `.env`, nunca en el código.
+- Ajustes por entorno en `mysite/settings/` (`DJANGO_ENV=dev|prod`). Seguridad y despliegue: [`docs/security.md`](docs/security.md).
 - El OCR de facturas necesita **Tesseract** con el idioma español (ver `requirements.txt`).
 - Los ficheros de datos (CSV, Excel, PDF, exports SQL) **no se suben a git**: están en `.gitignore`.
 
@@ -72,7 +77,10 @@ El panel principal (`/`) enlaza con todas las apps.
   (borradores, ejercicio abierto). Enlaces firmados y auditados a los PDF de facturas.
 - Solo lectura. Cada consulta queda auditada. Disponibilidad de habitaciones y horarios aún no están
   conectados y el copilot lo dice.
+- Gráficos por plantillas (análisis, cajas, nóminas, contabilidad) que se editan con el prompt, y galería
+  sin IA en `/copilot/graficos/`.
 - Configuración en `.env` (`COPILOT_*`). Detalles en [`copilot_pms/README.md`](copilot_pms/README.md).
+- Afinado del modelo con un hotel ficticio + datasets públicos de uso comercial: [`training/copilot/`](training/copilot/README.md).
 
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos

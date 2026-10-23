@@ -41,6 +41,8 @@
                          border-radius: 12px; background: var(--acento); color: #fff; cursor: pointer; }
   form.pregunta button[disabled] { opacity: .6; cursor: progress; }
   .ejemplos { font-size: .88rem; color: var(--tinta-suave); margin-top: .6rem; }
+  .grafico { position: relative; height: 320px; margin: .8rem 0; background: var(--tarjeta);
+             border-radius: 12px; padding: .6rem; }
 </style>
 {% endblock %}
 
@@ -48,6 +50,7 @@
 <div class="copilot">
   <aside class="lateral">
     <a class="nueva" href="{% url 'copilot_pms:index' %}">+ Nueva conversación</a>
+    <a class="nueva" href="{% url 'copilot_pms:galeria' %}">Plantillas de gráficos</a>
     <div class="panel">
       <h2>Recientes</h2>
       <ul>
@@ -78,6 +81,10 @@
       {% for m in mensajes %}
         <div class="msg {{ m.rol }}{% if m.estado != 'ok' %} error{% endif %}" {% if forloop.last %}id="ultimo"{% endif %}>
           {{ m.contenido|linebreaksbr }}
+          {% for id, g in m.graficos %}
+            <div class="grafico"><canvas data-grafico="{{ id }}" aria-label="{{ g.titulo }}" role="img"></canvas></div>
+            {{ g|json_script:id }}
+          {% endfor %}
           {% if m.rol == 'assistant' %}
             {% if m.consultas %}
               <details class="consultas">
@@ -102,17 +109,21 @@
     </div>
 
     <form class="pregunta" method="post" action="{% url 'copilot_pms:preguntar' %}"
-          onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Consultando…';">
+          data-enviando="Consultando…">
       {% csrf_token %}
       {% if conversacion %}<input type="hidden" name="conversacion" value="{{ conversacion.public_id }}">{% endif %}
       <textarea name="pregunta" required maxlength="4000" placeholder="Pregunta algo…" autofocus
-                onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.form.requestSubmit(); }"></textarea>
+                data-enter-envia></textarea>
       <button type="submit">Preguntar</button>
     </form>
     {% if not mensajes %}
       <p class="ejemplos">Ejemplos: «¿Saldo de la cuenta 572 a 30 de septiembre?» · «Busca la factura de Makro de agosto
-        y dame el PDF» · «Cuenta de pérdidas y ganancias de 2026» · «Ventas del bar en julio».</p>
+        y dame el PDF» · «Cuenta de pérdidas y ganancias de 2026» · «Ventas del bar en julio» · «Gráfico de ingresos y gastos
+        de 2026 comparado con 2025».</p>
     {% endif %}
   </section>
 </div>
+  {% load static %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script src="{% static 'copilot_pms/graficos.js' %}"></script>
 {% endblock %}

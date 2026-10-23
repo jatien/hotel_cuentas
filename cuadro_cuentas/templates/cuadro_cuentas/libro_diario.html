@@ -6,14 +6,14 @@
     <h1>Asientos</h1>
     <form method="get" class="filtros">
       <input type="hidden" name="hoja" value="{{ hoja }}">
-      <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
+      <select name="ejercicio" aria-label="Ejercicio" data-autosubmit>
         {% for e in ejercicios %}
           <option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>Ejercicio {{ e.anio }}</option>
         {% empty %}
           <option>Sin ejercicios</option>
         {% endfor %}
       </select>
-      <select name="mes" aria-label="Mes" onchange="this.form.submit()">
+      <select name="mes" aria-label="Mes" data-autosubmit>
         <option value="">Todo el ejercicio</option>
         {% for num, nombre in meses %}
           <option value="{{ num }}" {% if num|stringformat:"s" == mes %}selected{% endif %}>{{ nombre }}</option>
@@ -81,7 +81,7 @@
   {{ hojas_json|json_script:"datos-hojas" }}
   {{ modelos|json_script:"datos-modelos" }}
   {{ ejercicio_info|json_script:"datos-ejercicio" }}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     window.LIBRO = {
       nuevoUrl: "{% url 'cuadro_cuentas:api_crear_asiento' %}",
       asientoUrl: "{% url 'cuadro_cuentas:api_asiento' 0 %}",

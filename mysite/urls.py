@@ -17,7 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path,include
 from django.conf import settings
-from django.conf.urls.static import static
+
+from seguridad import views as seguridad_views
 
 
 urlpatterns = [
@@ -30,4 +31,7 @@ urlpatterns = [
     path("cajas/", include("cajas.urls")),
     path("facturas-ia/", include("invoice_agent.urls")),
     path("copilot/", include("copilot_pms.urls")),
-]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path("seguridad/", include("seguridad.urls")),
+    # Ficheros subidos: siempre a través de Django (también en producción), ver seguridad/views.py
+    path(settings.MEDIA_URL.strip("/") + "/<path:ruta>", seguridad_views.media, name="media"),
+]

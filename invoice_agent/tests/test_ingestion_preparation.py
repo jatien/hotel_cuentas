@@ -41,7 +41,8 @@ class IngestionTests(IsolatedTestCase):
         self.assertEqual(doc.page_count, 1)
         self.assertEqual(len(doc.sha256), 64)
         self.assertTrue(path_for(doc.storage_key).is_file())
-        self.assertNotIn("f.pdf", doc.storage_key)  # la ruta interna no usa el nombre original
+        # la ruta interna no usa el nombre original (ojo: un uuid en hex puede acabar en "f" + ".pdf")
+        self.assertFalse(doc.storage_key.endswith("/f.pdf"))
         self.assertEqual(Trabajo.objects.filter(documento=doc).count(), 1)
         self.assertTrue(EventoRevision.objects.filter(documento=doc, accion=AccionRevision.UPLOADED).exists())
 

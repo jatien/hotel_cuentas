@@ -28,7 +28,7 @@
                   {% if e != ejercicio %}<a class="btn-mini" href="?ejercicio={{ e.anio }}">Activar</a>{% endif %}
                   <form method="post">{% csrf_token %}<input type="hidden" name="id" value="{{ e.id }}">
                     {% if e.cerrado %}<button class="btn-mini" name="accion" value="reabrir">Reabrir</button>
-                    {% else %}<button class="btn-mini" name="accion" value="cerrar" onclick="return confirm('Cerrar el ejercicio {{ e.anio }}: no se podrán añadir ni corregir asientos.')">Cerrar</button>{% endif %}
+                    {% else %}<button class="btn-mini" name="accion" value="cerrar" data-confirm="Cerrar el ejercicio {{ e.anio }}: no se podrán añadir ni corregir asientos.">Cerrar</button>{% endif %}
                   </form>
                 </div></td>
               </tr>

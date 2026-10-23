@@ -88,7 +88,7 @@
       <form method="post">{% csrf_token %}
         <button class="btn" name="action" value="extract" type="submit">{% if datos %}Volver a extraer{% else %}Extraer datos{% endif %}</button>
       </form>
-      <form method="post" onsubmit="return confirm('¿Eliminar esta factura por completo (archivo incluido)? No se puede deshacer.');">{% csrf_token %}
+      <form method="post" data-confirm="¿Eliminar esta factura por completo (archivo incluido)? No se puede deshacer.">{% csrf_token %}
         <button class="btn danger" name="action" value="delete_document" type="submit">Eliminar factura</button>
       </form>
     </div>
@@ -129,7 +129,7 @@
             {% endfor %}
             <button class="btn" name="action" value="save" type="submit">Guardar y confirmar</button>
           </form>
-          <form method="post" style="margin-top:8px" onsubmit="return confirm('¿Eliminar los datos extraídos? El archivo se conserva.');">{% csrf_token %}
+          <form method="post" style="margin-top:8px" data-confirm="¿Eliminar los datos extraídos? El archivo se conserva.">{% csrf_token %}
             <button class="btn light" name="action" value="delete_data" type="submit">Eliminar datos extraídos</button>
           </form>
         {% endif %}
@@ -175,7 +175,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   // Arrastrar líneas de producto: la tarjeta sigue el cursor con suavidad;
   // las demás se desplazan animadas para hacerle sitio (técnica FLIP).
   function habilitarArrastreSuave(lista) {

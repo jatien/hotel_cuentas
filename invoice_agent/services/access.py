@@ -45,7 +45,8 @@ class AccessContext:
 
 
 def _client_ip(request) -> str:
-    # REMOTE_ADDR, no X-Forwarded-For: en la LAN no hay proxy y esa cabecera la pone el cliente.
+    # REMOTE_ADDR y nunca X-Forwarded-For (la escribe el cliente). Detrás del proxy, Waitress o
+    # seguridad.middleware.ProxyClientIPMiddleware ya ponen aquí la IP real del cliente.
     return request.META.get("REMOTE_ADDR", "") or "desconocido"
 
 
