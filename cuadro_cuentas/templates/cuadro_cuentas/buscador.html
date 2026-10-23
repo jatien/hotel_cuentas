@@ -1,17 +1,8 @@
+{% extends "cuadro_cuentas/_base.html" %}
 {% load static cuadro_cuentas_tags %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Buscador de apuntes</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
-</head>
-<body>
+{% block titulo %}Buscador de apuntes{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
     <h1>Buscador de apuntes</h1>
   </header>
 
@@ -53,31 +44,49 @@
       <section class="tarjeta-consulta">
         <h2>{{ total }} apunte{{ total|pluralize }} encontrado{{ total|pluralize }}</h2>
         {% if total > limite %}<p class="nota">Se muestran los {{ limite }} más recientes: afina la búsqueda para ver el resto.</p>{% endif %}
-        <table class="tabla-consulta">
-          <thead><tr><th>Fecha</th><th class="num">Asiento</th><th>Cuenta</th><th>Concepto</th><th>Documento</th>
-            <th>Hoja</th><th class="num">Debe</th><th class="num">Haber</th></tr></thead>
+        {% include "cuadro_cuentas/_exportar.html" %}
+        <div class="desplaza">
+        <table class="tabla-datos" data-tabla="buscador" data-punteo>
+          <thead><tr>
+            <th data-col="asiento" data-tipo="num" class="num">Asiento</th>
+            <th data-col="apunte" data-tipo="num" class="num">Apunte</th>
+            <th data-col="fecha" data-tipo="fecha">Fecha</th>
+            <th data-col="numero">Número</th>
+            <th data-col="cuenta">Cuenta</th>
+            <th data-col="titulo">Título</th>
+            <th data-col="concepto">Concepto</th>
+            <th data-col="debe" data-tipo="num" class="num">Debe</th>
+            <th data-col="haber" data-tipo="num" class="num">Haber</th>
+            <th data-col="contrapartida">Contrapartida</th>
+            <th data-col="hoja">Hoja</th>
+            <th data-col="punteo" data-filtro="no">Punteo</th>
+          </tr></thead>
           <tbody>
-            {% for a in resultados %}
-              <tr class="{% if a.asiento.estado == 'borrador' %}borrador{% endif %}">
+            {% for a, contra in resultados %}
+              <tr class="{{ a.asiento.estado }}">
+                <td class="num"><a href="{% url 'cuadro_cuentas:asiento' a.asiento.id %}" title="Abrir el asiento">{{ a.asiento.numero }}</a>
+                  <span class="tenue">{{ a.asiento.ejercicio.anio }}</span></td>
+                <td class="num">{{ a.orden }}</td>
                 <td>{{ a.asiento.fecha|date:"d/m/Y" }}</td>
-                <td class="num"><a href="{{ u_libro }}?ejercicio={{ a.asiento.ejercicio.anio }}&mes={{ a.asiento.fecha.month }}#a{{ a.asiento.id }}" title="Abrir en el libro diario">{{ a.asiento.numero }}</a></td>
-                <td><a href="{{ u_ext }}?ejercicio={{ a.asiento.ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="Ver extracto">{{ a.cuenta.codigo }}</a>
-                  <span class="tenue">{{ a.cuenta.nombre }}</span></td>
-                <td>{{ a.concepto|default:a.asiento.concepto }}{% if a.asiento.estado == "borrador" %} <span class="etiqueta">Borrador</span>{% endif %}</td>
-                <td>{{ a.asiento.referencia_origen }}</td>
+                <td class="cod">{{ a.asiento.numero_externo }}</td>
+                <td class="cod"><a href="{{ u_ext }}?ejercicio={{ a.asiento.ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="Ver el mayor">{{ a.cuenta.codigo }}</a></td>
+                <td>{{ a.cuenta.nombre }}</td>
+                <td>{{ a.concepto|default:a.asiento.concepto }}{% if a.asiento.estado != "contabilizado" %} <span class="estado-asiento {{ a.asiento.estado }}">{{ a.asiento.get_estado_display }}</span>{% endif %}</td>
+                <td class="num d">{{ a.debe|importe_vacio }}</td>
+                <td class="num h">{{ a.haber|importe_vacio }}</td>
+                <td>{% include "cuadro_cuentas/_contrapartida.html" with anio=a.asiento.ejercicio.anio asiento_id=a.asiento.id %}</td>
                 <td>{% if a.asiento.hoja %}<span class="chip-hoja" style="--color-hoja: {{ a.asiento.hoja.color }}">{{ a.asiento.hoja }}</span>{% endif %}</td>
-                <td class="num d">{% if a.debe %}{{ a.debe|importe }}{% endif %}</td>
-                <td class="num h">{% if a.haber %}{{ a.haber|importe }}{% endif %}</td>
+                <td>{% include "cuadro_cuentas/_punteo.html" with ap=a %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="8" class="vacio">Ningún apunte cumple esos criterios.</td></tr>
+              <tr class="sin-datos"><td colspan="12" class="vacio">Ningún apunte cumple esos criterios.</td></tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </section>
     {% endif %}
   </main>
 
   <datalist id="lista-cuentas">{% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}</datalist>
-</body>
-</html>
+{% endblock %}

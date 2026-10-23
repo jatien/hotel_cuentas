@@ -16,9 +16,11 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from .modelos_asiento import MODELOS, crear_desde_modelo, previsualizar
 from .cuentas_anuales import calcular_cuentas_anuales, evaluar_abreviado
 from .forms import AltaSubcuentaForm, DatosEjercicioForm
-from .models import LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio, Hoja
-from .services import (LONGITUDES_BASE, asignar_contrapartidas, crear_subcuenta, renumerar,
-                       siguiente_codigo)
+from .activo import ejercicio_activo
+from .models import (LONGITUD_SUBCUENTA, Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio,
+                     HistorialAsiento, Hoja)
+from .services import (LONGITUDES_BASE, asignar_contrapartidas, crear_subcuenta, numerar_apuntes,
+                       renumerar, siguiente_codigo)
 from .tipos_alta import TIPOS_ALTA
 
 
@@ -31,19 +33,23 @@ MESES = [(1, "Enero"), (2, "Febrero"), (3, "Marzo"), (4, "Abril"), (5, "Mayo"), 
 
 def serializar_asiento(asiento):
     # primero las cuentas del Debe y después las del Haber, como en el libro diario
-    apuntes = sorted(asiento.apuntes.all(), key=lambda a: (a.haber > 0, a.orden, a.id))
+    apuntes = sorted(asiento.apuntes.all(), key=lambda a: (a.orden, a.id))
     debe = sum((a.debe for a in apuntes), Decimal("0"))
     haber = sum((a.haber for a in apuntes), Decimal("0"))
     return {
         "id": asiento.id, "numero": asiento.numero, "fecha": asiento.fecha.isoformat(),
         "concepto": asiento.concepto, "estado": asiento.estado, "hoja": asiento.hoja_id,
+        "titulo": asiento.titulo, "numero_externo": asiento.numero_externo,
+        "editable": asiento.estado == Asiento.Estado.BORRADOR and not asiento.ejercicio.cerrado,
+        "ficha": reverse("cuadro_cuentas:asiento", args=[asiento.id]),
         "tipo": asiento.tipo, "tipo_label": asiento.get_tipo_display(), "modelo": asiento.modelo,
         "clase": "Simple" if len(apuntes) == 2 else "Compuesto" if len(apuntes) > 2 else "Incompleto",
         "estado_label": asiento.get_estado_display(), "origen_label": asiento.get_origen_display(),
         "referencia_origen": asiento.referencia_origen, "ejercicio": asiento.ejercicio.anio,
         "cerrado": asiento.ejercicio.cerrado, "debe": f"{debe:.2f}", "haber": f"{haber:.2f}",
         "apuntes": [{
-            "id": a.id, "cuenta": a.cuenta.codigo, "cuenta_nombre": a.cuenta.nombre,
+            "id": a.id, "numero": a.orden, "cuenta": a.cuenta.codigo, "cuenta_nombre": a.cuenta.nombre,
+            "punteo": a.punteo, "punteo_label": a.get_punteo_display() if a.punteo else "",
             "contrapartida": a.contrapartida.codigo if a.contrapartida_id else "",
             "concepto": a.concepto, "debe": f"{a.debe:.2f}", "haber": f"{a.haber:.2f}",
             
@@ -58,7 +64,8 @@ def api(view):
             with transaction.atomic():
                 return view(request, *args, **kwargs)
         except ValidationError as e:
-            return JsonResponse({"error": " ".join(e.messages)}, status=400)
+            return JsonResponse({"error": " ".join(e.messages), "codigo": getattr(e, "code", None) or ""},
+                                status=400)
     return wrapper
 
 
@@ -99,9 +106,20 @@ def _importe(valor):
     return importe
 
 
-def _editable(asiento):
+def _abierto(asiento):
     if asiento.ejercicio.cerrado:
         raise ValidationError(f"El ejercicio {asiento.ejercicio} está cerrado.")
+
+
+def _editable(asiento):
+    """Las líneas, la fecha y el concepto solo se cambian en borrador. Lo contabilizado se
+    corrige desde su ficha con una reversión o una rectificación."""
+    _abierto(asiento)
+    if asiento.estado == Asiento.Estado.CONTABILIZADO:
+        raise ValidationError(f"El asiento {asiento.numero} está contabilizado: para corregirlo ábrelo y usa "
+                              "«Revertir» o «Rectificar».")
+    if asiento.estado == Asiento.Estado.ANULADO:
+        raise ValidationError(f"El asiento {asiento.numero} está anulado.")
 
 
 def _aplicar_apunte(apunte, datos):
@@ -126,17 +144,19 @@ def _aplicar_apunte(apunte, datos):
 
 
 def _tras_cambio(asiento):
+    numerar_apuntes(asiento)
     asignar_contrapartidas(asiento, recalcular=True)
-    if asiento.estado == Asiento.Estado.CONTABILIZADO and not asiento.cuadrado:
-        asiento.estado = Asiento.Estado.BORRADOR
-        asiento.save(update_fields=["estado"])
     return JsonResponse(serializar_asiento(asiento))
 
 
+def borrar_borrador(asiento, usuario):
+    HistorialAsiento.registrar(asiento, HistorialAsiento.Accion.BORRAR, usuario,
+                               f"{asiento.fecha:%d/%m/%Y} {asiento.concepto} ({asiento.apuntes.count()} apuntes)")
+    asiento.delete()
+
+
 def libro_diario(request):
-    ejercicios = Ejercicio.objects.all()
-    anio = request.GET.get("ejercicio")
-    ejercicio = ejercicios.filter(anio=anio).first() if anio else ejercicios.first()
+    ejercicios, ejercicio = ejercicio_activo(request)
     hoja = request.GET.get("hoja", "")          # "" = todas, "sin" = sin hoja, o el id
     asientos = Asiento.objects.none()
     mes = request.GET.get("mes")
@@ -177,9 +197,11 @@ def api_crear_asiento(request):
     asiento = Asiento(fecha=_fecha(datos.get("fecha")),
                       concepto=(datos.get("concepto") or "Nuevo asiento").strip()[:255],
                       tipo=datos.get("tipo") or Asiento.Tipo.OPERACION,
-                      hoja=_hoja(datos.get("hoja")))
+                      hoja=_hoja(datos.get("hoja")),
+                      creado_por=request.user if request.user.is_authenticated else None)
     asiento.full_clean(exclude=["ejercicio", "numero"], validate_constraints=False)
     asiento.save()
+    HistorialAsiento.registrar(asiento, HistorialAsiento.Accion.CREAR, request.user, "Desde el libro diario")
     renumerado = renumerar(asiento.ejercicio)
     asiento.refresh_from_db()
     return JsonResponse({**serializar_asiento(asiento), "renumerado": renumerado}, status=201)
@@ -189,19 +211,18 @@ def api_crear_asiento(request):
 @api
 def api_asiento(request, pk):
     asiento = get_object_or_404(Asiento.objects.select_related("ejercicio"), pk=pk)
-    _editable(asiento)
     if request.method == "DELETE":
-        if asiento.estado != Asiento.Estado.BORRADOR:
-            raise ValidationError("Pasa el asiento a borrador antes de eliminarlo.")
-        ejercicio = asiento.ejercicio
-        asiento.delete()
-        return JsonResponse({"ok": True, "renumerado": renumerar(ejercicio)})
+        _editable(asiento)
+        borrar_borrador(asiento, request.user)
+        return JsonResponse({"ok": True, "renumerado": renumerar(asiento.ejercicio)})
     datos = _json(request)
     if "hoja" in datos:
         # cambiar de hoja no toca la contabilidad: solo dónde se ve el asiento
+        _abierto(asiento)
         asiento.hoja = _hoja(datos["hoja"])
         asiento.save(update_fields=["hoja"])
         return JsonResponse({**serializar_asiento(asiento), "renumerado": False})
+    _editable(asiento)
     if "concepto" in datos:
         concepto = str(datos["concepto"]).strip()
         if not concepto:
@@ -223,15 +244,12 @@ def api_asiento(request, pk):
 @api
 def api_estado(request, pk):
     asiento = get_object_or_404(Asiento.objects.select_related("ejercicio"), pk=pk)
+    datos = _json(request)
+    if datos.get("estado") != Asiento.Estado.CONTABILIZADO:
+        raise ValidationError("Un asiento contabilizado no vuelve a borrador: corrígelo con una reversión "
+                              "o una rectificación desde su ficha.")
     _editable(asiento)
-    estado = _json(request).get("estado")
-    if estado == Asiento.Estado.CONTABILIZADO:
-        asiento.contabilizar()
-    elif estado == Asiento.Estado.BORRADOR:
-        asiento.estado = Asiento.Estado.BORRADOR
-        asiento.save(update_fields=["estado"])
-    else:
-        raise ValidationError("Estado no válido.")
+    asiento.contabilizar(request.user, permitir_duplicado=bool(datos.get("confirmar_duplicado")))
     return JsonResponse(serializar_asiento(asiento))
 
 
@@ -243,6 +261,10 @@ def api_crear_apunte(request, pk):
     datos = _json(request)
     ultimo = asiento.apuntes.order_by("-orden").values_list("orden", flat=True).first()
     apunte = Apunte(asiento=asiento, orden=(ultimo or 0) + 1)
+    if datos.get("duplicar"):
+        origen = get_object_or_404(Apunte, pk=datos["duplicar"], asiento=asiento)
+        datos = {"cuenta": origen.cuenta.codigo, "concepto": origen.concepto,
+                 "debe": origen.debe, "haber": origen.haber}
     _aplicar_apunte(apunte, datos)
     if not apunte.concepto:
         apunte.concepto = asiento.concepto
@@ -276,9 +298,10 @@ def api_ordenar(request, pk):
     apuntes = {a.id: a for a in asiento.apuntes.all()}
     if sorted(ids) != sorted(apuntes):
         raise ValidationError("La lista de líneas no coincide con el asiento.")
-    for posicion, apunte_id in enumerate(ids):
+    for posicion, apunte_id in enumerate(ids, 1):
         apuntes[apunte_id].orden = posicion
     Apunte.objects.bulk_update(apuntes.values(), ["orden"])
+    numerar_apuntes(asiento)
     return JsonResponse(serializar_asiento(asiento))
 
 
@@ -286,7 +309,7 @@ def api_ordenar(request, pk):
 def api_resumen(request, pk):
     asiento = get_object_or_404(Asiento.objects.select_related("ejercicio"), pk=pk)
     ids = set(asiento.apuntes.values_list("cuenta_id", flat=True))
-    base = Apunte.objects.filter(asiento__ejercicio=asiento.ejercicio, cuenta_id__in=ids).order_by()
+    base = Apunte.objects.vigentes().filter(asiento__ejercicio=asiento.ejercicio, cuenta_id__in=ids).order_by()
     hasta = (Q(asiento__fecha__lt=asiento.fecha)
              | Q(asiento__fecha=asiento.fecha, asiento__numero__lte=asiento.numero))
 
@@ -337,13 +360,13 @@ def _datos_modelo(request):
     datos = _json(request)
     return (_fecha(datos.get("fecha")), datos.get("datos") or {},
             str(datos.get("concepto") or ""), str(datos.get("documento") or ""),
-            _hoja(datos.get("hoja")))
+            _hoja(datos.get("hoja")), bool(datos.get("confirmar_duplicado")))
 
 
 @require_POST
 def api_modelo_previsualizar(request, clave):
     try:
-        fecha, entrada, concepto, documento, _ = _datos_modelo(request)
+        fecha, entrada, concepto, documento, _, _ = _datos_modelo(request)
         return JsonResponse(previsualizar(clave, fecha, entrada, concepto, documento))
     except ValidationError as e:
         return JsonResponse({"error": " ".join(e.messages)}, status=400)
@@ -352,8 +375,9 @@ def api_modelo_previsualizar(request, clave):
 @require_POST
 @api
 def api_modelo_crear(request, clave):
-    fecha, entrada, concepto, documento, hoja = _datos_modelo(request)
-    asiento = crear_desde_modelo(clave, fecha, entrada, concepto, documento, hoja=hoja)
+    fecha, entrada, concepto, documento, hoja, confirmar = _datos_modelo(request)
+    asiento = crear_desde_modelo(clave, fecha, entrada, concepto, documento, hoja=hoja, usuario=request.user,
+                                 permitir_duplicado=confirmar)
     return JsonResponse({"id": asiento.id, "numero": asiento.numero,
                          "ejercicio": asiento.ejercicio.anio, "mes": asiento.fecha.month}, status=201)
 
@@ -386,6 +410,10 @@ def plan_cuentas(request):
             return redirect(f"{reverse('cuadro_cuentas:plan_cuentas')}?tipo={d['tipo']}#c{subcuenta.codigo}")
 
     cuentas = list(CuentaContable.objects.order_by("codigo"))
+    _, ejercicio = ejercicio_activo(request)
+    saldos = _saldos_acumulados(ejercicio)
+    for c in cuentas:
+        c.saldo = saldos.get(c.codigo, 0)
     nodos = {c.id: {"cuenta": c, "hijos": []} for c in cuentas}
     arbol = []
     for c in cuentas:
@@ -402,7 +430,25 @@ def plan_cuentas(request):
         "total_plan": sum(1 for c in cuentas if not c.es_subcuenta),
         "total_subcuentas": sum(1 for c in cuentas if c.es_subcuenta),
         "longitud": LONGITUD_SUBCUENTA,
+        "ejercicio": ejercicio,
     })
+
+
+def _saldos_acumulados(ejercicio):
+    """{codigo: saldo} de cada cuenta y de todas sus cuentas superiores (cada movimiento se
+    suma una vez en cada nivel). Asientos contabilizados del ejercicio, sin el de cierre."""
+    if ejercicio is None:
+        return {}
+    filas = (Apunte.objects.contabilizados().filter(asiento__ejercicio=ejercicio)
+             .exclude(asiento__tipo=Asiento.Tipo.CIERRE)
+             .values("cuenta__codigo").annotate(d=Sum("debe"), h=Sum("haber")).order_by())
+    saldos = {}
+    for f in filas:
+        codigo, neto = f["cuenta__codigo"], f["d"] - f["h"]
+        prefijos = {codigo[:n] for n in range(1, min(len(codigo), 5) + 1)} | {codigo}
+        for p in prefijos:
+            saldos[p] = saldos.get(p, 0) + neto
+    return saldos
 
 
 @require_GET
@@ -436,7 +482,7 @@ def api_ficha_cuenta(request, codigo):
         antecesor = antecesor.padre
 
     # movimientos de la cuenta y de todas las que cuelgan de ella
-    t = Apunte.objects.filter(cuenta__codigo__startswith=cuenta.codigo).aggregate(
+    t = Apunte.objects.vigentes().filter(cuenta__codigo__startswith=cuenta.codigo).aggregate(
         debe=Sum("debe"), haber=Sum("haber"))
     debe, haber = t["debe"] or 0, t["haber"] or 0
 
@@ -455,14 +501,17 @@ def api_ficha_cuenta(request, codigo):
         "haber": f"{haber:.2f}",
         "saldo": f"{debe - haber:.2f}",
         "hijas": list(cuenta.hijas.order_by("codigo").values("codigo", "nombre", "nif")),
+        "activa": cuenta.activa,
+        "naturaleza": cuenta.naturaleza_label,
+        "grupo": cuenta.grupo, "grupo_nombre": cuenta.grupo_label,
+        "superior": cuenta.padre.codigo if cuenta.padre_id else "",
+        "mayor": f"{reverse('cuadro_cuentas:extractos')}?cuenta={cuenta.codigo}",
     })
 
 # ===================== Cuentas anuales =====================
 
 def cuentas_anuales(request):
-    ejercicios = Ejercicio.objects.all()
-    anio = request.GET.get("ejercicio")
-    ejercicio = ejercicios.filter(anio=anio).first() if anio else ejercicios.first()
+    ejercicios, ejercicio = ejercicio_activo(request)
 
     form = None
     if ejercicio:

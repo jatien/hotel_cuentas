@@ -100,7 +100,7 @@
     vista.innerHTML = "";
   }
 
-  function cuerpo() {
+  function cuerpo(extra = {}) {
     const datos = {};
     for (const c of actual.campos) {
       const el = form.elements[c.nombre];
@@ -112,17 +112,18 @@
       hoja: /^\d+$/.test(cfg.hoja) ? cfg.hoja : null,
       concepto: form.elements.concepto.value,
       datos,
+      ...extra,
     };
   }
 
-  async function llamar(plantilla) {
+  async function llamar(plantilla, extra) {
     const r = await fetch(urlModelo(plantilla, actual.clave), {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
-      body: JSON.stringify(cuerpo()),
+      body: JSON.stringify(cuerpo(extra)),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(d.error || `Error ${r.status}`), { codigo: d.codigo });
     return d;
   }
 
@@ -177,7 +178,14 @@
   async function crear() {
     btnCrear.disabled = true;
     try {
-      const r = await llamar(cfg.crearModeloUrl);
+      let r;
+      try {
+        r = await llamar(cfg.crearModeloUrl);
+      } catch (e) {
+        // posible asiento repetido: se pregunta antes de registrarlo otra vez
+        if (e.codigo !== "duplicado" || !confirm(`${e.message}\n\n¿Registrarlo igualmente?`)) throw e;
+        r = await llamar(cfg.crearModeloUrl, { confirmar_duplicado: true });
+      }
       // se abre el libro en el mes del asiento nuevo, con el asiento seleccionado
       location.href = `?ejercicio=${r.ejercicio}&mes=${r.mes}&hoja=${cfg.hoja}#a${r.id}`;
     } catch (e) {

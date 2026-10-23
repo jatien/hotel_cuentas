@@ -1,0 +1,175 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% load cuadro_cuentas_tags %}
+{% block titulo %}Asiento {{ asiento.numero }} · {{ asiento.ejercicio }}{% endblock %}
+{% block cuerpo %}
+  <header class="barra">
+    <h1>Asiento {{ asiento.numero }} <span class="estado-asiento {{ asiento.estado }}">{{ asiento.get_estado_display }}</span></h1>
+    <a class="btn-sec" href="{% url 'cuadro_cuentas:diario' %}?ejercicio={{ asiento.ejercicio.anio }}">Volver al diario</a>
+    {% if asiento.editable %}<a class="btn-sec" href="{{ libro_url }}">Editar líneas en Asientos</a>{% endif %}
+  </header>
+
+  <main class="libro">
+    <section class="lista" aria-label="Asiento">
+      {% for m in messages %}<p class="mensaje {% if m.level_tag == 'error' %}error{% elif m.level_tag == 'warning' %}error{% endif %}">{{ m }}</p>{% endfor %}
+
+      {% if asiento.estado == "anulado" %}
+        <p class="alerta">Anulado el {{ asiento.anulado_en|date:"d/m/Y H:i" }}: {{ asiento.motivo_anulacion }}. Se conserva para la
+          trazabilidad pero no suma en el diario, el mayor ni los balances.</p>
+      {% endif %}
+      {% if asiento.revierte %}<p class="aviso-texto">Este asiento revierte el <a href="{% url 'cuadro_cuentas:asiento' asiento.revierte.id %}">asiento {{ asiento.revierte.numero }}</a>.</p>{% endif %}
+      {% if asiento.rectifica %}<p class="aviso-texto">Este asiento rectifica el <a href="{% url 'cuadro_cuentas:asiento' asiento.rectifica.id %}">asiento {{ asiento.rectifica.numero }}</a>.</p>{% endif %}
+      {% for r in reversiones %}<p class="aviso-texto">Revertido por el <a href="{% url 'cuadro_cuentas:asiento' r.id %}">asiento {{ r.numero }}</a> ({{ r.get_estado_display|lower }}).</p>{% endfor %}
+      {% for r in rectificaciones %}<p class="aviso-texto">Rectificado por el <a href="{% url 'cuadro_cuentas:asiento' r.id %}">asiento {{ r.numero }}</a> ({{ r.get_estado_display|lower }}).</p>{% endfor %}
+
+      <article class="tarjeta-consulta">
+        <h2>Cabecera</h2>
+        {% if form %}
+          <form method="post" class="campos" style="margin-top:.6rem">
+            {% csrf_token %}
+            <label>Fecha contable {{ form.fecha }} {{ form.fecha.errors }}</label>
+            <label>Número (referencia externa) {{ form.numero_externo }} {{ form.numero_externo.errors }}</label>
+            <label>Tipo de documento {{ form.tipo_documento }}</label>
+            <label>Fecha del documento {{ form.fecha_documento }}</label>
+            <label>Título {{ form.titulo }}</label>
+            <label style="grid-column: 1 / -1">Concepto general {{ form.concepto }} {{ form.concepto.errors }}</label>
+            {% if form.non_field_errors %}<p class="alerta" style="grid-column: 1 / -1">{{ form.non_field_errors|join:" " }}</p>{% endif %}
+            <div class="acciones"><button class="btn-sec" name="accion" value="cabecera">Guardar cabecera</button></div>
+          </form>
+        {% else %}
+          <dl class="datos" style="margin-top:.6rem">
+            <dt>Fecha contable</dt><dd>{{ asiento.fecha|date:"d/m/Y" }}</dd>
+            <dt>Número</dt><dd>{{ asiento.numero_externo|default:"—" }}</dd>
+            <dt>Documento</dt><dd>{% if asiento.tipo_documento %}{{ asiento.get_tipo_documento_display }}{% else %}—{% endif %}{% if asiento.fecha_documento %} del {{ asiento.fecha_documento|date:"d/m/Y" }}{% endif %}</dd>
+            <dt>Título</dt><dd>{{ asiento.titulo|default:"—" }}</dd>
+            <dt>Concepto</dt><dd>{{ asiento.concepto }}</dd>
+          </dl>
+        {% endif %}
+        <dl class="datos">
+          <dt>Ejercicio</dt><dd>{{ asiento.ejercicio }}{% if asiento.ejercicio.cerrado %} (cerrado){% endif %}</dd>
+          <dt>Tipo</dt><dd>{{ asiento.get_tipo_display }} · {{ asiento.clase|lower }}{% if asiento.hoja %} · hoja {{ asiento.hoja }}{% endif %}</dd>
+          <dt>Origen</dt><dd>{{ asiento.get_origen_display }}{% if asiento.modelo %} · modelo {{ asiento.modelo }}{% endif %}{% if asiento.referencia_origen %} · {{ asiento.referencia_origen }}{% endif %}</dd>
+          <dt>Creado</dt><dd>{{ asiento.creado|date:"d/m/Y H:i" }}{% if asiento.creado_por %} por {{ asiento.creado_por }}{% endif %}</dd>
+          <dt>Contabilizado</dt><dd>{% if asiento.contabilizado_en %}{{ asiento.contabilizado_en|date:"d/m/Y H:i" }}{% if asiento.contabilizado_por %} por {{ asiento.contabilizado_por }}{% endif %}{% else %}—{% endif %}</dd>
+        </dl>
+      </article>
+
+      <article class="tarjeta-consulta">
+        <h2>Apuntes</h2>
+        <div class="desplaza">
+        <table class="tabla-datos" data-tabla="asiento" data-punteo>
+          <thead><tr>
+            <th data-col="apunte" data-tipo="num" class="num">Apunte</th>
+            <th data-col="cuenta">Cuenta</th>
+            <th data-col="titulo">Título</th>
+            <th data-col="concepto">Concepto</th>
+            <th data-col="debe" data-tipo="num" class="num">Debe</th>
+            <th data-col="haber" data-tipo="num" class="num">Haber</th>
+            <th data-col="contrapartida">Contrapartida</th>
+            <th data-col="punteo" data-filtro="no">Punteo</th>
+          </tr></thead>
+          <tbody>
+            {% for ap, contra in lineas %}
+              <tr>
+                <td class="num">{{ ap.orden }}</td>
+                <td class="cod"><a href="{% url 'cuadro_cuentas:extractos' %}?ejercicio={{ asiento.ejercicio.anio }}&cuenta={{ ap.cuenta.codigo }}" title="Ver el mayor">{{ ap.cuenta.codigo }}</a></td>
+                <td>{{ ap.cuenta.nombre }}</td>
+                <td>{{ ap.concepto|default:asiento.concepto }}</td>
+                <td class="num d">{{ ap.debe|importe_vacio }}</td>
+                <td class="num h">{{ ap.haber|importe_vacio }}</td>
+                <td>{% include "cuadro_cuentas/_contrapartida.html" with anio=asiento.ejercicio.anio asiento_id=asiento.id %}
+                  {% if contra.multiple %}<div class="tenue">{{ contra.detalle }}</div>{% endif %}</td>
+                <td>{% include "cuadro_cuentas/_punteo.html" %}{% if ap.punteado_por %}<div class="tenue">{{ ap.punteado_por }}</div>{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr class="sin-datos"><td colspan="8" class="vacio">Sin apuntes. Añádelos en <a href="{{ libro_url }}">Asientos</a>.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot><tr><td colspan="4">Totales</td><td class="num">{{ debe|importe }}</td><td class="num">{{ haber|importe }}</td>
+            <td colspan="2">{% if diferencia %}<span style="color:var(--error)">Diferencia {{ diferencia|importe }}</span>{% else %}Cuadrado{% endif %}</td></tr></tfoot>
+        </table>
+        </div>
+        <p class="nota">El punteo solo marca la comprobación del apunte: no cambia importes, fechas, cuentas ni el asiento.</p>
+      </article>
+
+      <article class="tarjeta-consulta">
+        <h2>Documentos</h2>
+        {% for d in asiento.adjuntos.all %}
+          <p>{{ d.get_tipo_display }}{% if d.numero %} nº {{ d.numero }}{% endif %}{% if d.nombre %} · {{ d.nombre }}{% endif %}
+            {% if d.url %}· <a href="{{ d.url }}" target="_blank" rel="noopener">Abrir</a>{% endif %}
+            <span class="tenue">{{ d.subido_en|date:"d/m/Y" }}</span>
+            {% if asiento.estado == "borrador" %}
+              <form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="id" value="{{ d.id }}">
+                <button class="btn-sec btn-peligro" name="accion" value="quitar_adjunto">Quitar</button></form>
+            {% endif %}</p>
+        {% empty %}<p class="tenue">Sin documentos adjuntos.</p>{% endfor %}
+        {% if not asiento.ejercicio.cerrado %}
+          <form method="post" enctype="multipart/form-data" class="campos">
+            {% csrf_token %}
+            <label>Tipo {{ form_adjunto.tipo }}</label>
+            <label>Número {{ form_adjunto.numero }}</label>
+            <label>Nombre {{ form_adjunto.nombre }}</label>
+            <label>Archivo {{ form_adjunto.archivo }}</label>
+            <label>o enlace {{ form_adjunto.enlace }}</label>
+            {% if form_adjunto.errors %}<p class="alerta">{% for c, e in form_adjunto.errors.items %}{{ e|join:" " }} {% endfor %}</p>{% endif %}
+            <div class="acciones"><button class="btn-sec" name="accion" value="adjuntar">Añadir documento</button></div>
+          </form>
+        {% endif %}
+      </article>
+    </section>
+
+    <aside class="panel">
+      <h2>Totales</h2>
+      <div class="balanza">
+        <div class="bd">Debe<strong>{{ debe|importe }}</strong></div>
+        <div class="bh">Haber<strong>{{ haber|importe }}</strong></div>
+        <div class="cuadre {% if diferencia %}mal{% endif %}">{% if diferencia %}Diferencia {{ diferencia|importe }}{% else %}Cuadrado{% endif %}</div>
+      </div>
+
+      {% if asiento.estado == "borrador" and not asiento.ejercicio.cerrado %}
+        <h3>Contabilizar</h3>
+        {% if errores %}
+          <ul class="alerta" style="padding-left:1.8rem">{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul>
+        {% else %}
+          {% if duplicados %}
+            <div class="aviso-texto">Puede ser un duplicado de:
+              <ul>{% for d in duplicados %}<li><a href="{% url 'cuadro_cuentas:asiento' d.id %}">asiento {{ d.numero }}</a> del {{ d.fecha|date:"d/m/Y" }} · {{ d.concepto }}</li>{% endfor %}</ul>
+            </div>
+          {% endif %}
+          <form method="post" class="acciones">{% csrf_token %}
+            {% if duplicados %}<label class="check"><input type="checkbox" name="confirmar_duplicado" value="1" required> No es un duplicado</label>{% endif %}
+            <button class="btn-primario" name="accion" value="contabilizar">Contabilizar</button>
+          </form>
+        {% endif %}
+        <form method="post" class="acciones" style="margin-top:1rem">{% csrf_token %}
+          <button class="btn-sec" name="accion" value="duplicar">Duplicar</button>
+          <button class="btn-sec btn-peligro" name="accion" value="borrar" onclick="return confirm('¿Eliminar este borrador?')">Eliminar borrador</button>
+        </form>
+      {% elif asiento.estado == "contabilizado" and not asiento.ejercicio.cerrado %}
+        <h3>Corregir</h3>
+        <p class="panel-sub">Un asiento contabilizado no se modifica. Elige cómo corregirlo; todo queda en el historial.</p>
+        <form method="post" class="campo-form">{% csrf_token %}
+          <label class="campo-form">Fecha de la corrección <input type="date" name="fecha" value="{{ hoy|date:'Y-m-d' }}" min="{{ asiento.fecha|date:'Y-m-d' }}" max="{{ asiento.ejercicio.fecha_fin|date:'Y-m-d' }}"></label>
+          <label class="campo-form">Motivo <input name="motivo" placeholder="Por qué se corrige" required></label>
+          <div class="acciones" style="margin-top:.6rem">
+            {% if puede_revertir %}
+              <button class="btn-sec" name="accion" value="revertir" title="Crea un asiento con el Debe y el Haber cambiados">Revertir</button>
+              <button class="btn-sec" name="accion" value="rectificar" title="Revierte y crea un borrador para registrarlo bien">Rectificar</button>
+            {% endif %}
+            <button class="btn-sec btn-peligro" name="accion" value="anular" title="Lo deja sin efecto y se conserva con su número">Anular</button>
+          </div>
+        </form>
+        <form method="post" class="acciones" style="margin-top:1rem">{% csrf_token %}
+          <button class="btn-sec" name="accion" value="duplicar">Duplicar en borrador</button>
+        </form>
+      {% endif %}
+
+      <h3 style="margin-top:1.5rem">Historial</h3>
+      <ul class="saldos" style="gap:.5rem;font-size:.85rem">
+        {% for h in historial %}
+          <li><strong>{{ h.get_accion_display }}</strong> · {{ h.fecha|date:"d/m/Y H:i" }}{% if h.usuario %} · {{ h.usuario }}{% endif %}
+            {% if h.detalle %}<div class="tenue">{{ h.detalle }}</div>{% endif %}</li>
+        {% empty %}<li class="tenue">Sin acciones registradas.</li>{% endfor %}
+      </ul>
+    </aside>
+  </main>
+{% endblock %}

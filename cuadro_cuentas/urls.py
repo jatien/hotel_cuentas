@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_consultas
+from . import views, views_consultas, views_contabilidad
 
 app_name = "cuadro_cuentas"
 
@@ -22,4 +22,12 @@ urlpatterns = [
     path("hojas/", views_consultas.hojas, name="hojas"),
     path("extractos/", views_consultas.extractos, name="extractos"),
     path("buscador/", views_consultas.buscador, name="buscador"),
+    path("empresa/", views_contabilidad.empresa, name="empresa"),
+    path("diario/", views_contabilidad.diario, name="diario"),
+    path("asientos/<int:pk>/", views_contabilidad.asiento, name="asiento"),
+    path("balances/sumas-y-saldos/", views_contabilidad.sumas_saldos, name="sumas_saldos"),
+    path("balances/comprobacion/", views_contabilidad.comprobacion, name="comprobacion"),
+    path("balances/comparativa/", views_contabilidad.comparativa, name="comparativa"),
+    path("api/punteo/", views_contabilidad.api_punteo, name="api_punteo"),
+    path("api/preferencias/<slug:tabla>/", views_contabilidad.api_preferencias, name="api_preferencias"),
 ]

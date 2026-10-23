@@ -84,7 +84,6 @@
 
 /* ---------- impresión: solo el documento, cada estado en su página ---------- */
 @media print {
-  :root { --fondo: #fff; --papel: #fff; --tinta: #000; --tinta-suave: #333; --linea: #ccc; }
   body { background: #fff; font-size: 10pt; }
   .barra, .panel, .pestanas, .aviso-doc, .desplegar::after { display: none !important; }
   .libro { display: block; padding: 0; }

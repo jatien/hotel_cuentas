@@ -12,7 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from .models import  LONGITUD_SUBCUENTA, Asiento, CuentaContable, Ejercicio
+from .models import LONGITUD_SUBCUENTA, Asiento, CuentaContable, Ejercicio, HistorialAsiento, TipoDocumento
 from .services import Linea, crear_asiento, renumerar, saldos_subcuentas
 
 CENTIMO = Decimal("0.01")
@@ -472,16 +472,28 @@ def previsualizar(clave, fecha, entrada, concepto="", documento=""):
     }
 
 
+TIPO_DOCUMENTO_MODELO = {
+    "factura_proveedor": TipoDocumento.FACTURA_RECIBIDA, "factura_acreedor": TipoDocumento.FACTURA_RECIBIDA,
+    "factura_cliente": TipoDocumento.FACTURA_EMITIDA, "nomina": TipoDocumento.NOMINA,
+}
+
+
 @transaction.atomic
-def crear_desde_modelo(clave, fecha, entrada, concepto="", documento="", hoja=None):
+def crear_desde_modelo(clave, fecha, entrada, concepto="", documento="", hoja=None, usuario=None,
+                       permitir_duplicado=False):
     modelo, tipo, concepto, lineas = preparar(clave, fecha, entrada, concepto, documento)
+    documento = (documento or "").strip()
     if clave == "libre":
         # asiento vacío en borrador para completar a mano en el libro diario
-        asiento = Asiento(fecha=fecha, concepto=concepto, tipo=tipo, modelo=clave, hoja=hoja)
+        asiento = Asiento(fecha=fecha, concepto=concepto, tipo=tipo, modelo=clave, hoja=hoja,
+                          numero_externo=documento[:60],
+                          creado_por=usuario if getattr(usuario, "is_authenticated", False) else None)
         asiento.full_clean(exclude=["ejercicio", "numero"], validate_constraints=False)
         asiento.save()
+        HistorialAsiento.registrar(asiento, HistorialAsiento.Accion.CREAR, usuario, "Asiento libre")
         if renumerar(asiento.ejercicio):
             asiento.refresh_from_db(fields=["numero"])
         return asiento
-    return crear_asiento(fecha, concepto, lineas, tipo=tipo, modelo=clave,
-                         referencia_origen=(documento or "").strip(), hoja=hoja)
+    return crear_asiento(fecha, concepto, lineas, tipo=tipo, modelo=clave, referencia_origen=documento,
+                         numero_externo=documento, tipo_documento=TIPO_DOCUMENTO_MODELO.get(clave, ""),
+                         hoja=hoja, usuario=usuario, permitir_duplicado=permitir_duplicado)

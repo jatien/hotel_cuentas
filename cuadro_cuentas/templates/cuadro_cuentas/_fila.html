@@ -1,11 +1,14 @@
-<span class="flecha" aria-hidden="true">{% if nodo.hijos %}›{% endif %}</span>
-<span class="codigo">{{ c.codigo }}</span>
+{% load cuadro_cuentas_tags %}<span class="flecha" aria-hidden="true">{% if nodo.hijos %}›{% endif %}</span>
+<span class="codigo" style="padding-left: {{ c.codigo|sangria }}rem" title="{{ c.nivel }}">{{ c.codigo }}</span>
 <span class="nombre">
   <button type="button" class="enlace-ficha" data-ficha="{{ c.codigo }}">{{ c.nombre }}</button>
   {% if c.nif %}<small class="nif">{{ c.nif }}</small>{% endif %}
+  {% if not c.activa %}<small class="estado-asiento anulado">inactiva</small>{% endif %}
 </span>
-{% if c.codigo|length >= 3 and c.codigo|length <= 5 %}
-  <button type="button" class="btn-mini" data-base="{{ c.codigo }}">Dar de alta</button>
-{% else %}
-  <span></span>
-{% endif %}
+<span class="col-naturaleza" title="Grupo {{ c.grupo }}: {{ c.grupo_label }}">{{ c.naturaleza_label }}</span>
+<span class="num col-saldo">{% if c.saldo > 0 %}{{ c.saldo|importe }}{% endif %}</span>
+<span class="num col-saldo">{% if c.saldo < 0 %}{{ c.saldo|importe|cut:"("|cut:")" }}{% endif %}</span>
+<span class="acciones-fila">
+  {% if c.saldo %}<a class="btn-mini" href="{% url 'cuadro_cuentas:extractos' %}?cuenta={{ c.codigo }}&solo_contabilizados=1" title="Mayor de la cuenta">Mayor</a>{% endif %}
+  {% if c.codigo|length >= 3 and c.codigo|length <= 5 %}<button type="button" class="btn-mini" data-base="{{ c.codigo }}">Dar de alta</button>{% endif %}
+</span>

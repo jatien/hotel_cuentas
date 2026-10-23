@@ -40,8 +40,10 @@ flowchart LR
 |---|---|---|
 | `buscar_cuentas` | Cuentas por código, nombre o NIF | `cuadro_cuentas.view_cuentacontable` |
 | `saldo_cuenta` | Saldo de apertura, movimiento del periodo y saldo final con naturaleza | `view_apunte` + `view_cuentacontable` |
-| `balance_sumas_saldos` | Sumas y saldos por subcuenta de un ejercicio | ídem |
-| `extracto_cuenta` | Libro mayor con saldo acumulado | ídem |
+| `balance_sumas_saldos` | Sumas y saldos por periodo: saldo anterior, Debe/Haber del periodo, acumulados y saldo, por nivel (grupo → subcuenta) y rango de cuentas | ídem |
+| `extracto_cuenta` | Libro mayor con saldo acumulado, nº de apunte, número, documento, contrapartida y punteo | ídem |
+| `diario_asientos` | Asientos del diario filtrados por fecha, número, cuenta, documento, concepto, importe, estado o punteo, con sus apuntes | ídem |
+| `comprobacion_contable` | Balance de comprobación: controles de integridad del ejercicio | ídem |
 | `buscar_facturas` | Facturas de Facturas con IA (`ia:<uuid>`) y Gestión de facturas (`ocr:<id>`) | `invoice_agent.view_borrador` o `invoice_data.view_invoicedocument` |
 | `documento_factura` | Enlace seguro al original + metadatos para comprobarlo | ídem |
 | `cuentas_anuales` | Balance o PyG del PGC 2007 con el ejercicio anterior | `cuadro_cuentas.view_apunte` |

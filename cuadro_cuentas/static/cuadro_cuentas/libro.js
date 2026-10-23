@@ -26,7 +26,7 @@
       body: datos ? JSON.stringify(datos) : undefined,
     });
     const json = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(json.error || `Error ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(json.error || `Error ${r.status}`), { codigo: json.codigo });
     return json;
   }
 
@@ -60,7 +60,7 @@
     const lado = nuevo ? "" : h > 0 ? "lado-haber" : "lado-debe";
     return `
       <li class="apunte ${lado}" data-id="${ap.id}">
-        <span class="asa" title="Arrastra para reordenar" aria-hidden="true">⠿</span>
+        <span class="asa" title="${nuevo ? "Línea nueva" : `Apunte ${ap.numero}. Arrastra para reordenar`}" aria-hidden="true">${nuevo ? "+" : ap.numero}</span>
         <span class="celda-cuenta">
           ${lado === "lado-haber" ? '<span class="a" aria-hidden="true">a</span>' : ""}
           <input class="campo" data-campo="cuenta" list="lista-cuentas" value="${esc(ap.cuenta)}"
@@ -72,7 +72,8 @@
         <input class="campo num importe ${h ? "lleno-haber" : ""}" data-campo="haber" inputmode="decimal"
                value="${h ? eur.format(h) : ""}" aria-label="Haber" ${bloq}>
         <span class="contrapartida" title="Contrapartida">${nuevo ? "" : esc(ap.contrapartida) || "varias"}</span>
-        <button class="btn-x" data-accion="borrar-linea" title="Eliminar línea" aria-label="Eliminar línea" ${bloq}>×</button>
+        ${bloq || nuevo ? `<button class="btn-x" data-accion="borrar-linea" title="Eliminar línea" aria-label="Eliminar línea" ${bloq}>×</button>`
+          : `<span class="botones-linea"><button class="btn-x" data-accion="duplicar-linea" title="Duplicar línea" aria-label="Duplicar línea">⧉</button><button class="btn-x" data-accion="borrar-linea" title="Eliminar línea" aria-label="Eliminar línea">×</button></span>`}
       </li>`;
   }
 
@@ -83,7 +84,7 @@
   }
 
   function tarjeta(a) {
-    const bloq = a.cerrado ? "disabled" : "";
+    const bloq = a.editable ? "" : "disabled";
     const dif = Number(a.debe) - Number(a.haber);
     const hoja = hojaPorId(a.hoja);
     const el = document.createElement("article");
@@ -101,7 +102,9 @@
         ${a.tipo !== "operacion" ? `<span class="etiqueta etiqueta-${a.tipo}">${esc(a.tipo_label)}</span>` : ""}
         <span class="etiqueta etiqueta-clase" title="Simple: dos cuentas. Compuesto: tres o más.">${esc(a.clase)}</span>
         <span class="estado">${esc(a.estado_label)}</span>
+        ${a.numero_externo ? `<span class="etiqueta" title="Número / referencia externa">Nº ${esc(a.numero_externo)}</span>` : ""}
         ${selectorHoja(a)}
+        <a class="btn-sec" href="${url(cfg.fichaUrl, a.id)}" title="Cabecera, documentos, historial, revertir o anular">Ficha</a>
       </header>
       <div class="columnas" aria-hidden="true">
         <span></span><span>Cuenta</span><span>Concepto</span><span class="num">Debe</span>
@@ -109,10 +112,12 @@
       </div>
       <ol class="apuntes">${a.apuntes.map((ap) => filaHTML(ap, bloq)).join("")}</ol>
       <footer class="asiento-pie">
-        ${a.cerrado ? '<span class="estado">Ejercicio cerrado</span>' : `
+        ${a.cerrado ? '<span class="estado">Ejercicio cerrado</span>' : a.estado === "borrador" ? `
           <button class="btn-sec" data-accion="nueva-linea">Añadir línea</button>
-          <button class="btn-sec" data-accion="estado">${a.estado === "borrador" ? "Contabilizar" : "Pasar a borrador"}</button>
-          ${a.estado === "borrador" ? '<button class="btn-sec btn-peligro" data-accion="borrar">Eliminar asiento</button>' : ""}`}
+          <button class="btn-sec" data-accion="estado">Contabilizar</button>
+          <button class="btn-sec btn-peligro" data-accion="borrar">Eliminar asiento</button>`
+          : a.estado === "anulado" ? '<span class="estado">Anulado: no suma</span>'
+          : `<span class="estado" title="Para corregirlo abre la ficha: revertir, rectificar o anular">Contabilizado: solo lectura</span>`}
         <span class="totales">
           <span class="d">Debe ${f(a.debe)}</span>
           <span class="h">Haber ${f(a.haber)}</span>
@@ -120,7 +125,7 @@
         </span>
       </footer>`;
 
-    if (!a.cerrado) {
+    if (a.editable) {
       const ol = el.querySelector(".apuntes");
       Sortable.create(ol, {
         handle: ".asa",
@@ -344,9 +349,19 @@
           break;
         }
         case "estado": {
-          const destino = a.estado === "borrador" ? "contabilizado" : "borrador";
-          actualizar(await api("POST", url(cfg.asientoUrl, id, "estado/"), { estado: destino }));
-          avisar(destino === "contabilizado" ? "Asiento contabilizado" : "Asiento pasado a borrador", "ok");
+          try {
+            actualizar(await api("POST", url(cfg.asientoUrl, id, "estado/"), { estado: "contabilizado" }));
+          } catch (e) {
+            if (e.codigo !== "duplicado" || !confirm(`${e.message}\n\n¿Contabilizarlo igualmente?`)) throw e;
+            actualizar(await api("POST", url(cfg.asientoUrl, id, "estado/"),
+              { estado: "contabilizado", confirmar_duplicado: true }));
+          }
+          avisar("Asiento contabilizado", "ok");
+          break;
+        }
+        case "duplicar-linea": {
+          const fila = boton.closest(".apunte");
+          actualizar(await api("POST", url(cfg.asientoUrl, id, "apuntes/"), { duplicar: Number(fila.dataset.id) }));
           break;
         }
         case "borrar": {
@@ -370,7 +385,7 @@
   iniciales.forEach((a) => actualizar(a));
 
   // Al llegar con #a123 (desde el buscador, un extracto o tras crear un asiento) se selecciona y se resalta
-  const destino = location.hash && document.getElementById(location.hash.slice(1));
+  const destino = location.hash ? document.getElementById(location.hash.slice(1)) : null;
   if (destino?.classList.contains("asiento")) {
     seleccionar(Number(destino.dataset.id));
     destino.classList.add("recien");

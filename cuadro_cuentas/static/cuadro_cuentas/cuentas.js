@@ -121,7 +121,11 @@
           .map((a) => `<button type="button" class="enlace-ficha" data-ficha="${a.codigo}" title="${esc(a.nombre)}">${a.codigo}</button>`)
           .join(" › ")}</nav>` : ""}
         <h2 id="ficha-titulo"><span class="codigo">${d.codigo}</span> ${esc(d.nombre)}</h2>
-        <p class="ficha-meta">${esc(d.nivel)}${d.imputable ? ", admite apuntes" : ", agrupa otras cuentas"}${d.nif ? `, NIF ${esc(d.nif)}` : ""}</p>
+        <p class="ficha-meta">${esc(d.nivel)}${d.imputable ? ", admite apuntes" : ", agrupa otras cuentas"}${d.nif ? `, NIF ${esc(d.nif)}` : ""}
+          · ${d.activa ? "activa" : "inactiva"}</p>
+        <p class="ficha-meta">Naturaleza: ${esc(d.naturaleza) || "—"} · Grupo ${esc(d.grupo)} ${esc(d.grupo_nombre)}
+          ${d.superior ? `· Cuenta superior <button type="button" class="enlace-ficha" data-ficha="${d.superior}">${d.superior}</button>` : ""}
+          · <a href="${d.mayor}">Ver mayor</a></p>
         ${d.ubicacion ? `<p class="ficha-ubicacion">${esc(d.ubicacion)}</p>` : ""}
         <dl class="ficha-cifras">
           <div><dt>Debe</dt><dd>${eur.format(Number(d.debe))}</dd></div>

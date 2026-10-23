@@ -170,7 +170,7 @@ class ExtractoTests(Base):
         r = self.client.get(url, {"ejercicio": 2026, "cuenta": "57200001"})
         self.assertContains(r, "Saldo final")
         self.assertContains(r, "990,00")
-        self.assertContains(r, f"#a{self.cobro.id}")   # enlace al libro diario
+        self.assertContains(r, reverse("cuadro_cuentas:asiento", args=[self.cobro.id]))   # abre el asiento
 
 
 # ===================== Buscador =====================
@@ -235,4 +235,4 @@ class BuscadorTests(Base):
         self.assertNotContains(r, "encontrado")
         r = self.client.get(url, {"importe": "1.234,56"})
         self.assertContains(r, "2 apuntes encontrados")
-        self.assertContains(r, f"#a{self.compra2.id}")
+        self.assertContains(r, reverse("cuadro_cuentas:asiento", args=[self.compra2.id]))

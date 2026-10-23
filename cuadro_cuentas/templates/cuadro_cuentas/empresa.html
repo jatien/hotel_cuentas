@@ -1,0 +1,63 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% block titulo %}Empresa y ejercicios{% endblock %}
+{% block cuerpo %}
+  <header class="barra"><h1>Empresa y ejercicios</h1></header>
+  <main class="libro">
+    <section class="lista">
+      {% for m in messages %}<p class="mensaje {% if m.level_tag == 'error' %}error{% endif %}">{{ m }}</p>{% endfor %}
+      <article class="tarjeta-consulta">
+        <h2>Ejercicios contables</h2>
+        <p class="panel-sub">El ejercicio activo se aplica a todas las hojas (asientos, diario, mayor y balances).</p>
+        <div class="desplaza">
+        <table class="tabla-datos">
+          <thead><tr><th>Ejercicio</th><th>Empresa</th><th>Inicio</th><th>Cierre</th><th>Moneda</th><th>Estado</th>
+            <th class="num">Asientos</th><th class="num">Último nº</th><th>Último registro</th><th></th></tr></thead>
+          <tbody>
+            {% for e in ejercicios %}
+              <tr {% if e == ejercicio %}class="seleccionada"{% endif %}>
+                <td><strong>{{ e.anio }}</strong>{% if e == ejercicio %} <span class="estado-asiento contabilizado">Activo</span>{% endif %}</td>
+                <td title="{{ e.empresa.denominacion }}">{{ e.empresa.codigo|default:"—" }}</td>
+                <td>{{ e.fecha_inicio|date:"d/m/Y" }}</td>
+                <td>{{ e.fecha_fin|date:"d/m/Y" }}</td>
+                <td>{{ e.empresa.moneda|default:"EUR" }}</td>
+                <td>{% if e.cerrado %}Cerrado{% else %}Abierto{% endif %}</td>
+                <td class="num">{{ e.n }}</td>
+                <td class="num">{{ e.ultimo_numero|default:"—" }}</td>
+                <td {% if e.ultimo_alta %}title="Último asiento dado de alta el {{ e.ultimo_alta|date:'d/m/Y H:i' }}"{% endif %}>{{ e.ultimo_registro|date:"d/m/Y"|default:"—" }}</td>
+                <td><div class="acciones">
+                  {% if e != ejercicio %}<a class="btn-mini" href="?ejercicio={{ e.anio }}">Activar</a>{% endif %}
+                  <form method="post">{% csrf_token %}<input type="hidden" name="id" value="{{ e.id }}">
+                    {% if e.cerrado %}<button class="btn-mini" name="accion" value="reabrir">Reabrir</button>
+                    {% else %}<button class="btn-mini" name="accion" value="cerrar" onclick="return confirm('Cerrar el ejercicio {{ e.anio }}: no se podrán añadir ni corregir asientos.')">Cerrar</button>{% endif %}
+                  </form>
+                </div></td>
+              </tr>
+            {% empty %}<tr><td colspan="10" class="vacio">Sin ejercicios. Crea el primero.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </article>
+      <article class="tarjeta-consulta">
+        <h2>Nuevo ejercicio</h2>
+        <form method="post" class="campos">{% csrf_token %}
+          <label>Año {{ form_ejercicio.anio }} {{ form_ejercicio.anio.errors }}</label>
+          <label>Fecha de inicio {{ form_ejercicio.fecha_inicio }}</label>
+          <label>Fecha de cierre {{ form_ejercicio.fecha_fin }}</label>
+          {% if form_ejercicio.non_field_errors %}<p class="alerta">{{ form_ejercicio.non_field_errors|join:" " }}</p>{% endif %}
+          <div class="acciones"><button class="btn-sec" name="accion" value="ejercicio">Crear ejercicio</button></div>
+        </form>
+      </article>
+    </section>
+    <aside class="panel">
+      <h2>Empresa</h2>
+      <p class="panel-sub">Entidad cuya contabilidad se lleva. Sale en las cuentas anuales.</p>
+      <form method="post" class="campos" style="grid-template-columns:1fr">{% csrf_token %}
+        {% for campo in form_empresa %}<label>{{ campo.label }} {{ campo }} {{ campo.errors }}</label>{% endfor %}
+        <div class="acciones"><button class="btn-primario" name="accion" value="empresa">Guardar empresa</button></div>
+      </form>
+      <p class="nota">Por ahora la contabilidad es de una única empresa: el plan de cuentas y la numeración de
+        asientos son comunes. Llevar otra entidad (por ejemplo la comunidad de bienes) en el mismo programa
+        necesitará separar el plan de cuentas por empresa.</p>
+    </aside>
+  </main>
+{% endblock %}

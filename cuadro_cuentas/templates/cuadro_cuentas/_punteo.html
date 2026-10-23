@@ -1,0 +1,1 @@
+<button type="button" class="punteo" data-id="{{ ap.id }}" data-punteo="{{ ap.punteo }}" {% if ap.punteo == "conciliado" %}disabled{% endif %} aria-label="Punteo: {{ ap.get_punteo_display }}">{{ ap.get_punteo_display }}</button>

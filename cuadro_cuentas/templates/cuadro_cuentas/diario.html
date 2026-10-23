@@ -1,0 +1,138 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% load cuadro_cuentas_tags %}
+{% block titulo %}Diario {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
+  <header class="barra">
+    <h1>Diario</h1>
+    <a class="btn-primario" href="{% url 'cuadro_cuentas:libro_diario' %}" style="text-decoration:none">Nuevo asiento</a>
+  </header>
+  <main class="consulta">
+    <form method="get" class="filtros-consulta">
+      {% include "cuadro_cuentas/_filtro_ejercicio.html" %}
+      <label>Vista {{ form.vista }}</label>
+      <label>Desde {{ form.desde }}</label>
+      <label>Hasta {{ form.hasta }}</label>
+      <label>Nº asiento {{ form.numero }}</label>
+      <label>Cuenta {{ form.cuenta }}</label>
+      <label>Número / documento {{ form.documento }}</label>
+      <label class="ancho">Concepto {{ form.concepto }}</label>
+      <label>Estado {{ form.estado }}</label>
+      <label>Tipo {{ form.tipo }}</label>
+      <label>Importe {{ form.importe }}</label>
+      <label>Punteo {{ form.punteo }}</label>
+      <button class="btn-primario">Filtrar</button>
+      <a class="btn-sec" href="?ejercicio={{ ejercicio.anio }}">Quitar filtros</a>
+      {% if form.errors %}<p class="alerta">{% for campo, errores in form.errors.items %}{{ errores|join:" " }} {% endfor %}</p>{% endif %}
+    </form>
+
+    {% if not ejercicio %}
+      <p class="vacio">Todavía no hay ejercicios. Créalo en <a href="{% url 'cuadro_cuentas:empresa' %}">Empresa y ejercicios</a>.</p>
+    {% else %}
+    <section class="tarjeta-consulta">
+      <div class="cab-extracto">
+        <div>
+          <h2>{% if vista == "resumen" %}Vista resumida: una línea por asiento{% else %}Vista detallada: asientos con sus apuntes{% endif %}</h2>
+          <p class="panel-sub">Ejercicio {{ ejercicio.anio }} · orden por fecha y número · los totales son de todo el filtro y solo
+            de lo contabilizado{% if borradores %} ({{ borradores }} borrador{{ borradores|pluralize:"es" }} sin sumar){% endif %} · los anulados se ven tachados.</p>
+        </div>
+        <dl class="cifras">
+          <div><dt>Asientos</dt><dd>{{ total_asientos }}</dd></div>
+          <div><dt>Debe contabilizado</dt><dd>{{ total_debe|importe }}</dd></div>
+          <div><dt>Haber contabilizado</dt><dd>{{ total_haber|importe }}</dd></div>
+          <div class="{% if total_debe == total_haber %}bien{% else %}mal{% endif %}"><dt>Diferencia</dt><dd>{{ total_debe|add_importe:total_haber|default:"0,00" }}</dd></div>
+        </dl>
+      </div>
+      {% include "cuadro_cuentas/_exportar.html" %}
+
+      <div class="desplaza">
+      {% if vista == "resumen" %}
+        <table class="tabla-datos" data-tabla="diario-resumen">
+          <thead><tr>
+            <th data-col="asiento" data-tipo="num" class="num">Asiento</th>
+            <th data-col="fecha" data-tipo="fecha">Fecha</th>
+            <th data-col="numero">Número</th>
+            <th data-col="documento">Documento</th>
+            <th data-col="titulo">Título / concepto</th>
+            <th data-col="tipo">Tipo</th>
+            <th data-col="apuntes" data-tipo="num" class="num">Apuntes</th>
+            <th data-col="debe" data-tipo="num" class="num">Debe</th>
+            <th data-col="haber" data-tipo="num" class="num">Haber</th>
+            <th data-col="diferencia" data-tipo="num" class="num">Diferencia</th>
+            <th data-col="estado">Estado</th>
+          </tr></thead>
+          <tbody>
+            {% for a in pagina %}
+              <tr class="{{ a.estado }}">
+                <td class="num"><a href="{% url 'cuadro_cuentas:asiento' a.id %}">{{ a.numero }}</a></td>
+                <td>{{ a.fecha|date:"d/m/Y" }}</td>
+                <td class="cod">{{ a.numero_externo }}</td>
+                <td>{% if a.tipo_documento %}{{ a.get_tipo_documento_display }}{% endif %}</td>
+                <td>{% if a.titulo %}<strong>{{ a.titulo }}</strong> · {% endif %}{{ a.concepto }}</td>
+                <td>{{ a.get_tipo_display }}</td>
+                <td class="num">{{ a.n_apuntes }}</td>
+                <td class="num d">{{ a.total_debe|importe }}</td>
+                <td class="num h">{{ a.total_haber|importe }}</td>
+                <td class="num">{{ a.total_debe|add_importe:a.total_haber }}</td>
+                <td class="estado-celda"><span class="estado-asiento {{ a.estado }}">{{ a.get_estado_display }}</span></td>
+              </tr>
+            {% empty %}
+              <tr class="sin-datos"><td colspan="11" class="vacio">No hay asientos con estos filtros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <table class="tabla-datos" data-tabla="diario-detalle" data-agrupada data-punteo>
+          <thead><tr>
+            <th data-col="asiento" class="num">Asiento</th>
+            <th data-col="apunte" class="num">Apunte</th>
+            <th data-col="fecha">Fecha</th>
+            <th data-col="numero">Número</th>
+            <th data-col="documento">Documento</th>
+            <th data-col="cuenta">Cuenta</th>
+            <th data-col="titulo">Título</th>
+            <th data-col="concepto">Concepto</th>
+            <th data-col="debe" class="num">Debe</th>
+            <th data-col="haber" class="num">Haber</th>
+            <th data-col="contrapartida">Contrapartida</th>
+            <th data-col="punteo" data-filtro="no">Punteo</th>
+          </tr></thead>
+          <tbody>
+            {% for a in pagina %}
+              <tr class="cab-asiento {{ a.estado }}">
+                <td colspan="12">
+                  <a href="{% url 'cuadro_cuentas:asiento' a.id %}">Asiento {{ a.numero }}</a> · {{ a.fecha|date:"d/m/Y" }}
+                  {% if a.titulo %}· <strong>{{ a.titulo }}</strong>{% endif %} · {{ a.concepto }}
+                  {% if a.tipo != "operacion" %}<span class="etiqueta etiqueta-{{ a.tipo }}">{{ a.get_tipo_display }}</span>{% endif %}
+                  <span class="estado-asiento {{ a.estado }}">{{ a.get_estado_display }}</span>
+                  {% if a.total_debe != a.total_haber %}<span class="alerta" style="padding:.1rem .5rem">Descuadre {{ a.total_debe|add_importe:a.total_haber }}</span>{% endif %}
+                </td>
+              </tr>
+              {% for ap, contra in a.lineas %}
+                <tr class="{{ a.estado }}">
+                  <td class="num"><a href="{% url 'cuadro_cuentas:asiento' a.id %}">{{ a.numero }}</a></td>
+                  <td class="num">{{ ap.orden }}</td>
+                  <td>{{ a.fecha|date:"d/m/Y" }}</td>
+                  <td class="cod">{{ a.numero_externo }}</td>
+                  <td>{% if a.tipo_documento %}{{ a.get_tipo_documento_display }}{% endif %}</td>
+                  <td class="cod"><a href="{% url 'cuadro_cuentas:extractos' %}?ejercicio={{ ejercicio.anio }}&cuenta={{ ap.cuenta.codigo }}" title="Ver el mayor">{{ ap.cuenta.codigo }}</a></td>
+                  <td>{{ ap.cuenta.nombre }}</td>
+                  <td>{{ ap.concepto|default:a.concepto }}</td>
+                  <td class="num d">{{ ap.debe|importe_vacio }}</td>
+                  <td class="num h">{{ ap.haber|importe_vacio }}</td>
+                  <td>{% include "cuadro_cuentas/_contrapartida.html" with anio=ejercicio.anio asiento_id=a.id %}</td>
+                  <td>{% include "cuadro_cuentas/_punteo.html" %}</td>
+                </tr>
+              {% endfor %}
+            {% empty %}
+              <tr class="sin-datos"><td colspan="12" class="vacio">No hay asientos con estos filtros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      </div>
+      {% include "cuadro_cuentas/_paginacion.html" %}
+    </section>
+    {% endif %}
+  </main>
+  <datalist id="lista-cuentas">{% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}</datalist>
+{% endblock %}

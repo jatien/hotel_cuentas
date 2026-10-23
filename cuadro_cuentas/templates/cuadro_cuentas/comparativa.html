@@ -1,0 +1,52 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% load cuadro_cuentas_tags %}
+{% block titulo %}Comparativa {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
+  <header class="barra"><h1>Comparativa de ejercicios</h1></header>
+  <main class="consulta">
+    <form method="get" class="filtros-consulta">
+      {% include "cuadro_cuentas/_filtro_ejercicio.html" %}
+      <label>Comparar con
+        <select name="anterior">
+          {% for e in ejercicios %}{% if e != ejercicio %}<option value="{{ e.anio }}" {% if e == anterior %}selected{% endif %}>{{ e.anio }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label>Nivel
+        <select name="nivel">{% for n in niveles %}<option value="{{ n }}" {% if n == nivel %}selected{% endif %}>{{ n }} dígito{{ n|pluralize }}</option>{% endfor %}</select>
+      </label>
+      <button class="btn-primario">Comparar</button>
+    </form>
+    {% if ejercicio %}
+    <section class="tarjeta-consulta">
+      <h2>Saldos al cierre: {{ ejercicio }} frente a {{ anterior|default:"(sin ejercicio anterior)" }}</h2>
+      <p class="panel-sub">Saldo = Debe − Haber de los asientos contabilizados, sin el asiento de cierre. Positivo deudor,
+        negativo (entre paréntesis) acreedor. Las partidas del balance y de la PyG con su comparación están en
+        <a href="{% url 'cuadro_cuentas:cuentas_anuales' %}?ejercicio={{ ejercicio.anio }}">Situación, PyG y PN</a>.</p>
+      {% include "cuadro_cuentas/_exportar.html" %}
+      <div class="desplaza">
+      <table class="tabla-datos" data-tabla="comparativa">
+        <thead><tr>
+          <th data-col="codigo">Código</th><th data-col="titulo">Título</th>
+          <th data-col="actual" data-tipo="num" class="num">{{ ejercicio }}</th>
+          <th data-col="anterior" data-tipo="num" class="num">{{ anterior|default:"Anterior" }}</th>
+          <th data-col="variacion" data-tipo="num" class="num">Variación</th>
+          <th data-col="porcentaje" data-tipo="num" class="num">%</th>
+        </tr></thead>
+        <tbody>
+          {% for f in filas %}
+            <tr>
+              <td class="cod"><a href="{% url 'cuadro_cuentas:extractos' %}?ejercicio={{ ejercicio.anio }}&cuenta={{ f.codigo }}&solo_contabilizados=1">{{ f.codigo }}</a></td>
+              <td>{{ f.nombre }}</td>
+              <td class="num">{{ f.actual|importe }}</td>
+              <td class="num">{{ f.anterior|importe }}</td>
+              <td class="num saldo">{{ f.variacion|importe }}</td>
+              <td class="num">{% if f.porcentaje is not None %}{{ f.porcentaje|stringformat:".1f" }} %{% endif %}</td>
+            </tr>
+          {% empty %}<tr class="sin-datos"><td colspan="6" class="vacio">Sin saldos que comparar.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endif %}
+  </main>
+{% endblock %}

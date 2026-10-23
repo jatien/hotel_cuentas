@@ -77,9 +77,18 @@ El panel principal (`/`) enlaza con todas las apps.
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos
   (`crear_subcuentas_basicas`, más una herramienta para crear subcuentas a medida).
-- Libro diario con asientos de partida doble (debe/haber), modelos de asiento y validación de NIF.
-- Consultas: hojas de cuentas, extractos y buscador.
-- Cuentas anuales: balance, pérdidas y ganancias y estado de ingresos y gastos.
+- **Empresa y ejercicios**: código, NIF, moneda funcional, estado, último asiento; el ejercicio activo
+  se aplica a todas las hojas. Cuentas con naturaleza (PGC 2007, configurable) y saldos por nivel.
+- **Asientos**: cabecera (número externo, documento, título, concepto, usuario y fechas), apuntes
+  numerados, contrapartida calculada («Varias» si es múltiple) y documentos adjuntos. Estados
+  borrador / contabilizado / anulado: lo contabilizado no se modifica; se corrige con **revertir**,
+  **rectificar** o **anular**, y todo queda en el historial. Aviso de posibles duplicados.
+- **Diario** (resumido y detallado), **mayor** y buscador con filtros, punteo de apuntes (sin tocar
+  importes), exportación a CSV y Excel, y tablas con orden, filtros, columnas y anchos por usuario.
+- **Balances**: sumas y saldos (anterior, periodo, acumulado y saldo; por nivel y rango de cuentas),
+  balance de comprobación (controles de integridad), situación, PyG y PN del PGC y comparativa de
+  ejercicios. Cada cifra enlaza a los apuntes que la forman.
+- Estilo común en `cuadro_cuentas/static/cuadro_cuentas/tema.css` (colores, letra, medidas) y menú lateral.
 
 ### Análisis de beneficios (`analisis`)
 - Importación desde ficheros (`importar_analisis`) de reservas, compras a proveedores, facturas de

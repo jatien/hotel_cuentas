@@ -1,21 +1,9 @@
+{% extends "cuadro_cuentas/_base.html" %}
 {% load static %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>Libro diario {{ ejercicio|default:"" }}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
-</head>
-<body>
+{% block titulo %}Asientos {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
-    <h1>Libro diario</h1>
+    <h1>Asientos</h1>
     <form method="get" class="filtros">
       <input type="hidden" name="hoja" value="{{ hoja }}">
       <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
@@ -101,11 +89,11 @@
       previsualizarUrl: "{% url 'cuadro_cuentas:api_modelo_previsualizar' 'x' %}",
       crearModeloUrl: "{% url 'cuadro_cuentas:api_modelo_crear' 'x' %}",
       planUrl: "{% url 'cuadro_cuentas:plan_cuentas' %}",
+      fichaUrl: "{% url 'cuadro_cuentas:asiento' 0 %}",
       hoja: "{{ hoja|escapejs }}",
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="{% static 'cuadro_cuentas/libro.js' %}"></script>
   <script src="{% static 'cuadro_cuentas/modelos.js' %}"></script>
-</body>
-</html>
+{% endblock %}

@@ -1,21 +1,12 @@
+{% extends "cuadro_cuentas/_base.html" %}
 {% load static cuadro_cuentas_tags %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cuentas anuales {{ ejercicio|default:"" }}{% if empresa %} · {{ empresa.denominacion }}{% endif %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
+{% block titulo %}Cuentas anuales {{ ejercicio|default:"" }}{% if empresa %} · {{ empresa.denominacion }}{% endif %}{% endblock %}
+{% block head %}
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/cuentas_anuales.css' %}">
-</head>
-<body>
+{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
-    <h1>Cuentas anuales</h1>
+    <h1>Balance de situación, PyG y PN</h1>
     {% if ejercicio %}
       <form method="get" class="filtros">
         <select name="ejercicio" aria-label="Ejercicio" onchange="this.form.submit()">
@@ -87,7 +78,7 @@
                   </tr>
                   {% for codigo, nombre, a, b in f.detalle %}
                     <tr class="detalle" data-de="{{ estado.clave }}-{{ f.ref }}" hidden>
-                      <td class="col-cuentas">{{ codigo }}</td>
+                      <td class="col-cuentas"><a href="{% url 'cuadro_cuentas:extractos' %}?ejercicio={{ ejercicio.anio }}&cuenta={{ codigo }}&solo_contabilizados=1" title="Ver los apuntes que forman este importe">{{ codigo }}</a></td>
                       <td>{{ nombre }}</td>
                       <td class="col-notas"></td>
                       <td class="num">{{ a|importe }}</td>
@@ -176,5 +167,4 @@
   </main>
   {% endif %}
   <script src="{% static 'cuadro_cuentas/cuentas_anuales.js' %}"></script>
-</body>
-</html>
+{% endblock %}
