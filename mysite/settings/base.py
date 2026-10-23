@@ -23,6 +23,7 @@ SECRET_KEY_FALLBACKS = config("SECRET_KEY_FALLBACKS", default="", cast=Csv())
 
 INSTALLED_APPS = [
     'seguridad.apps.SeguridadConfig',
+    'inicio.apps.InicioConfig',
     'invoice_data.apps.InvoiceDataConfig',
     'nominas.apps.NominasConfig',
     'cuadro_cuentas.apps.CuadroCuentasConfig',

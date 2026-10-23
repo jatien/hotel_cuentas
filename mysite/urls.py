@@ -16,7 +16,6 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path,include
-from django.views.generic import TemplateView
 from django.conf import settings
 
 from seguridad import views as seguridad_views
@@ -24,7 +23,7 @@ from seguridad import views as seguridad_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', TemplateView.as_view(template_name='home.html'), name='home'),
+    path('', include('inicio.urls')),
     path('nominas/', include('nominas.urls')),
     path("invoices/", include("invoice_data.urls")),
     path("contabilidad/", include("cuadro_cuentas.urls")),
