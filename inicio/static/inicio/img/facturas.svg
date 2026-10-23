@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none" stroke="#1C2733" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Gestión de facturas: pantalla con facturas sobre la mesa -->
+  <ellipse cx="80" cy="146" rx="60" ry="5" fill="#1C2733" opacity=".08" stroke="none"/>
+  <rect x="30" y="22" width="84" height="58" rx="6" fill="#FFFFFF"/>
+  <rect x="38" y="30" width="68" height="42" rx="3" fill="#EEF2FC" stroke="#2D4FC4"/>
+  <path d="M46 42 H72" stroke="#2D4FC4"/><path d="M46 51 H88" stroke="#2D4FC4" opacity=".5"/><path d="M46 60 H80" stroke="#2D4FC4" opacity=".5"/>
+  <path d="M72 80 V96"/><path d="M58 96 H86"/>
+  <path d="M18 104 H142"/><path d="M26 104 V144"/><path d="M134 104 V144"/>
+  <g transform="translate(6 -22)">
+  <path d="M96 62 L132 56 L140 112 L104 118 Z" fill="#FFFFFF"/>
+  <path d="M90 70 L126 64 L134 120 L98 126 Z" fill="#FFFFFF"/>
+  <g stroke="#2D4FC4" stroke-width="2.6">
+    <path d="M99 80 L117 77"/><path d="M101 90 L124 86"/><path d="M102 99 L125 95"/>
+  </g>
+  <path d="M106 112 L127 108" stroke-width="3.4"/>
+  </g>
+</svg>

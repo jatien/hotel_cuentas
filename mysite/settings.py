@@ -34,6 +34,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'inicio.apps.InicioConfig',
     'invoice_data.apps.InvoiceDataConfig',
     'nominas.apps.NominasConfig',
     'cuadro_cuentas.apps.CuadroCuentasConfig',
