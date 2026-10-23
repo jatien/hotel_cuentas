@@ -7,10 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Tesseract con español para el OCR de invoice_data; libpq para psycopg; libGL no hace falta
-# (opencv-python-headless).
+# Tesseract con español para el OCR de invoice_data; cliente de PostgreSQL (pg_dump/pg_restore)
+# para las copias de seguridad, misma versión que el servidor de compose.yaml.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa postgresql-client-17 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,8 +21,8 @@ COPY . .
 
 # Usuario sin privilegios: la app no puede modificar su propio código.
 RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin cuentas \
-    && mkdir -p /app/media /app/private_media /app/logs /app/staticfiles \
-    && chown -R cuentas:cuentas /app/media /app/private_media /app/logs /app/staticfiles
+    && mkdir -p /app/media /app/private_media /app/logs /app/staticfiles /app/backups \
+    && chown -R cuentas:cuentas /app/media /app/private_media /app/logs /app/staticfiles /app/backups
 
 ENV DJANGO_ENV=prod \
     TESSERACT_CMD=/usr/bin/tesseract \

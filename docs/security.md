@@ -23,7 +23,7 @@ Vista → servicio → PostgreSQL (rol propio de la app)
 | Cabeceras de seguridad y CSP | ✅ §2 |
 | Registro de eventos de seguridad | ✅ §3 |
 | Servidor WSGI + proxy + HTTPS | ✅ §4 |
-| Cifrado en reposo y copias cifradas | ver §5 (PR aparte) |
+| Cifrado en reposo y copias cifradas | ✅ §5 |
 | Llamadas a APIs externas y servidor del modelo | ver §6 (PR aparte) |
 | Autenticación y autorización de usuarios | **pendiente** (se hará más adelante) |
 
@@ -262,6 +262,152 @@ Gunicorn/PostgreSQL inaccesibles desde fuera.
 
 ---
 
+## 5. Cifrado en reposo, copias de seguridad y base de datos
+
+Tres capas, de fuera hacia dentro:
+
+| Capa | Protege de | Dónde |
+|---|---|---|
+| Disco cifrado | Robo del PC o del disco | BitLocker (Windows) / LUKS (Debian) |
+| Copias cifradas con age | Robo o filtración de las copias | `python manage.py copia_seguridad` |
+| Campos cifrados | Un volcado de la base de datos que acaba donde no debe | `seguridad.cifrado.CampoCifrado` |
+
+### Disco
+
+- **Windows (oficina):** BitLocker en la unidad donde están el proyecto, `media/`,
+  `private_media/` y los datos de PostgreSQL (Configuración → Privacidad y seguridad → Cifrado del
+  dispositivo, o «Administrar BitLocker»). Guardar la clave de recuperación fuera del PC.
+- **Debian (servidor):** la partición de datos (`/srv/cuentas`) con LUKS
+  (`cryptsetup luksFormat`), y `CUENTAS_DATA_DIR=/srv/cuentas` en `compose.yaml`. La clave se pide
+  al arrancar (o se desbloquea por SSH); así los datos no se pueden leer con el servidor apagado.
+
+### Copias de seguridad cifradas
+
+`python manage.py copia_seguridad` hace dos ficheros en `BACKUP_DIR`:
+
+- `cuentas-AAAAMMDD-HHMMSS.dump.age`: `pg_dump` en formato custom;
+- `cuentas-AAAAMMDD-HHMMSS.tar.gz.age`: `media/` y `private_media/`.
+
+Se cifran con [age](https://age-encryption.org) **mientras se generan** (el volcado en claro nunca
+toca el disco) para las claves **públicas** de `BACKUP_AGE_RECIPIENTS`. La clave privada no está en
+el servidor: quien se lleve las copias o el disco no puede abrirlas. Cada copia queda registrada en
+`CopiaSeguridad` (fecha, tamaño, SHA-256, verificación; visible en el admin).
+
+**Puesta en marcha:**
+
+1. Generar el par de claves (en cualquier PC):
+   ```powershell
+   python manage.py copia_seguridad --generar-clave
+   ```
+   - La **pública** (`age1…`) va al `.env` del servidor: `BACKUP_AGE_RECIPIENTS=age1…`.
+   - La **privada** (`AGE-SECRET-KEY-…`) se guarda en un fichero **fuera del servidor**: USB en la
+     caja fuerte y una segunda copia en un gestor de contraseñas. Sin ella las copias no sirven.
+   - Se pueden poner varias públicas separadas por comas (p. ej. una por responsable).
+2. En Windows, si `pg_dump` no está en el PATH:
+   `BACKUP_PG_BIN_DIR=C:\Program Files\PostgreSQL\17\bin`.
+3. Programar cada noche:
+   - Windows: Programador de tareas → `powershell.exe -ExecutionPolicy Bypass -File …\deploy\windows\copia.ps1`
+   - Debian: `deploy/docker/copia-seguridad.cron` en `/etc/cron.d/`.
+4. Copia fuera del hotel: los `.age` se pueden copiar tal cual a un disco externo, a la nube o al
+   servidor de casa; sin la clave privada son ilegibles. Se borran solos pasados `BACKUP_KEEP_DAYS`
+   (30), conservando siempre las 3 últimas de cada tipo.
+
+**Comprobar que se pueden restaurar** (una vez al mes, desde un PC con la clave privada):
+
+```powershell
+python manage.py copia_seguridad --verificar cuentas-20261023-031700.dump.age --identidad E:\clave-copias.txt
+python manage.py copia_seguridad --estado
+```
+
+Descifra en memoria, comprueba que `pg_restore` lee el volcado (o que el tar está completo) y marca
+la copia como verificada.
+
+**Restaurar** (en un servidor nuevo o tras un desastre), con la herramienta oficial `age` o con
+Python:
+
+```bash
+age -d -i clave-copias.txt cuentas-20261023-031700.dump.age | pg_restore -U cuentas_owner -d cuentas --clean --if-exists
+age -d -i clave-copias.txt cuentas-20261023-031700.tar.gz.age | tar xz -C /ruta/del/proyecto
+```
+
+### Roles de PostgreSQL con privilegios mínimos
+
+Hasta ahora la app entraba como `postgres` (superusuario): un fallo en la app podía borrar o leer
+cualquier base de datos del servidor. `deploy/postgres/roles.sql` crea:
+
+| Rol | Puede | Se usa para |
+|---|---|---|
+| `cuentas_owner` | Crear y modificar tablas (dueño del esquema) | `manage.py migrate` |
+| `cuentas_app` | Leer y escribir datos; **no** crear, borrar ni alterar tablas | La app a diario y las copias |
+
+```powershell
+psql -U postgres -d cuentas -v owner_pass='<larga>' -v app_pass='<larga>' -f deploy\postgres\roles.sql
+```
+
+Después: `DB_USER=cuentas_app` y `DB_PASSWORD=<app_pass>` en el `.env`. Para aplicar migraciones:
+
+```powershell
+$env:DB_USER="cuentas_owner"; $env:DB_PASSWORD="<owner_pass>"; python manage.py migrate
+```
+
+El script pasa las tablas existentes a `cuentas_owner`, es idempotente y deja configurado que
+lo que creen las migraciones futuras también lo pueda usar `cuentas_app`. En Docker, el usuario de
+`POSTGRES_USER` es superusuario del contenedor: aplicar también el script dentro del contenedor
+(`docker compose exec -T db psql -U $DB_USER -d cuentas -v … -f -` con el fichero por la entrada).
+
+`check --deploy` avisa (`seguridad.W002`) mientras la app use `postgres`.
+
+### TLS hacia PostgreSQL
+
+Mientras PostgreSQL esté en el mismo equipo que Django (Windows) o en la red interna de Docker, la
+conexión no sale de la máquina. Si se separa (p. ej. Django en un PC y la base de datos en el
+servidor):
+
+- en el servidor: `ssl = on` con certificado (puede emitirlo la CA de Caddy u otra interna) y en
+  `pg_hba.conf` solo `hostssl … scram-sha-256` desde la IP de la app;
+- en el `.env`: `DB_SSLMODE=verify-full` y `DB_SSLROOTCERT=<ruta del certificado de la CA>`.
+
+`check --deploy` avisa (`seguridad.W001`) si la base de datos está en otro equipo sin `verify-full`.
+
+### Campos cifrados
+
+`seguridad.cifrado.CampoCifrado` es un `TextField` que se guarda cifrado (Fernet: AES + HMAC) y se
+lee en claro:
+
+```python
+from seguridad.cifrado import CampoCifrado, indice_ciego
+
+class Huesped(models.Model):
+    documento = CampoCifrado(blank=True)                     # DNI / pasaporte, cifrado
+    documento_indice = models.CharField(max_length=64, db_index=True, blank=True)  # para buscar
+
+    def save(self, *a, **kw):
+        self.documento_indice = indice_ciego(self.documento) if self.documento else ""
+        super().save(*a, **kw)
+
+Huesped.objects.filter(documento_indice=indice_ciego("12345678Z"))
+```
+
+- Claves en el `.env` (`FIELD_ENCRYPTION_KEYS`, `BLIND_INDEX_KEY`), nunca en la base de datos.
+  Generar: `python manage.py rotar_cifrado --generar-clave` / `--generar-indice`.
+- No se puede filtrar ni ordenar por el contenido (cada cifrado es distinto): da error en vez de
+  devolver una lista vacía. Para buscar por igualdad, un índice ciego al lado.
+- Rotar la clave: `FIELD_ENCRYPTION_KEYS=<nueva>,<antigua>`, `python manage.py rotar_cifrado`, y
+  después quitar la antigua. El mismo comando cifra los valores que estaban en claro, así una
+  columna existente se puede pasar a `CampoCifrado` sin migrar datos a mano.
+- **Perder las claves = perder esos datos.** Guardarlas también fuera del servidor, junto a la
+  clave privada de las copias.
+
+**Todavía no se ha aplicado a ningún campo.** Candidatos:
+
+| Campo | Notas |
+|---|---|
+| `nominas.Empleado.nif` | Es `unique` y las importaciones buscan por NIF: necesita índice ciego y cambiar esas búsquedas |
+| Documento de identidad de huéspedes | Cuando exista en `reservas` (registro de viajeros): nacer ya cifrado |
+| IBAN / cuentas bancarias | Cuando llegue la integración bancaria |
+
+---
+
 ## PMS Copilot
 
 Cada componente nuevo se revisa por si encaja como herramienta del copilot (function calling):
@@ -273,3 +419,5 @@ Cada componente nuevo se revisa por si encaja como herramienta del copilot (func
 | Health check | No | Lo consulta el proxy, no una persona |
 | Waitress / Caddy / Docker / IP real | No | Infraestructura. La IP real del cliente sí mejora lo que ya registra el copilot (`actor` en `LlamadaHerramienta`) |
 | Servir `/media/` | No como herramienta nueva | `documento_factura` ya da enlaces firmados a los originales; cuando haya permisos, la misma comprobación protegerá `/media/` |
+| Copias de seguridad | **Sí: `estado_copias_seguridad`** | Solo lectura: última copia correcta de la BD y de los ficheros, tamaño, verificación y fallos recientes, con avisos si la última tiene más de 26 h o lleva más de 30 días sin verificar. Nunca devuelve rutas, huellas ni claves. Permiso `seguridad.view_copiaseguridad` cuando haya login |
+| Campos cifrados / roles de PostgreSQL / TLS | No | Las herramientas existentes leerán los campos cifrados en claro a través del ORM, con los permisos de siempre |

@@ -1,0 +1,4 @@
+# Copia de seguridad cifrada cada noche a las 03:17 (servidor Debian con Docker).
+# Instalar: sudo cp deploy/docker/copia-seguridad.cron /etc/cron.d/cuentas-copia
+# y ajustar la ruta del repositorio. El resultado queda en el registro de copias y en logs/.
+17 3 * * * root cd /opt/hotel_cuentas && docker compose -f deploy/docker/compose.yaml --env-file .env exec -T web python manage.py copia_seguridad >> /srv/cuentas/logs/copias.log 2>&1

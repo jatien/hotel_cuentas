@@ -7,3 +7,6 @@ class SeguridadConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "seguridad"
     verbose_name = "Seguridad"
+
+    def ready(self):
+        from seguridad import checks  # noqa: F401  (registra las comprobaciones)

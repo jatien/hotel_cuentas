@@ -87,8 +87,30 @@ DATABASES = {
         'PORT': config("DB_PORT", default="5432"),
         'CONN_MAX_AGE': config("DB_CONN_MAX_AGE", default=60, cast=int),
         'CONN_HEALTH_CHECKS': True,
+        # TLS hacia PostgreSQL. En la misma máquina (localhost / red interna de Docker) basta "prefer";
+        # si la base de datos está en otro equipo: "verify-full" + DB_SSLROOTCERT (docs/security.md §5).
+        'OPTIONS': {
+            k: v for k, v in {
+                'sslmode': config("DB_SSLMODE", default="prefer"),
+                'sslrootcert': config("DB_SSLROOTCERT", default=""),
+            }.items() if v
+        },
     }
 }
+
+
+# --- Cifrado en reposo y copias de seguridad ----------------------------------------
+# Campos cifrados (seguridad.cifrado.CampoCifrado): claves Fernet, la primera cifra y todas descifran.
+FIELD_ENCRYPTION_KEYS = config("FIELD_ENCRYPTION_KEYS", default="", cast=Csv())
+# Clave HMAC para buscar por igualdad en campos cifrados (índice ciego). Distinta de las anteriores.
+BLIND_INDEX_KEY = config("BLIND_INDEX_KEY", default="")
+
+# Copias cifradas con age (python manage.py copia_seguridad). Solo la clave PÚBLICA va aquí.
+BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
+BACKUP_AGE_RECIPIENTS = config("BACKUP_AGE_RECIPIENTS", default="", cast=Csv())
+BACKUP_KEEP_DAYS = config("BACKUP_KEEP_DAYS", default=30, cast=int)
+# Carpeta de pg_dump/pg_restore si no están en el PATH (Windows: C:\Program Files\PostgreSQL\17\bin)
+BACKUP_PG_BIN_DIR = config("BACKUP_PG_BIN_DIR", default="")
 
 
 # --- Validación de contraseñas -------------------------------------------------------
