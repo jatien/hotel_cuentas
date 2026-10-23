@@ -3,12 +3,12 @@ Comprobaciones de seguridad que se suman a `manage.py check` (y a `check --deplo
 """
 
 from django.conf import settings
-from django.core.checks import Error, Tags, Warning, register
+from django.core.checks import Error, Warning, register
 
 _LOCALES = {"", "localhost", "127.0.0.1", "::1", "db"}
 
 
-@register(Tags.database, deploy=True)
+@register(deploy=True)
 def base_de_datos(app_configs, **kwargs):
     avisos = []
     bd = settings.DATABASES.get("default", {})
