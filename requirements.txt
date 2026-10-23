@@ -1,13 +1,13 @@
 # Instalar con: pip install -r requirements.txt
 
 # Web / base de datos
-Django>=6.1,<6.2
+Django>=6.1.2,<6.2
 psycopg[binary]>=3.2
-whitenoise>=6.9              # sirve /static/ desde Django en producción
+whitenoise>=6.12.0              # sirve /static/ desde Django en producción
 
 # Servidor WSGI de producción (detrás de Caddy, ver docs/security.md)
-waitress>=3.0                # Windows: python manage.py servir
-gunicorn>=23.0; sys_platform != "win32"   # Debian / Docker
+waitress>=3.0.2                # Windows: python manage.py servir
+gunicorn>=26.2.0; sys_platform != "win32"   # Debian / Docker
 
 # Cifrado (seguridad): campos cifrados y copias de seguridad con age
 cryptography>=44.0
