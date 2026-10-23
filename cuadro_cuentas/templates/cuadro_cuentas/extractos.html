@@ -1,18 +1,9 @@
+{% extends "cuadro_cuentas/_base.html" %}
 {% load static cuadro_cuentas_tags %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if extracto %}Extracto {{ cuenta }}{% else %}Extractos de cuentas{% endif %} {{ ejercicio|default:"" }}</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
-</head>
-<body>
+{% block titulo %}{% if extracto %}Mayor {{ cuenta }}{% else %}Mayor{% endif %} {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
-    <h1>Extractos de cuentas</h1>
+    <h1>Mayor</h1>
   </header>
 
   {% url 'cuadro_cuentas:extractos' as u_ext %}
@@ -31,6 +22,7 @@
       {% if extracto %}
         <label>Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}"></label>
         <label>Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}"></label>
+        <label>Punteo <select name="punteo">{% for v, l in punteos_filtro %}<option value="{{ v }}" {% if v == punteo %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
       {% else %}
         <label>Filtrar por código <input name="prefijo" value="{{ prefijo }}" inputmode="numeric" placeholder="Ej.: 4, 40, 572"></label>
       {% endif %}
@@ -60,53 +52,69 @@
           </dl>
         </div>
 
-        <table class="tabla-consulta">
+        {% include "cuadro_cuentas/_exportar.html" %}
+        <div class="desplaza">
+        <table class="tabla-datos" data-tabla="mayor" data-punteo>
           <thead>
             <tr>
-              <th>Fecha</th><th class="num">Asiento</th>
-              {% if extracto.varias %}<th>Cuenta</th>{% endif %}
-              <th>Concepto</th><th>Contrapartida</th>
-              <th class="num">Debe</th><th class="num">Haber</th><th class="num">Saldo</th>
+              <th data-col="fecha" data-tipo="fecha">Fecha</th>
+              <th data-col="asiento" data-tipo="num" class="num">Asiento</th>
+              <th data-col="apunte" data-tipo="num" class="num">Apunte</th>
+              <th data-col="numero">Número</th>
+              <th data-col="documento">Documento</th>
+              {% if extracto.varias %}<th data-col="cuenta">Cuenta</th>{% endif %}
+              <th data-col="concepto">Concepto</th>
+              <th data-col="debe" data-tipo="num" class="num">Debe</th>
+              <th data-col="haber" data-tipo="num" class="num">Haber</th>
+              <th data-col="saldo" data-tipo="num" class="num">Saldo</th>
+              <th data-col="contrapartida">Contrapartida</th>
+              <th data-col="punteo" data-filtro="no">Punteo</th>
             </tr>
           </thead>
           <tbody>
-            {% if extracto.saldo_inicial %}
-              <tr class="fila-inicial"><td colspan="{% if extracto.varias %}6{% else %}5{% endif %}">Saldo anterior</td>
-                <td></td><td class="num">{{ extracto.saldo_inicial|importe }}</td></tr>
-            {% endif %}
+            <tr class="fila-inicial sin-datos"><td colspan="{% if extracto.varias %}9{% else %}8{% endif %}">Saldo inicial del periodo</td>
+              <td class="num saldo">{{ extracto.saldo_inicial|importe }}</td><td colspan="2"></td></tr>
             {% for l in extracto.lineas %}{% with a=l.apunte %}
-              <tr class="{% if a.asiento.estado == 'borrador' %}borrador{% endif %}">
+              <tr class="{{ a.asiento.estado }}">
                 <td>{{ a.asiento.fecha|date:"d/m/Y" }}</td>
-                <td class="num"><a href="{{ u_libro }}?ejercicio={{ ejercicio.anio }}&mes={{ a.asiento.fecha.month }}#a{{ a.asiento.id }}" title="Abrir en el libro diario">{{ a.asiento.numero }}</a></td>
-                {% if extracto.varias %}<td><a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="{{ a.cuenta.nombre }}">{{ a.cuenta.codigo }}</a></td>{% endif %}
+                <td class="num"><a href="{% url 'cuadro_cuentas:asiento' a.asiento.id %}" title="Abrir el asiento">{{ a.asiento.numero }}</a></td>
+                <td class="num">{{ a.orden }}</td>
+                <td class="cod">{{ a.asiento.numero_externo }}</td>
+                <td>{% if a.asiento.tipo_documento %}{{ a.asiento.get_tipo_documento_display }}{% endif %}</td>
+                {% if extracto.varias %}<td class="cod"><a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ a.cuenta.codigo }}" title="{{ a.cuenta.nombre }}">{{ a.cuenta.codigo }}</a></td>{% endif %}
                 <td>{{ a.concepto|default:a.asiento.concepto }}
                   {% if a.asiento.tipo != "operacion" %}<span class="etiqueta etiqueta-{{ a.asiento.tipo }}">{{ a.asiento.get_tipo_display }}</span>{% endif %}
-                  {% if a.asiento.estado == "borrador" %}<span class="etiqueta">Borrador</span>{% endif %}</td>
-                <td>{% if a.contrapartida %}<a href="{{ u_ext }}?ejercicio={{ ejercicio.anio }}&cuenta={{ a.contrapartida.codigo }}" title="{{ a.contrapartida.nombre }}">{{ a.contrapartida.codigo }}</a>{% else %}<span class="tenue">varias</span>{% endif %}</td>
-                <td class="num d">{% if a.debe %}{{ a.debe|importe }}{% endif %}</td>
-                <td class="num h">{% if a.haber %}{{ a.haber|importe }}{% endif %}</td>
+                  {% if a.asiento.estado == "borrador" %}<span class="estado-asiento borrador">Borrador</span>{% endif %}</td>
+                <td class="num d">{{ a.debe|importe_vacio }}</td>
+                <td class="num h">{{ a.haber|importe_vacio }}</td>
                 <td class="num saldo">{{ l.saldo|importe }}</td>
+                <td>{% include "cuadro_cuentas/_contrapartida.html" with contra=l.contrapartida anio=ejercicio.anio asiento_id=a.asiento.id %}</td>
+                <td>{% include "cuadro_cuentas/_punteo.html" with ap=a %}</td>
               </tr>
             {% endwith %}{% empty %}
-              <tr><td colspan="8" class="vacio">Sin movimientos en este periodo.</td></tr>
+              <tr class="sin-datos"><td colspan="12" class="vacio">Sin movimientos en este periodo.</td></tr>
             {% endfor %}
           </tbody>
           <tfoot>
-            <tr><td colspan="{% if extracto.varias %}5{% else %}4{% endif %}">Totales</td>
+            <tr><td colspan="{% if extracto.varias %}7{% else %}6{% endif %}">Totales del periodo</td>
               <td class="num">{{ extracto.total_debe|importe }}</td><td class="num">{{ extracto.total_haber|importe }}</td>
-              <td class="num">{{ extracto.saldo_final|importe }}</td></tr>
+              <td class="num">{{ extracto.saldo_final|importe }}</td><td colspan="2"></td></tr>
           </tfoot>
         </table>
-        <p class="nota">Saldo = Debe − Haber acumulado. Los importes negativos (entre paréntesis) son saldo acreedor.</p>
+        </div>
+        <p class="nota">Saldo = Debe − Haber acumulado desde el saldo inicial. Los importes negativos (entre paréntesis) son saldo acreedor.
+          {% if punteo %}Filtrado por punteo: los totales y el saldo incluyen todos los movimientos.{% endif %}</p>
       </section>
 
     {% else %}
       <section class="tarjeta-consulta">
         <h2>Saldo de cada cuenta · ejercicio {{ ejercicio.anio }}</h2>
-        <p class="panel-sub">Pulsa una cuenta para ver su extracto con todos los movimientos.</p>
-        <table class="tabla-consulta">
-          <thead><tr><th>Cuenta</th><th>Nombre</th><th class="num">Apuntes</th>
-            <th class="num">Debe</th><th class="num">Haber</th><th class="num">Saldo deudor</th><th class="num">Saldo acreedor</th></tr></thead>
+        <p class="panel-sub">Pulsa una cuenta para ver su mayor con todos los movimientos.</p>
+        {% include "cuadro_cuentas/_exportar.html" %}
+        <table class="tabla-datos" data-tabla="saldos-cuentas">
+          <thead><tr><th data-col="cuenta">Cuenta</th><th data-col="titulo">Título</th><th data-col="apuntes" data-tipo="num" class="num">Apuntes</th>
+            <th data-col="debe" data-tipo="num" class="num">Debe</th><th data-col="haber" data-tipo="num" class="num">Haber</th>
+            <th data-col="saldo_d" data-tipo="num" class="num">Saldo deudor</th><th data-col="saldo_h" data-tipo="num" class="num">Saldo acreedor</th></tr></thead>
           <tbody>
             {% for f in filas %}
               <tr>
@@ -119,7 +127,7 @@
                 <td class="num">{% if f.saldo < 0 %}{{ f.saldo|importe }}{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="7" class="vacio">No hay movimientos{% if prefijo %} en cuentas que empiecen por {{ prefijo }}{% endif %}.</td></tr>
+              <tr class="sin-datos"><td colspan="7" class="vacio">No hay movimientos{% if prefijo %} en cuentas que empiecen por {{ prefijo }}{% endif %}.</td></tr>
             {% endfor %}
           </tbody>
           {% if filas %}
@@ -136,5 +144,4 @@
   </main>
 
   <datalist id="lista-cuentas">{% for c in cuentas %}<option value="{{ c.codigo }}">{{ c.nombre }}</option>{% endfor %}</datalist>
-</body>
-</html>
+{% endblock %}

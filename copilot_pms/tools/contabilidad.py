@@ -7,8 +7,8 @@ Convenios del libro (los mismos que las pantallas de extractos y cuentas anuales
   apertura; nunca se mezclan dos ejercicios en un mismo saldo.
 - Se excluye el asiento de cierre (lo deja todo a cero).
 - Por defecto solo cuentan los asientos contabilizados; los borradores se
-  avisan, no se suman en silencio.
-- La contabilidad es de una única entidad (DatosEmpresa) y en euros.
+  avisan, no se suman en silencio. Los asientos anulados no suman nunca.
+- La contabilidad es de una única entidad (DatosEmpresa) en su moneda funcional.
 """
 
 from datetime import date
@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from copilot_pms.models import EstadoLlamada
 from copilot_pms.tools.base import Aclarar, NoDisponible, Resultado, herramienta
 from copilot_pms.tools.comun import CERO, MONEDA_CONTABILIDAD, consultado_en, importe, saldo_dict, saldo_neto
-from cuadro_cuentas.consultas import extracto, sumas_y_saldos
+from cuadro_cuentas import integridad
+from cuadro_cuentas.consultas import cargar_apuntes, diario, extracto, sumas_y_saldos_periodo
 from cuadro_cuentas.models import Apunte, Asiento, CuentaContable, DatosEmpresa, Ejercicio
 
 PERMISOS = ("cuadro_cuentas.view_apunte", "cuadro_cuentas.view_cuentacontable")
@@ -39,7 +40,20 @@ def _entidad() -> dict:
     datos = DatosEmpresa.actual()
     if datos is None:
         return {"denominacion": None, "nif": None, "nota": "Datos de la empresa sin configurar en contabilidad."}
-    return {"denominacion": datos.denominacion, "nif": datos.nif or None}
+    return {"codigo": datos.codigo, "denominacion": datos.denominacion, "nif": datos.nif or None}
+
+
+def _moneda() -> str:
+    datos = DatosEmpresa.actual()
+    return datos.moneda if datos else MONEDA_CONTABILIDAD
+
+
+def _contrapartida(contra) -> dict | None:
+    if contra.unica:
+        return {"codigo": contra.unica[0], "nombre": contra.unica[1]}
+    if contra.multiple:
+        return {"multiple": True, "cuentas": [{"codigo": c, "nombre": n} for c, n in contra.cuentas]}
+    return None
 
 
 def _ejercicio_de(fecha: date) -> Ejercicio:
@@ -166,8 +180,8 @@ def saldo_cuenta(p: SaldoCuentaArgs, ctx):
     ejercicio, desde, hasta = _periodo(p.desde, p.hasta, ctx.hoy)
     cuenta = _cuenta(p.cuenta)
 
-    base = (Apunte.objects.filter(asiento__ejercicio=ejercicio, cuenta__codigo__startswith=p.cuenta,
-                                  asiento__fecha__lte=hasta)
+    base = (Apunte.objects.vigentes().filter(asiento__ejercicio=ejercicio, cuenta__codigo__startswith=p.cuenta,
+                                             asiento__fecha__lte=hasta)
             .exclude(asiento__tipo=Asiento.Tipo.CIERRE))
     borradores = base.filter(asiento__estado=Asiento.Estado.BORRADOR).count()
     if p.solo_contabilizados:
@@ -189,7 +203,7 @@ def saldo_cuenta(p: SaldoCuentaArgs, ctx):
     return Resultado(
         datos={
             "entidad": _entidad(),
-            "moneda": MONEDA_CONTABILIDAD,
+            "moneda": _moneda(),
             "cuenta": cuenta,
             "ejercicio": ejercicio.anio,
             "periodo": {"desde": desde, "hasta": hasta},
@@ -208,38 +222,73 @@ def saldo_cuenta(p: SaldoCuentaArgs, ctx):
 # --------------------------------------------------------------------------- #
 class SumasSaldosArgs(_Args):
     ejercicio: int | None = Field(None, ge=2000, le=2100, description="Año del ejercicio. Por defecto, el actual.")
-    prefijo: str = Field("", pattern=r"^\d{0,12}$", description="Solo cuentas que empiezan por este código.")
+    desde: date | None = Field(None, description="Inicio del periodo (AAAA-MM-DD). Por defecto, inicio del ejercicio.")
+    hasta: date | None = Field(None, description="Fin del periodo (AAAA-MM-DD). Por defecto, fin del ejercicio.")
+    nivel: int = Field(8, description="Dígitos del código: 1 grupo, 2 subgrupo, 3-5 cuenta, 8 subcuenta.")
+    cuenta_desde: str = Field("", pattern=r"^\d{0,12}$", description="Primera cuenta del rango (código o prefijo).")
+    cuenta_hasta: str = Field("", pattern=r"^\d{0,12}$", description="Última cuenta del rango (código o prefijo).")
+    prefijo: str = Field("", pattern=r"^\d{0,12}$", description="Atajo: solo cuentas que empiezan por este código.")
     solo_contabilizados: bool = True
     limite: int = Field(100, ge=1, le=300, description="Máximo de filas devueltas (los totales son siempre completos).")
+
+    @model_validator(mode="after")
+    def _validar(self):
+        if self.nivel not in (1, 2, 3, 4, 5, 8):
+            raise ValueError("«nivel» debe ser 1, 2, 3, 4, 5 u 8.")
+        if self.desde and self.hasta and self.desde > self.hasta:
+            raise ValueError("«desde» es posterior a «hasta».")
+        return self
 
 
 @herramienta(
     "balance_sumas_saldos",
-    descripcion="Balance de sumas y saldos (trial balance) de un ejercicio a la fecha actual de los apuntes: "
-                "Debe, Haber y saldo por subcuenta, con totales.",
+    descripcion="Balance de sumas y saldos de un ejercicio o periodo: por cuenta, saldo anterior, Debe y Haber del "
+                "periodo, acumulados y saldo final deudor o acreedor, con totales y comprobación de cuadre. "
+                "Admite nivel de detalle (grupo, cuenta, subcuenta) y rango de cuentas.",
     argumentos=SumasSaldosArgs, dominio="contabilidad", permisos=PERMISOS,
 )
 def balance_sumas_saldos(p: SumasSaldosArgs, ctx):
     ejercicio = _ejercicio_por_anio(p.ejercicio, ctx.hoy)
-    filas, totales = sumas_y_saldos(ejercicio, p.prefijo, solo_contabilizados=p.solo_contabilizados)
+    desde = p.desde or ejercicio.fecha_inicio
+    hasta = p.hasta or ejercicio.fecha_fin
+    if desde < ejercicio.fecha_inicio or hasta > ejercicio.fecha_fin:
+        raise Aclarar("PERIODO_FUERA_DEL_EJERCICIO",
+                      f"El ejercicio {ejercicio} va del {ejercicio.fecha_inicio:%d/%m/%Y} al {ejercicio.fecha_fin:%d/%m/%Y}.")
+    cuenta_desde = p.cuenta_desde or p.prefijo
+    cuenta_hasta = p.cuenta_hasta or p.prefijo
+    filas, totales, comprobacion = sumas_y_saldos_periodo(
+        ejercicio, desde, hasta, p.nivel, cuenta_desde, cuenta_hasta, solo_contabilizados=p.solo_contabilizados)
     borradores = Apunte.objects.filter(asiento__ejercicio=ejercicio, asiento__estado=Asiento.Estado.BORRADOR)
     if p.prefijo:
         borradores = borradores.filter(cuenta__codigo__startswith=p.prefijo)
     avisos = _avisos_comunes(ejercicio, borradores.count(), p.solo_contabilizados)
     if len(filas) > p.limite:
-        avisos.append(f"Se muestran {p.limite} de {len(filas)} subcuentas; los totales incluyen todas.")
+        avisos.append(f"Se muestran {p.limite} de {len(filas)} cuentas; los totales incluyen todas.")
+    if cuenta_desde or cuenta_hasta:
+        avisos.append("Con un rango de cuentas los totales solo incluyen esas cuentas y no tienen por qué cuadrar.")
+    params = {"ejercicio": ejercicio.anio, "desde": desde.isoformat(), "hasta": hasta.isoformat(), "nivel": p.nivel,
+              "cuenta_desde": cuenta_desde, "cuenta_hasta": cuenta_hasta, "apertura": "on"}
+    if not p.solo_contabilizados:
+        params["borradores"] = "on"
     return Resultado(
         EstadoLlamada.OK if filas else EstadoLlamada.VACIO,
         datos={
-            "entidad": _entidad(), "moneda": MONEDA_CONTABILIDAD, "ejercicio": ejercicio.anio,
-            "prefijo": p.prefijo or None, "solo_contabilizados": p.solo_contabilizados,
-            "filas": [{"codigo": f["codigo"], "nombre": f["nombre"], **saldo_dict(f["debe"], f["haber"])}
-                      for f in filas[:p.limite]],
+            "entidad": _entidad(), "moneda": _moneda(), "ejercicio": ejercicio.anio,
+            "periodo": {"desde": desde, "hasta": hasta}, "nivel": p.nivel,
+            "solo_contabilizados": p.solo_contabilizados,
+            "filas": [{"codigo": f.codigo, "nombre": f.nombre,
+                       "anterior": saldo_neto(f.anterior),
+                       "periodo": {"debe": importe(f.periodo_debe), "haber": importe(f.periodo_haber)},
+                       "acumulado": {"debe": importe(f.acumulado_debe), "haber": importe(f.acumulado_haber)},
+                       "saldo": saldo_neto(f.saldo)} for f in filas[:p.limite]],
             "totales": {k: importe(v) for k, v in totales.items()},
-            "cuadra": totales["debe"] == totales["haber"],
-            "enlace": f"{reverse('cuadro_cuentas:extractos')}?{urlencode({'ejercicio': ejercicio.anio, 'prefijo': p.prefijo})}",
+            "cuadra": all(comprobacion.values()),
+            "comprobacion": comprobacion,
+            "definicion": "Anterior = saldo antes del periodo (con la apertura). Acumulado = anterior + periodo. "
+                          "Saldo = acumulado Debe - acumulado Haber. Sin el asiento de cierre.",
+            "enlace": f"{reverse('cuadro_cuentas:sumas_saldos')}?{urlencode(params)}",
         },
-        fuente=FUENTE, fecha_datos=consultado_en(), avisos=avisos,
+        fuente=FUENTE, fecha_datos=f"{hasta.isoformat()} (consultado {consultado_en()})", avisos=avisos,
     )
 
 
@@ -280,7 +329,7 @@ def extracto_cuenta(p: ExtractoArgs, ctx):
     return Resultado(
         EstadoLlamada.OK if ext.lineas else EstadoLlamada.VACIO,
         datos={
-            "entidad": _entidad(), "moneda": MONEDA_CONTABILIDAD, "cuenta": cuenta, "ejercicio": ejercicio.anio,
+            "entidad": _entidad(), "moneda": _moneda(), "cuenta": cuenta, "ejercicio": ejercicio.anio,
             "periodo": {"desde": desde, "hasta": hasta},
             "saldo_inicial": saldo_neto(ext.saldo_inicial),
             "total_debe": importe(ext.total_debe), "total_haber": importe(ext.total_haber),
@@ -291,12 +340,98 @@ def extracto_cuenta(p: ExtractoArgs, ctx):
                 "estado_asiento": linea["apunte"].asiento.estado,
                 "subcuenta": linea["apunte"].cuenta.codigo,
                 "concepto": linea["apunte"].concepto or linea["apunte"].asiento.concepto,
-                "documento": linea["apunte"].asiento.referencia_origen or None,
-                "contrapartida": linea["apunte"].contrapartida.codigo if linea["apunte"].contrapartida else None,
+                "apunte": linea["apunte"].orden,
+                "numero": linea["apunte"].asiento.numero_externo or None,
+                "documento": linea["apunte"].asiento.get_tipo_documento_display() if linea["apunte"].asiento.tipo_documento
+                else (linea["apunte"].asiento.referencia_origen or None),
+                "contrapartida": _contrapartida(linea["contrapartida"]),
+                "punteo": linea["apunte"].punteo or "sin puntear",
                 "debe": importe(linea["apunte"].debe), "haber": importe(linea["apunte"].haber),
                 "saldo": importe(linea["saldo"]),
             } for linea in lineas],
             "enlace_extracto": _enlace_extracto(ejercicio, p.cuenta, desde, hasta, p.solo_contabilizados),
         },
         fuente=FUENTE, fecha_datos=f"{hasta.isoformat()} (consultado {consultado_en()})", avisos=avisos,
+    )
+
+
+# --------------------------------------------------------------------------- #
+class DiarioArgs(_Args):
+    ejercicio: int | None = Field(None, ge=2000, le=2100, description="Año del ejercicio. Por defecto, el actual.")
+    desde: date | None = None
+    hasta: date | None = None
+    numero: int | None = Field(None, ge=1, description="Número de asiento.")
+    cuenta: str = Field("", max_length=60, description="Código, prefijo o parte del nombre de una cuenta.")
+    documento: str = Field("", max_length=60, description="Número de factura, recibo o documento.")
+    concepto: str = Field("", max_length=100, description="Texto en el concepto o título.")
+    importe: str = Field("", pattern=r"^$|^\d+([.,]\d{1,2})?$", description="Importe exacto de algún apunte, p. ej. 110.00")
+    estado: str = Field("", pattern=r"^(|borrador|contabilizado|anulado)$")
+    punteo: str = Field("", pattern=r"^(|sin|punteado|revisar|discrepancia|conciliado)$")
+    limite: int = Field(20, ge=1, le=100)
+
+
+@herramienta(
+    "diario_asientos",
+    descripcion="Busca asientos del libro diario por fecha, número, cuenta, documento, concepto, importe, estado o "
+                "punteo. Devuelve cada asiento con su cabecera, totales y apuntes (cuenta, Debe, Haber, contrapartida).",
+    argumentos=DiarioArgs, dominio="contabilidad", permisos=PERMISOS,
+)
+def diario_asientos(p: DiarioArgs, ctx):
+    from cuadro_cuentas.consultas import parse_importe
+
+    ejercicio = _ejercicio_por_anio(p.ejercicio, ctx.hoy)
+    filtros = p.model_dump()
+    filtros["importe"] = parse_importe(p.importe) if p.importe else None
+    asientos = diario(ejercicio, filtros)
+    total = asientos.count()
+    lote = cargar_apuntes(list(asientos[:p.limite]))
+    avisos = [f"Se muestran {len(lote)} de {total} asientos; afina los filtros."] if total > len(lote) else []
+    if any(a.estado == Asiento.Estado.ANULADO for a in lote):
+        avisos.append("Hay asientos anulados en la lista: se conservan pero no suman.")
+    return Resultado(
+        EstadoLlamada.OK if lote else EstadoLlamada.VACIO,
+        datos={
+            "entidad": _entidad(), "moneda": _moneda(), "ejercicio": ejercicio.anio, "total": total,
+            "asientos": [{
+                "asiento": a.numero, "fecha": a.fecha, "numero": a.numero_externo or None, "titulo": a.titulo or None,
+                "concepto": a.concepto, "tipo": a.tipo, "estado": a.estado,
+                "debe": importe(a.total_debe), "haber": importe(a.total_haber),
+                "apuntes": [{"apunte": ap.orden, "cuenta": ap.cuenta.codigo, "titulo": ap.cuenta.nombre,
+                             "concepto": ap.concepto or a.concepto, "debe": importe(ap.debe), "haber": importe(ap.haber),
+                             "contrapartida": _contrapartida(contra), "punteo": ap.punteo or "sin puntear"}
+                            for ap, contra in a.lineas],
+                "enlace": reverse("cuadro_cuentas:asiento", args=[a.id]),
+            } for a in lote],
+            "enlace": f"{reverse('cuadro_cuentas:diario')}?ejercicio={ejercicio.anio}",
+        },
+        fuente=FUENTE, fecha_datos=consultado_en(), avisos=avisos,
+    )
+
+
+# --------------------------------------------------------------------------- #
+class ComprobacionArgs(_Args):
+    ejercicio: int | None = Field(None, ge=2000, le=2100, description="Año del ejercicio. Por defecto, el actual.")
+
+
+@herramienta(
+    "comprobacion_contable",
+    descripcion="Balance de comprobación: controles de integridad del ejercicio (asientos cuadrados, diario = mayor = "
+                "sumas y saldos, numeración, fechas, borradores, reversiones, apertura frente al cierre anterior, "
+                "punteo pendiente y balance de situación cuadrado).",
+    argumentos=ComprobacionArgs, dominio="contabilidad", permisos=PERMISOS,
+)
+def comprobacion_contable(p: ComprobacionArgs, ctx):
+    ejercicio = _ejercicio_por_anio(p.ejercicio, ctx.hoy)
+    controles = integridad.comprobar(ejercicio)
+    return Resultado(
+        datos={
+            "entidad": _entidad(), "ejercicio": ejercicio.anio,
+            "errores": sum(1 for c in controles if c.estado == integridad.ERROR),
+            "avisos": sum(1 for c in controles if c.estado == integridad.AVISO),
+            "controles": [{"control": c.titulo, "estado": c.estado, "resumen": c.resumen,
+                           "detalle": [texto for texto, _ in c.detalle[:10]]} for c in controles],
+            "enlace": f"{reverse('cuadro_cuentas:comprobacion')}?ejercicio={ejercicio.anio}",
+        },
+        fuente="Contabilidad (cuadro_cuentas): balance de comprobación", fecha_datos=consultado_en(),
+        avisos=_avisos_comunes(ejercicio, 0, True),
     )

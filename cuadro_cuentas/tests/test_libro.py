@@ -68,15 +68,36 @@ class LibroDiarioApiTests(TestCase):
         r = self.linea(a["id"], cuenta="60099999", debe="10")
         self.assertEqual(r.status_code, 400)
 
-    def test_contabilizar_y_volver_a_borrador_al_descuadrar(self):
+    def test_contabilizado_no_se_modifica_ni_vuelve_a_borrador(self):
         a = self.nuevo_asiento()
         self.linea(a["id"], cuenta="60000001", debe="100")
         d = self.linea(a["id"], cuenta="40000001", haber="100").json()
         r = self.post(self.url("api_estado", a["id"]), {"estado": "contabilizado"})
         self.assertEqual(r.json()["estado"], "contabilizado")
+        self.assertFalse(r.json()["editable"])
         proveedor = next(x for x in d["apuntes"] if x["cuenta"] == "40000001")
-        d = self.patch(self.url("api_apunte", proveedor["id"]), {"haber": "99"}).json()
-        self.assertEqual(d["estado"], "borrador")
+        r = self.patch(self.url("api_apunte", proveedor["id"]), {"haber": "99"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Revertir", r.json()["error"])
+        r = self.post(self.url("api_estado", a["id"]), {"estado": "borrador"})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.client.delete(self.url("api_asiento", a["id"])).status_code, 400)
+        asiento = Asiento.objects.get(pk=a["id"])
+        self.assertEqual(asiento.estado, "contabilizado")
+        self.assertEqual(asiento.totales(), (D("100"), D("100")))
+        # cambiar de hoja sí se permite: no toca la contabilidad
+        self.assertEqual(self.patch(self.url("api_asiento", a["id"]), {"hoja": ""}).status_code, 200)
+
+    def test_apuntes_numerados_y_duplicar_linea(self):
+        a = self.nuevo_asiento()
+        self.linea(a["id"], cuenta="40000001", haber="100")
+        d = self.linea(a["id"], cuenta="60000001", debe="100").json()
+        # primero el Debe y después el Haber, numerados 1, 2...
+        self.assertEqual([(x["numero"], x["cuenta"]) for x in d["apuntes"]],
+                         [(1, "60000001"), (2, "40000001")])
+        d = self.linea(a["id"], duplicar=d["apuntes"][0]["id"]).json()
+        self.assertEqual([x["numero"] for x in d["apuntes"]], [1, 2, 3])
+        self.assertEqual(d["debe"], "200.00")
 
     def test_no_se_contabiliza_descuadrado(self):
         a = self.nuevo_asiento()

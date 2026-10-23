@@ -1,17 +1,8 @@
+{% extends "cuadro_cuentas/_base.html" %}
 {% load static %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hojas</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
-</head>
-<body>
+{% block titulo %}Hojas{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
     <h1>Hojas</h1>
   </header>
 
@@ -59,5 +50,4 @@
       </form>
     </aside>
   </main>
-</body>
-</html>
+{% endblock %}

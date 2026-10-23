@@ -1,0 +1,30 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% block titulo %}Balance de comprobación {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
+  <header class="barra"><h1>Balance de comprobación</h1>
+    <form method="get" class="filtros">{% include "cuadro_cuentas/_filtro_ejercicio.html" %}</form>
+  </header>
+  <main class="consulta">
+    {% if not ejercicio %}<p class="vacio">Todavía no hay ejercicios.</p>{% else %}
+    <section class="tarjeta-consulta">
+      <div class="cab-extracto">
+        <div><h2>Controles del ejercicio {{ ejercicio.anio }}</h2>
+          <p class="panel-sub">Se calculan con todos los asientos guardados. No se corrige nada automáticamente: cada
+            diferencia se muestra con un enlace a lo que la produce.</p></div>
+        <dl class="cifras">
+          <div class="{% if errores %}mal{% else %}bien{% endif %}"><dt>Errores</dt><dd>{{ errores }}</dd></div>
+          <div><dt>Avisos</dt><dd>{{ avisos }}</dd></div>
+        </dl>
+      </div>
+      {% for c in controles %}
+        <div class="control c-{{ c.estado }}">
+          <span class="icono" aria-hidden="true">{% if c.estado == "ok" %}✓{% elif c.estado == "aviso" %}!{% else %}×{% endif %}</span>
+          <h3>{{ c.titulo }}</h3>
+          <span class="resumen">{{ c.resumen }}</span>
+          {% if c.detalle %}<ul>{% for texto, url in c.detalle %}<li>{% if url %}<a href="{{ url }}">{{ texto }}</a>{% else %}{{ texto }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+        </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </main>
+{% endblock %}

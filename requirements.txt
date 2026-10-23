@@ -26,6 +26,9 @@ pydantic>=2.7                # esquemas de la salida del modelo y de la API
 openai>=1.40                 # cliente para OpenAI o servidores compatibles (Ollama, vLLM...)
 python-decouple>=3.8         # lee las claves del fichero .env (ver .env.example)
 
+# Exportar tablas de contabilidad a Excel (cuadro_cuentas)
+openpyxl>=3.1
+
 # Lectura de .xlsx (analisis). Más tolerante que openpyxl con exports defectuosos
 python-calamine>=0.5
 

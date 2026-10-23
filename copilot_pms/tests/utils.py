@@ -22,7 +22,7 @@ def ctx(**kw) -> Contexto:
 
 def asiento(fecha, concepto, apuntes, tipo=Asiento.Tipo.OPERACION, contabilizado=True):
     a = Asiento.objects.create(fecha=fecha, concepto=concepto, tipo=tipo)
-    for orden, (cuenta, debe, haber) in enumerate(apuntes):
+    for orden, (cuenta, debe, haber) in enumerate(apuntes, 1):
         Apunte.objects.create(asiento=a, orden=orden, cuenta=cuenta,
                               debe=Decimal(debe), haber=Decimal(haber))
     if contabilizado:

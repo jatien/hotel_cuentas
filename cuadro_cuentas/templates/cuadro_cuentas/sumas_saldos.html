@@ -1,0 +1,85 @@
+{% extends "cuadro_cuentas/_base.html" %}
+{% load cuadro_cuentas_tags %}
+{% block titulo %}Sumas y saldos {{ ejercicio|default:"" }}{% endblock %}
+{% block cuerpo %}
+  <header class="barra"><h1>Balance de sumas y saldos</h1></header>
+  <main class="consulta">
+    <form method="get" class="filtros-consulta">
+      <input type="hidden" name="enviado" value="1">
+      {% include "cuadro_cuentas/_filtro_ejercicio.html" %}
+      <label>Desde {{ form.desde }}</label>
+      <label>Hasta {{ form.hasta }}</label>
+      <label>Nivel {{ form.nivel }}</label>
+      <label>De la cuenta {{ form.cuenta_desde }}</label>
+      <label>A la cuenta {{ form.cuenta_hasta }}</label>
+      <label class="check">{{ form.sin_movimiento }} {{ form.sin_movimiento.label }}</label>
+      <label class="check">{{ form.apertura }} {{ form.apertura.label }}</label>
+      <label class="check">{{ form.cierre }} {{ form.cierre.label }}</label>
+      <label class="check">{{ form.borradores }} {{ form.borradores.label }}</label>
+      <button class="btn-primario">Calcular</button>
+      {% if form.errors %}<p class="alerta">{% for campo, errores in form.errors.items %}{{ errores|join:" " }} {% endfor %}</p>{% endif %}
+    </form>
+
+    {% if not ejercicio %}<p class="vacio">Todavía no hay ejercicios.</p>
+    {% elif filas is not None %}
+    <section class="tarjeta-consulta">
+      <div class="cab-extracto">
+        <div>
+          <h2>Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}</h2>
+          <p class="panel-sub">{% if solo_contabilizados %}Solo asientos contabilizados{% else %}Incluye borradores: no es un balance oficial{% endif %}.
+            «Anterior» es el saldo antes del periodo (con la apertura); «Acumulado» = anterior + periodo.
+            Las cuentas de nivel superior suman sus subcuentas una sola vez.</p>
+        </div>
+        <dl class="cifras">
+          <div class="{% if comprobacion.periodo %}bien{% else %}mal{% endif %}"><dt>Periodo Debe = Haber</dt><dd>{% if comprobacion.periodo %}Sí{% else %}No{% endif %}</dd></div>
+          <div class="{% if comprobacion.acumulado %}bien{% else %}mal{% endif %}"><dt>Acumulado Debe = Haber</dt><dd>{% if comprobacion.acumulado %}Sí{% else %}No{% endif %}</dd></div>
+          <div class="{% if comprobacion.saldos %}bien{% else %}mal{% endif %}"><dt>Saldos deudores = acreedores</dt><dd>{% if comprobacion.saldos %}Sí{% else %}No{% endif %}</dd></div>
+        </dl>
+      </div>
+      {% include "cuadro_cuentas/_exportar.html" %}
+      <div class="desplaza">
+      <table class="tabla-datos" data-tabla="sumas-saldos">
+        <thead><tr>
+          <th data-col="codigo">Código</th>
+          <th data-col="titulo">Título</th>
+          <th data-col="ant_d" data-tipo="num" class="num">Debe anterior</th>
+          <th data-col="ant_h" data-tipo="num" class="num">Haber anterior</th>
+          <th data-col="per_d" data-tipo="num" class="num">Debe periodo</th>
+          <th data-col="per_h" data-tipo="num" class="num">Haber periodo</th>
+          <th data-col="acu_d" data-tipo="num" class="num">Debe acumulado</th>
+          <th data-col="acu_h" data-tipo="num" class="num">Haber acumulado</th>
+          <th data-col="saldo_d" data-tipo="num" class="num">Saldo deudor</th>
+          <th data-col="saldo_h" data-tipo="num" class="num">Saldo acreedor</th>
+        </tr></thead>
+        <tbody>
+          {% for f in filas %}
+            <tr>
+              <td class="cod"><a href="{% url 'cuadro_cuentas:extractos' %}?ejercicio={{ ejercicio.anio }}&cuenta={{ f.codigo }}&desde={{ desde|date:'Y-m-d' }}&hasta={{ hasta|date:'Y-m-d' }}{% if solo_contabilizados %}&solo_contabilizados=1{% endif %}" title="Ver los apuntes en el mayor">{{ f.codigo }}</a></td>
+              <td>{{ f.nombre }}</td>
+              <td class="num">{{ f.anterior_debe|importe_vacio }}</td>
+              <td class="num">{{ f.anterior_haber|importe_vacio }}</td>
+              <td class="num d">{{ f.periodo_debe|importe_vacio }}</td>
+              <td class="num h">{{ f.periodo_haber|importe_vacio }}</td>
+              <td class="num">{{ f.acumulado_debe|importe_vacio }}</td>
+              <td class="num">{{ f.acumulado_haber|importe_vacio }}</td>
+              <td class="num saldo">{{ f.saldo_deudor|importe_vacio }}</td>
+              <td class="num saldo">{{ f.saldo_acreedor|importe_vacio }}</td>
+            </tr>
+          {% empty %}
+            <tr class="sin-datos"><td colspan="10" class="vacio">Sin movimientos con estos filtros.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if filas %}
+        <tfoot><tr><td colspan="2">Totales</td>
+          <td class="num">{{ totales.anterior_debe|importe }}</td><td class="num">{{ totales.anterior_haber|importe }}</td>
+          <td class="num">{{ totales.periodo_debe|importe }}</td><td class="num">{{ totales.periodo_haber|importe }}</td>
+          <td class="num">{{ totales.acumulado_debe|importe }}</td><td class="num">{{ totales.acumulado_haber|importe }}</td>
+          <td class="num">{{ totales.saldo_deudor|importe }}</td><td class="num">{{ totales.saldo_acreedor|importe }}</td></tr></tfoot>
+        {% endif %}
+      </table>
+      </div>
+      {% if form.cleaned_data.cuenta_desde or form.cleaned_data.cuenta_hasta %}<p class="nota">Con un rango de cuentas los totales no tienen por qué cuadrar: solo incluyen esas cuentas.</p>{% endif %}
+    </section>
+    {% endif %}
+  </main>
+{% endblock %}

@@ -1,4 +1,4 @@
-{% with c=nodo.cuenta %}
+{% load cuadro_cuentas_tags %}{% with c=nodo.cuenta %}
 {% if nodo.hijos %}
   <details class="nodo nivel-{{ c.codigo|length }}" {% if c.codigo|length == 1 %}open{% endif %}
            data-texto="{{ c.codigo }} {{ c.nombre }} {{ c.nif }}">

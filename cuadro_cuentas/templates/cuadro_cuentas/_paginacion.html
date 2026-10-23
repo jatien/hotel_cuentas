@@ -1,0 +1,7 @@
+{% if pagina.paginator.num_pages > 1 %}
+<nav class="paginacion" aria-label="Páginas">
+  {% if pagina.has_previous %}<a href="?{{ consulta }}&pagina=1">« Primera</a><a href="?{{ consulta }}&pagina={{ pagina.previous_page_number }}">‹ Anterior</a>{% endif %}
+  <span class="actual">Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+  {% if pagina.has_next %}<a href="?{{ consulta }}&pagina={{ pagina.next_page_number }}">Siguiente ›</a><a href="?{{ consulta }}&pagina={{ pagina.paginator.num_pages }}">Última »</a>{% endif %}
+</nav>
+{% endif %}

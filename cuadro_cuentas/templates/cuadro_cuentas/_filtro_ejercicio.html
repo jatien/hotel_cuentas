@@ -1,0 +1,6 @@
+<label>Ejercicio
+  <select name="ejercicio" onchange="this.form.submit()">
+    {% for e in ejercicios %}<option value="{{ e.anio }}" {% if e == ejercicio %}selected{% endif %}>{{ e.anio }}{% if e.cerrado %} (cerrado){% endif %}</option>
+    {% empty %}<option value="">Sin ejercicios</option>{% endfor %}
+  </select>
+</label>

@@ -77,9 +77,50 @@ class OtrasConsultasTests(ContabilidadBase):
     def test_sumas_y_saldos_cuadra(self):
         r = self.ejecutar("balance_sumas_saldos", ejercicio=2026)
         self.assertTrue(r.datos["cuadra"])
-        self.assertEqual(r.datos["totales"]["debe"], "1500.00")
+        self.assertEqual(r.datos["totales"]["periodo_debe"], "500.00")      # la apertura va en «anterior»
+        self.assertEqual(r.datos["totales"]["anterior_debe"], "1000.00")
+        self.assertEqual(r.datos["totales"]["acumulado_debe"], "1500.00")
         codigos = [f["codigo"] for f in r.datos["filas"]]
         self.assertEqual(codigos, ["40000001", "57200001", "70500001"])
+        banco = r.datos["filas"][1]
+        self.assertEqual((banco["anterior"]["neto"], banco["periodo"]["debe"], banco["saldo"]["neto"]),
+                         ("1000.00", "500.00", "1500.00"))
+        self.assertIn("/contabilidad/balances/sumas-y-saldos/?", r.datos["enlace"])
+
+    def test_sumas_y_saldos_por_nivel_y_periodo(self):
+        r = self.ejecutar("balance_sumas_saldos", ejercicio=2026, nivel=1, desde="2026-04-01")
+        self.assertEqual([f["codigo"] for f in r.datos["filas"]], ["4", "5", "7"])
+        banco = r.datos["filas"][1]
+        self.assertEqual((banco["anterior"]["neto"], banco["periodo"]["debe"]), ("1500.00", "0.00"))
+        r = self.ejecutar("balance_sumas_saldos", ejercicio=2026, nivel=6)
+        self.assertEqual(r.estado, EstadoLlamada.INVALIDO)
+
+    def test_anulados_no_suman(self):
+        from cuadro_cuentas.models import Asiento
+
+        venta = Asiento.objects.get(concepto="Venta habitaciones")
+        venta.anular("Prueba")
+        r = self.ejecutar("saldo_cuenta", cuenta="572", hasta="2026-12-31", solo_contabilizados=False)
+        self.assertEqual(r.datos["saldo_final"]["neto"], "800.00")      # 1000 - 200 del borrador
+
+    def test_diario_asientos(self):
+        r = self.ejecutar("diario_asientos", ejercicio=2026, cuenta="572")
+        self.assertEqual(r.datos["total"], 3)
+        venta = r.datos["asientos"][1]
+        self.assertEqual(venta["concepto"], "Venta habitaciones")
+        self.assertEqual(venta["apuntes"][0]["contrapartida"]["codigo"], "70500001")
+        self.assertIn("/contabilidad/asientos/", venta["enlace"])
+        r = self.ejecutar("diario_asientos", ejercicio=2026, importe="500")
+        self.assertEqual([a["concepto"] for a in r.datos["asientos"]], ["Venta habitaciones"])
+        r = self.ejecutar("diario_asientos", ejercicio=2026, estado="nada")
+        self.assertEqual(r.estado, EstadoLlamada.INVALIDO)
+
+    def test_comprobacion_contable(self):
+        r = self.ejecutar("comprobacion_contable", ejercicio=2026)
+        self.assertEqual(r.estado, EstadoLlamada.OK)
+        self.assertEqual(r.datos["errores"], 0)
+        estados = {c["control"]: c["estado"] for c in r.datos["controles"]}
+        self.assertEqual(estados["Asientos en borrador"], "aviso")
 
     def test_extracto_con_limite(self):
         r = self.ejecutar("extracto_cuenta", cuenta="572", hasta="2026-12-31", limite=1)
@@ -87,6 +128,8 @@ class OtrasConsultasTests(ContabilidadBase):
         self.assertEqual(r.datos["movimientos"][0]["concepto"], "Venta habitaciones")
         self.assertEqual(r.datos["saldo_final"]["neto"], "1500.00")
         self.assertTrue(any("últimos 1 de 2" in a for a in r.avisos))
+        mov = r.datos["movimientos"][0]
+        self.assertEqual((mov["apunte"], mov["punteo"], mov["contrapartida"]["codigo"]), (1, "sin puntear", "70500001"))
 
     def test_cuentas_anuales_pyg(self):
         r = self.ejecutar("cuentas_anuales", ejercicio=2026, estado="pyg", detalle=0)

@@ -1,26 +1,22 @@
-{% load static %}
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cuadro de cuentas</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
-  <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
+{% extends "cuadro_cuentas/_base.html" %}
+{% load static cuadro_cuentas_tags %}
+{% block titulo %}Cuadro de cuentas{% endblock %}
+{% block head %}
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/cuentas.css' %}">
-</head>
-<body>
+{% endblock %}
+{% block cuerpo %}
   <header class="barra">
-    {% include "cuadro_cuentas/_nav.html" %}
-    <h1>Cuadro de cuentas</h1>
+    <h1>Cuentas contables</h1>
   </header>
 
   <main class="libro">
     <section class="arbol" aria-label="Plan de cuentas">
       <input type="search" id="buscador" class="buscador" placeholder="Buscar por código, nombre o NIF" aria-label="Buscar cuenta">
+      <div class="fila cab-arbol" aria-hidden="true">
+        <span></span><span>Código</span><span>Título</span><span class="col-naturaleza">Naturaleza</span>
+        <span class="num">Saldo deudor</span><span class="num">Saldo acreedor</span><span></span>
+      </div>
+      <p class="nota" style="margin:.2rem .75rem .5rem">Saldos del ejercicio {{ ejercicio|default:"—" }} (contabilizados, sin cierre). Las cuentas agrupadoras suman las que contienen.</p>
       <div id="arbol">
         {% for nodo in arbol %}{% include "cuadro_cuentas/_nodo.html" %}{% endfor %}
       </div>
@@ -90,5 +86,4 @@
 
   {{ tipos|json_script:"datos-tipos" }}
   <script src="{% static 'cuadro_cuentas/cuentas.js' %}"></script>
-</body>
-</html>
+{% endblock %}
