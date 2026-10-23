@@ -58,7 +58,7 @@ def ocr_status() -> str:
     except Exception as error:
         tried = command or "tesseract (buscado en el PATH)"
         return (f"OCR: NO LISTO - Tesseract no se encuentra ({type(error).__name__}); ruta probada: {tried}\n"
-                "      Define TESSERACT_CMD en settings.py con la ruta completa a tesseract.exe")
+                "      Define TESSERACT_CMD en el .env con la ruta completa a tesseract.exe")
     if engine.ocr_language() not in languages:
         return (f"OCR: NO LISTO - Tesseract {version} funciona pero falta el idioma '{engine.ocr_language()}' "
                 f"(instalados: {', '.join(languages)}). Reinstala marcando Spanish en los datos de idioma.")

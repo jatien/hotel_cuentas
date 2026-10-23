@@ -2,7 +2,7 @@
 Configuración de copilot_pms.
 
 Se lee de settings.COPILOT_PMS (un dict) con estos valores por defecto; en
-mysite/settings.py los valores sensibles vienen del .env. Mismo patrón que
+mysite/settings/base.py los valores sensibles vienen del .env. Mismo patrón que
 invoice_agent/conf.py.
 """
 
