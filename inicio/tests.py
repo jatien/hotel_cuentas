@@ -7,7 +7,7 @@ from django.urls import reverse
 from copilot_pms.models import EstadoLlamada
 from copilot_pms.tools.base import Contexto, ejecutar
 from inicio.modulos import MODULOS, por_clave
-from inicio.views import flechas_rueda, lineas_rueda
+from inicio.views import ELIPSE, posicion
 
 
 class RegistroModulosTests(TestCase):
@@ -27,13 +27,16 @@ class RegistroModulosTests(TestCase):
 
 
 class GeometriaTests(TestCase):
-    def test_dos_arcos_por_tramo(self):
-        lineas = lineas_rueda(4)
-        self.assertEqual(len(lineas), 4)
-        self.assertTrue(all(len(t) == 2 and t[0].startswith("M ") for t in lineas))
+    def test_ovalo_inclinado_hacia_la_derecha(self):
+        derecha, izquierda = posicion(90), posicion(270)
+        self.assertLess(derecha[1], izquierda[1])          # el lado derecho queda más alto
+        self.assertGreater(abs(derecha[0]), abs(posicion(0)[1]))  # más ancho que alto
 
-    def test_una_flecha_por_tramo(self):
-        self.assertEqual(len(flechas_rueda(4)), 4)
+    def test_imagenes_dentro_del_lienzo(self):
+        for angulo in range(0, 360, 15):
+            x, y = posicion(angulo)
+            self.assertLess(abs(x) + 26, ELIPSE["ancho"] / 2)
+            self.assertLess(abs(y) + 26, ELIPSE["alto"] / 2)
 
 
 class PaginaInicioTests(TestCase):
@@ -48,6 +51,8 @@ class PaginaInicioTests(TestCase):
         self.assertIn("csrfmiddlewaretoken", html)
         self.assertIn('id="modulos-datos"', html)
         self.assertEqual(html.count('class="rueda-lineas"'), 1)
+        self.assertNotIn("rueda-flechas", html)               # las flechas del boceto eran solo guía
+        self.assertNotIn('class="pista"', html)               # sin texto bajo la rueda
 
     def test_vista_clasica(self):
         self.assertEqual(self.client.get(reverse("home_clasico")).status_code, 200)

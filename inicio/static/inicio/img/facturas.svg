@@ -1,17 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none" stroke="#1C2733" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Gestión de facturas: pantalla con facturas sobre la mesa -->
-  <ellipse cx="80" cy="146" rx="60" ry="5" fill="#1C2733" opacity=".08" stroke="none"/>
-  <rect x="30" y="22" width="84" height="58" rx="6" fill="#FFFFFF"/>
-  <rect x="38" y="30" width="68" height="42" rx="3" fill="#EEF2FC" stroke="#2D4FC4"/>
-  <path d="M46 42 H72" stroke="#2D4FC4"/><path d="M46 51 H88" stroke="#2D4FC4" opacity=".5"/><path d="M46 60 H80" stroke="#2D4FC4" opacity=".5"/>
-  <path d="M72 80 V96"/><path d="M58 96 H86"/>
-  <path d="M18 104 H142"/><path d="M26 104 V144"/><path d="M134 104 V144"/>
-  <g transform="translate(6 -22)">
-  <path d="M96 62 L132 56 L140 112 L104 118 Z" fill="#FFFFFF"/>
-  <path d="M90 70 L126 64 L134 120 L98 126 Z" fill="#FFFFFF"/>
+  <!-- Gestión de facturas: ordenador que imprime una factura por la ranura de abajo -->
+  <ellipse cx="86" cy="150" rx="46" ry="4" fill="#1C2733" opacity=".08" stroke="none"/>
+
+  <!-- Pantalla -->
+  <rect x="38" y="10" width="84" height="54" rx="6" fill="#FFFFFF"/>
+  <rect x="46" y="18" width="68" height="38" rx="3" fill="#EEF2FC" stroke="#2D4FC4"/>
+  <path d="M54 29 H80" stroke="#2D4FC4"/>
+  <path d="M54 38 H98" stroke="#2D4FC4" opacity=".5"/>
+  <path d="M54 46 H90" stroke="#2D4FC4" opacity=".5"/>
+  <path d="M80 64 V74"/>
+
+  <!-- Unidad inferior con la ranura -->
+  <rect x="22" y="74" width="116" height="30" rx="5" fill="#FFFFFF"/>
+  <circle cx="32" cy="84" r="2.2" fill="#2D4FC4" stroke="none"/>
+
+  <!-- Folio saliendo de la ranura, ladeado y curvado hacia la derecha -->
+  <path d="M70 98 L110 98 C114 112 122 124 132 136 Q124 141 114 141 L92 145 C86 130 78 114 70 98 Z" fill="#FFFFFF"/>
+  <path d="M114 141 Q120 136 132 136" stroke-width="2.4"/>
   <g stroke="#2D4FC4" stroke-width="2.6">
-    <path d="M99 80 L117 77"/><path d="M101 90 L124 86"/><path d="M102 99 L125 95"/>
+    <path d="M79 108 L100 108"/>
+    <path d="M83 116 L109 116" opacity=".6"/>
+    <path d="M87 124 L115 124" opacity=".6"/>
   </g>
-  <path d="M106 112 L127 108" stroke-width="3.4"/>
-  </g>
+  <path d="M93 134 L113 132" stroke-width="3.2"/>
+
+  <!-- Ranura (por encima del folio para que parezca que sale de dentro) -->
+  <rect x="64" y="94" width="52" height="6" rx="3" fill="#1C2733" stroke="none"/>
 </svg>

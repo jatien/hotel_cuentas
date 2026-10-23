@@ -12,31 +12,26 @@
 <body>
   <main class="escena">
     <div class="rueda" id="rueda" tabindex="0" role="group"
-         aria-label="Menú principal. Arrastra o usa las flechas para girar la rueda.">
+         aria-label="Menú principal. Arrastra o usa las flechas del teclado para girar la rueda."
+         data-rx="{{ elipse.rx }}" data-ry="{{ elipse.ry }}" data-inclinacion="{{ elipse.inclinacion }}"
+         data-ancho="{{ elipse.ancho }}" data-alto="{{ elipse.alto }}">
 
-      {# Lo que gira: las líneas dobles que unen las imágenes y las propias imágenes #}
-      <div class="rueda-giro" id="rueda-giro">
-        <svg class="rueda-lineas" viewBox="-100 -100 200 200" aria-hidden="true">
-          {% for r in rueda %}{% for d in r.lineas %}<path d="{{ d }}"/>{% endfor %}{% endfor %}
-        </svg>
+      {# Las líneas dobles entre ramas las dibuja rueda.js siguiendo la elipse #}
+      <svg class="rueda-lineas" id="rueda-lineas"
+           viewBox="-{% widthratio elipse.ancho 2 1 %} -{% widthratio elipse.alto 2 1 %} {{ elipse.ancho }} {{ elipse.alto }}"
+           aria-hidden="true"></svg>
 
-        {% for r in rueda %}{% with m=r.modulo %}
-        <a class="modulo{% if not m.disponible %} modulo-futuro{% endif %}"
-           href="{% if m.secciones.0.url %}{{ m.secciones.0.url }}{% else %}#{% endif %}"
-           data-indice="{{ forloop.counter0 }}" data-clave="{{ m.clave }}"
-           style="--angulo: {{ r.angulo|stringformat:'g' }}deg"
-           aria-label="{{ m.nombre }}{% if not m.disponible %} (próximamente){% endif %}">
-          <span class="modulo-cara">
-            <img src="{% static m.imagen %}" alt="" draggable="false" width="160" height="160">
-          </span>
-        </a>
-        {% endwith %}{% endfor %}
-      </div>
-
-      {# Lo que no gira: flechas de sentido, nombre de la rama de arriba y el chat #}
-      <svg class="rueda-flechas" viewBox="-100 -100 200 200" aria-hidden="true">
-        {% for d in flechas %}<path d="{{ d }}"/>{% endfor %}
-      </svg>
+      {% for r in rueda %}{% with m=r.modulo %}
+      <a class="modulo{% if not m.disponible %} modulo-futuro{% endif %}"
+         href="{% if m.secciones.0.url %}{{ m.secciones.0.url }}{% else %}#{% endif %}"
+         data-indice="{{ forloop.counter0 }}" data-clave="{{ m.clave }}"
+         style="left: {{ r.x|stringformat:'g' }}%; top: {{ r.y|stringformat:'g' }}%"
+         aria-label="{{ m.nombre }}{% if not m.disponible %} (próximamente){% endif %}">
+        <span class="modulo-cara">
+          <img src="{% static m.imagen %}" alt="" draggable="false" width="160" height="160">
+        </span>
+      </a>
+      {% endwith %}{% endfor %}
 
       <p class="rueda-nombre" id="rueda-nombre" aria-live="polite">{{ modulos.0.nombre }}</p>
 
@@ -49,10 +44,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
         </button>
       </form>
-    </div>
 
-    <p class="pista">Arrastra para girar · clic para traer al frente</p>
-    <p class="clasico"><a href="{% url 'home_clasico' %}">Vista clásica</a></p>
+      {# Asa invisible que gira con el arrastre; la rueda lee su rotación #}
+      <div class="rueda-asa" id="rueda-asa" aria-hidden="true"></div>
+    </div>
   </main>
 
   {{ modulos_json|json_script:"modulos-datos" }}
