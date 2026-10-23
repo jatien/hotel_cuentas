@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Plantillas de gráficos · PMS Copilot{% endblock %}
+
+{% block extra_head %}
+<style>
+  .galeria { max-width: 1100px; }
+  .sub { color: var(--tinta-suave); margin: 0 0 1.2rem; }
+  .plantillas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .8rem; margin-bottom: 1.2rem; }
+  .plantilla { background: var(--tarjeta); border-radius: 14px; padding: .8rem 1rem; text-decoration: none; color: inherit;
+               border: 2px solid transparent; box-shadow: 0 1px 2px rgb(28 39 51 / .06); }
+  .plantilla:hover, .plantilla.activa { border-color: var(--acento); background: var(--acento-tinte); }
+  .plantilla strong { display: block; color: var(--acento); margin-bottom: .2rem; }
+  .plantilla span { font-size: .85rem; color: var(--tinta-suave); }
+  form.opciones { display: flex; flex-wrap: wrap; gap: .7rem 1rem; align-items: end; background: var(--tarjeta);
+                  border-radius: 14px; padding: 1rem; margin-bottom: 1rem; }
+  form.opciones label { display: flex; flex-direction: column; font-size: .82rem; color: var(--tinta-suave); gap: .2rem; }
+  form.opciones input, form.opciones select { font: inherit; padding: .35rem .5rem; border: 1px solid #C9D2DE; border-radius: 8px; }
+  form.opciones button { font: inherit; font-weight: 600; padding: .5rem 1rem; border: 0; border-radius: 10px;
+                         background: var(--acento); color: #fff; cursor: pointer; }
+  .lienzo { position: relative; height: 420px; background: var(--tarjeta); border-radius: 14px; padding: .8rem; }
+  .aviso { color: var(--aviso); margin: .4rem 0; }
+  .pie { font-size: .85rem; color: var(--tinta-suave); margin-top: .6rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="galeria">
+  <h1>Plantillas de gráficos</h1>
+  <p class="sub">Gráficos con los datos de la aplicación, sin IA. Para cambiarlos con palabras («compáralo con 2025»,
+    «solo bar y comedor»), pídelos en el <a href="{% url 'copilot_pms:index' %}">copilot</a>.</p>
+
+  <div class="plantillas">
+    {% for p in plantillas %}
+      <a class="plantilla{% if args.plantilla == p.clave %} activa{% endif %}"
+         href="?plantilla={{ p.clave }}&anio={{ args.anio|default:anio_actual }}">
+        <strong>{{ p.titulo }}</strong><span>{{ p.descripcion }}</span>
+      </a>
+    {% empty %}
+      <p>No tienes permiso para ninguna plantilla.</p>
+    {% endfor %}
+  </div>
+
+  {% if args.plantilla %}
+    <form class="opciones" method="get">
+      <input type="hidden" name="plantilla" value="{{ args.plantilla }}">
+      <label>Año <input type="number" name="anio" min="2000" max="2100" value="{{ args.anio|default:anio_actual }}"></label>
+      <label>Tipo
+        <select name="tipo">
+          <option value="">Por defecto</option>
+          {% for t, etiqueta in tipos %}<option value="{{ t }}" {% if args.tipo == t %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Series (separadas por comas) <input name="series" value="{{ request.GET.series }}" placeholder="Todas"></label>
+      <label>Comparar con años <input name="comparar_con" value="{{ request.GET.comparar_con }}" placeholder="p. ej. 2025"></label>
+      <label>Desde mes <input type="number" name="desde_mes" min="1" max="12" value="{{ request.GET.desde_mes }}"></label>
+      <label>Hasta mes <input type="number" name="hasta_mes" min="1" max="12" value="{{ request.GET.hasta_mes }}"></label>
+      <label>Solo un mes <input type="number" name="mes" min="1" max="12" value="{{ request.GET.mes }}"></label>
+      <label>Cuenta <input name="cuenta" inputmode="numeric" value="{{ request.GET.cuenta }}" placeholder="572"></label>
+      <label><span><input type="checkbox" name="con_iva" value="1" {% if args.con_iva %}checked{% endif %}> Con IVA</span></label>
+      <button type="submit">Dibujar</button>
+    </form>
+
+    {% if grafico %}
+      <div class="lienzo"><canvas data-grafico="grafico-galeria" role="img" aria-label="{{ grafico.titulo }}"></canvas></div>
+      {{ grafico|json_script:"grafico-galeria" }}
+      {% for a in resultado.avisos %}<p class="aviso">{{ a }}</p>{% endfor %}
+      <p class="pie">Fuente: {{ resultado.fuente }}{% if resultado.datos.series_disponibles %} · Series disponibles:
+        {{ resultado.datos.series_disponibles|join:", " }}{% endif %}{% if resultado.datos.enlace %} ·
+        <a href="{{ resultado.datos.enlace }}">Ver en la aplicación</a>{% endif %}</p>
+    {% elif resultado %}
+      <p class="aviso">{{ resultado.mensaje }}</p>
+      {% for e in resultado.datos.errores %}<p class="aviso">{{ e.campo }}: {{ e.error }}</p>{% endfor %}
+    {% endif %}
+  {% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="{% static 'copilot_pms/graficos.js' %}"></script>
+{% endblock %}

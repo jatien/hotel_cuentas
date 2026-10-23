@@ -77,7 +77,10 @@ El panel principal (`/`) enlaza con todas las apps.
   (borradores, ejercicio abierto). Enlaces firmados y auditados a los PDF de facturas.
 - Solo lectura. Cada consulta queda auditada. Disponibilidad de habitaciones y horarios aún no están
   conectados y el copilot lo dice.
+- Gráficos por plantillas (análisis, cajas, nóminas, contabilidad) que se editan con el prompt, y galería
+  sin IA en `/copilot/graficos/`.
 - Configuración en `.env` (`COPILOT_*`). Detalles en [`copilot_pms/README.md`](copilot_pms/README.md).
+- Afinado del modelo con un hotel ficticio + datasets públicos de uso comercial: [`training/copilot/`](training/copilot/README.md).
 
 ### Contabilidad (`cuadro_cuentas`)
 - Cuadro de cuentas del **PGC 2007** (`cargar_plan_cuentas`) y subcuentas de 8 dígitos

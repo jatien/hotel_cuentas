@@ -109,6 +109,12 @@ class NoDisponible(ErrorHerramienta):
     estado = EstadoLlamada.NO_DISPONIBLE
 
 
+class Denegado(ErrorHerramienta):
+    """Sin permiso para una parte concreta de la herramienta (un origen, una plantilla...)."""
+
+    estado = EstadoLlamada.DENEGADO
+
+
 class Aclarar(ErrorHerramienta):
     """Falta un parámetro o es ambiguo: el copilot debe preguntar al usuario."""
 

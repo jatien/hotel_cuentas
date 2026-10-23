@@ -52,8 +52,18 @@ def _entidad() -> str:
 def _historial(conversacion: Conversacion) -> list[dict]:
     """Últimos turnos en texto. Los resultados de herramientas no se reenvían: se vuelven a consultar."""
     n = int(conf.get("TURNOS_HISTORIAL")) * 2
-    mensajes = list(conversacion.mensajes.filter(estado=Mensaje.Estado.OK).order_by("-creado", "-id")[:n])
-    return [{"role": m.rol, "content": m.contenido} for m in reversed(mensajes)]
+    mensajes = list(conversacion.mensajes.filter(estado=Mensaje.Estado.OK)
+                    .prefetch_related("llamadas").order_by("-creado", "-id")[:n])
+    return [{"role": m.rol, "content": m.contenido + _nota_graficos(m)} for m in reversed(mensajes)]
+
+
+def _nota_graficos(mensaje: Mensaje) -> str:
+    """Parámetros de los gráficos mostrados en esa respuesta, para poder editarlos en el turno siguiente."""
+    if mensaje.rol != Mensaje.Rol.COPILOT:
+        return ""
+    params = [json.dumps(ll.resultado.get("datos", {}).get("parametros", {}), ensure_ascii=False)
+              for ll in mensaje.llamadas.all() if ll.herramienta == "grafico" and ll.estado == EstadoLlamada.OK]
+    return "".join(f"\n[Gráfico mostrado: grafico {p}]" for p in params)
 
 
 def _contenido_herramienta(resultado: Resultado) -> str:

@@ -21,7 +21,7 @@ from django.urls import reverse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from copilot_pms.models import EstadoLlamada
-from copilot_pms.tools.base import Aclarar, ErrorHerramienta, NoDisponible, Resultado, herramienta
+from copilot_pms.tools.base import Aclarar, Denegado, NoDisponible, Resultado, herramienta
 from copilot_pms.tools.comun import consultado_en, importe
 
 ORIGEN_IA = "ia"
@@ -38,7 +38,7 @@ def _origenes_permitidos(ctx, origen: str) -> list[str]:
     pedidos = [ORIGEN_IA, ORIGEN_OCR] if origen == "todas" else [origen]
     permitidos = [o for o in pedidos if ctx.tiene_permisos(PERMISO_IA if o == ORIGEN_IA else PERMISO_OCR)]
     if not permitidos:
-        raise ErrorHerramienta("PERMISSION_DENIED", "Sin permiso para consultar facturas.")
+        raise Denegado("PERMISSION_DENIED", "Sin permiso para consultar facturas.")
     return permitidos
 
 
@@ -168,7 +168,7 @@ def _documento_ia(public_id: str, ctx):
     from invoice_agent import conf as conf_ia
 
     if not ctx.tiene_permisos(PERMISO_IA):
-        raise ErrorHerramienta("PERMISSION_DENIED", "Sin permiso para ver facturas con IA.")
+        raise Denegado("PERMISSION_DENIED", "Sin permiso para ver facturas con IA.")
     try:
         public_id = uuid.UUID(public_id)
     except ValueError:
@@ -204,7 +204,7 @@ def _documento_ocr(pk: int, ctx):
     from invoice_data.models import InvoiceDocument
 
     if not ctx.tiene_permisos(PERMISO_OCR):
-        raise ErrorHerramienta("PERMISSION_DENIED", "Sin permiso para ver la gestión de facturas.")
+        raise Denegado("PERMISSION_DENIED", "Sin permiso para ver la gestión de facturas.")
     documento = InvoiceDocument.objects.select_related("datos", "proveedor").filter(pk=pk).first()
     if documento is None:
         raise NoDisponible("DOCUMENTO_NO_ENCONTRADO", "No hay ninguna factura con esa referencia.")

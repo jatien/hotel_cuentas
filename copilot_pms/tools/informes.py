@@ -12,7 +12,6 @@ from django.db.models import Count, Sum
 from django.urls import reverse
 from pydantic import BaseModel, ConfigDict, Field
 
-from copilot_pms.models import EstadoLlamada
 from copilot_pms.tools.base import NoDisponible, Resultado, herramienta
 from copilot_pms.tools.comun import CERO, MONEDA_CONTABILIDAD, consultado_en, importe
 from copilot_pms.tools.contabilidad import _entidad, _ejercicio_por_anio
@@ -162,4 +161,55 @@ def coste_personal(p: CostePersonalArgs, ctx):
             "total": {"coste_empresa": importe(coste), "extras": importe(extras), "total": importe(coste + extras)},
         },
         fuente="Nóminas (nominas)", fecha_datos=consultado_en(), avisos=avisos,
+    )
+
+
+# --------------------------------------------------------------------------- #
+class ResumenBeneficioArgs(_Args):
+    anio: int = Field(ge=2000, le=2100)
+    mes: int | None = Field(None, ge=1, le=12, description="Mes (1-12). Sin mes, el año entero.")
+    con_iva: bool = Field(False, description="False (por defecto) = importes sin IVA, el beneficio neto.")
+    incluir_previsto: bool = Field(False, description="Sumar las noches futuras ya reservadas (previsto).")
+
+
+@herramienta(
+    "resumen_beneficio",
+    descripcion="Análisis de beneficios de gestión (no contable) de un año o un mes: ingresos por origen "
+                "(estancias, extras, tasas, bar, comedor, menús, parking), gastos (proveedores, acreedores, "
+                "personal), beneficio y margen, gastos por departamento y por categoría, y canales de venta.",
+    argumentos=ResumenBeneficioArgs, dominio="informes", permisos=("analisis.view_reserva",),
+)
+def resumen_beneficio(p: ResumenBeneficioArgs, ctx):
+    from analisis.resumen import calcular_resumen
+
+    r = calcular_resumen(p.anio, mes=p.mes, incluir_previsto=p.incluir_previsto, con_iva=p.con_iva, hoy=ctx.hoy)
+    t = r["totales"]
+    if not (t["ingresos"] or t["gastos"]):
+        raise NoDisponible("SIN_DATOS_ANALISIS", f"No hay datos importados en el análisis para {p.anio}.")
+    pct = lambda v: f"{v:.1f}" if v is not None else None  # noqa: E731
+    return Resultado(
+        datos={
+            "moneda": "EUR", "anio": p.anio, "mes": p.mes, "con_iva": p.con_iva,
+            "incluye_previsto": p.incluir_previsto,
+            "definicion": "Beneficio de gestión = ingresos - (proveedores + acreedores + personal). "
+                          "Las inversiones (cuentas 2xx) no restan. No es el resultado contable.",
+            "ingresos": {"total": importe(t["ingresos"]), "estancias": importe(t["estancias"]),
+                         "extras": importe(t["extras"]), "tasas": importe(t["tasas"]), "bar": importe(t["bar"]),
+                         "comedor": importe(t["comedor"]), "menus": importe(t["menus"]),
+                         "parking": importe(t["parking"]), "previsto": importe(t["previsto"])},
+            "gastos": {"total": importe(t["gastos"]), "proveedores": importe(t["proveedores"]),
+                       "acreedores": importe(t["acreedores"]), "personal": importe(t["nominas"])},
+            "beneficio": importe(t["beneficio"]), "margen_pct": pct(t["margen"]),
+            "inversiones": importe(t["inversiones"]),
+            "adr": importe(t["adr"]) if t["adr"] is not None else None,
+            "noches_habitacion": t["noches_hab"],
+            "departamentos": [{"nombre": d["nombre"], "ingresos": importe(d["ingresos"]), "total_gasto": importe(d["total"]),
+                               "pct_gasto": pct(d["pct"])} for d in r["departamentos"]],
+            "categorias": [{"nombre": c["nombre"], "total": importe(c["total"]), "pct": pct(c["pct"])}
+                           for c in r["categorias"][:12]],
+            "canales": [{"nombre": c["nombre"], "ingresos": importe(c["ingresos"]), "pct": pct(c["pct"])}
+                        for c in r["canales"][:10]],
+            "enlace": f"{reverse('analisis:resumen')}?anio={p.anio}" + (f"&mes={p.mes}" if p.mes else ""),
+        },
+        fuente="Análisis de beneficios (analisis)", fecha_datos=consultado_en(), avisos=list(r["avisos"]),
     )

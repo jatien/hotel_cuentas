@@ -20,7 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 from copilot_pms.access import NoAutenticado, contexto_para
 from copilot_pms.agent import PreguntaNoValida, preguntar
 from copilot_pms.models import Conversacion, EstadoLlamada
-from copilot_pms.tools import PENDIENTES, disponibles
+from copilot_pms.tools import PENDIENTES, disponibles, ejecutar
 
 LLAMADAS_OK = {EstadoLlamada.OK, EstadoLlamada.VACIO}
 
@@ -91,6 +91,10 @@ def conversacion(request, ctx, public_id):
                         "fecha_datos": ll.resultado.get("fecha_datos", ""),
                         "avisos": ll.resultado.get("avisos", [])}
                        for ll in m.llamadas.all()]
+        m.graficos = [(f"grafico-{c['llamada'].pk}", c["llamada"].resultado["datos"]["grafico"])
+                      for c in m.consultas
+                      if c["ok"] and c["llamada"].herramienta == "grafico"
+                      and "grafico" in c["llamada"].resultado.get("datos", {})]
     return render(request, "copilot_pms/chat.html", {
         "conversacion": conv, "mensajes": mensajes, "recientes": _conversaciones(ctx)[:15],
         "herramientas": disponibles(ctx), "pendientes": PENDIENTES,
@@ -107,6 +111,36 @@ def preguntar_form(request, ctx):
         return redirect(reverse("copilot_pms:conversacion", args=[conv.public_id]) if conv
                         else reverse("copilot_pms:index"))
     return redirect(reverse("copilot_pms:conversacion", args=[mensaje.conversacion.public_id]) + "#ultimo")
+
+
+@require_GET
+@_con_ctx
+def galeria(request, ctx):
+    """Plantillas de gráficos sin IA: se elige plantilla y parámetros y se dibuja. Usa la misma herramienta
+    (validación y permisos) que el copilot."""
+    from copilot_pms.graficos import PLANTILLAS, TIPOS_ETIQUETAS
+
+    plantillas = [p for p in PLANTILLAS.values() if ctx.tiene_permisos((p.permiso,))]
+    args, resultado = {}, None
+    if request.GET.get("plantilla"):
+        args["plantilla"] = request.GET["plantilla"]
+        for campo in ("anio", "mes", "desde_mes", "hasta_mes"):
+            if request.GET.get(campo, "").isdigit():
+                args[campo] = int(request.GET[campo])
+        for campo in ("tipo", "cuenta", "titulo"):
+            if request.GET.get(campo):
+                args[campo] = request.GET[campo]
+        if request.GET.get("series"):
+            args["series"] = [x.strip() for x in request.GET["series"].split(",") if x.strip()]
+        if request.GET.get("comparar_con"):
+            args["comparar_con"] = [int(x) for x in request.GET["comparar_con"].split(",") if x.strip().isdigit()]
+        args["con_iva"] = request.GET.get("con_iva") == "1"
+        resultado = ejecutar("grafico", args, ctx)
+    return render(request, "copilot_pms/galeria.html", {
+        "plantillas": plantillas, "tipos": TIPOS_ETIQUETAS.items(), "args": args, "resultado": resultado,
+        "grafico": resultado.datos.get("grafico") if resultado and resultado.correcto else None,
+        "anio_actual": ctx.hoy.year,
+    })
 
 
 # --------------------------------------------------------------------------- API
