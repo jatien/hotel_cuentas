@@ -31,7 +31,7 @@ reportlab>=4.0
 opencv-python-headless>=4.9
 numpy>=1.26
 # Detección de facturas con IA (invoice_agent)
-pydantic>=2.7                # esquemas de la salida del modelo y de la API
+pydantic>=2.14.1                # esquemas de la salida del modelo y de la API
 openai>=1.40                 # cliente para OpenAI o servidores compatibles (Ollama, vLLM...)
 python-decouple>=3.8         # lee las claves del fichero .env (ver .env.example)
 
