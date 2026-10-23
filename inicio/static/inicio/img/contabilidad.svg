@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none" stroke="#1C2733" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Contabilidad: libro diario (debe / haber) con calculadora -->
+  <ellipse cx="80" cy="146" rx="56" ry="5" fill="#1C2733" opacity=".08" stroke="none"/>
+  <path d="M34 34 L104 26 L116 132 L46 140 Z" fill="#FFFFFF"/>
+  <path d="M28 40 L98 32 L110 138 L40 146 Z" fill="#FFFFFF"/>
+  <path d="M66 36 L77 142"/>
+  <g stroke="#2D4FC4" stroke-width="2.6">
+    <path d="M40 56 L60 54"/><path d="M76 52 L96 50"/>
+    <path d="M42 72 L58 70"/><path d="M78 68 L98 66"/>
+    <path d="M44 88 L62 86"/><path d="M80 84 L96 82"/>
+    <path d="M45 104 L60 102"/>
+  </g>
+  <rect x="88" y="62" width="46" height="66" rx="6" fill="#EEF2FC" transform="rotate(-10 111 95)"/>
+  <rect x="95" y="69" width="32" height="14" rx="2.5" fill="#FFFFFF" stroke="#2D4FC4" transform="rotate(-10 111 95)"/>
+  <g fill="#2D4FC4" stroke="none" transform="rotate(-10 111 95)">
+    <rect x="96" y="90" width="7" height="7" rx="1.5"/><rect x="107.5" y="90" width="7" height="7" rx="1.5"/><rect x="119" y="90" width="7" height="7" rx="1.5"/>
+    <rect x="96" y="102" width="7" height="7" rx="1.5"/><rect x="107.5" y="102" width="7" height="7" rx="1.5"/><rect x="119" y="102" width="7" height="7" rx="1.5"/>
+    <rect x="96" y="114" width="7" height="7" rx="1.5"/><rect x="107.5" y="114" width="18.5" height="7" rx="1.5"/>
+  </g>
+</svg>
