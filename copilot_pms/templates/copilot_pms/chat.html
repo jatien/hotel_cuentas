@@ -102,11 +102,11 @@
     </div>
 
     <form class="pregunta" method="post" action="{% url 'copilot_pms:preguntar' %}"
-          onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Consultando…';">
+          data-enviando="Consultando…">
       {% csrf_token %}
       {% if conversacion %}<input type="hidden" name="conversacion" value="{{ conversacion.public_id }}">{% endif %}
       <textarea name="pregunta" required maxlength="4000" placeholder="Pregunta algo…" autofocus
-                onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.form.requestSubmit(); }"></textarea>
+                data-enter-envia></textarea>
       <button type="submit">Preguntar</button>
     </form>
     {% if not mensajes %}

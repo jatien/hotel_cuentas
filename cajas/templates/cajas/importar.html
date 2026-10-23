@@ -68,7 +68,7 @@
 </table>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
   const dropzone = document.getElementById('dropzone');
   const inputArchivo = document.getElementById('id_archivo');
   const textoDropzone = document.getElementById('dropzone-texto');

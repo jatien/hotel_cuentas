@@ -35,7 +35,7 @@
 
 {{ datos_por_mes|json_script:"datos-mensuales" }}
 
-<script>
+<script nonce="{{ csp_nonce }}">
   const datosPorMes = JSON.parse(document.getElementById('datos-mensuales').textContent);
   const gridApisPorMes = {};
 

@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'analisis/resumen.css' %}">
+  <script src="{% static 'seguridad/acciones.js' %}" defer></script>
 </head>
 <body>
   <header class="barra">
@@ -16,7 +17,7 @@
     <h1>Revisión de datos</h1>
     <span class="etiqueta-interna">Uso interno</span>
     <form method="get" class="filtros">
-      <select name="anio" aria-label="Año" onchange="this.form.submit()">
+      <select name="anio" aria-label="Año" data-autosubmit>
         {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
       </select>
     </form>

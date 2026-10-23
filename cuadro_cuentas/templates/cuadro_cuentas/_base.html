@@ -12,11 +12,12 @@
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/libro.css' %}">
   <link rel="stylesheet" href="{% static 'cuadro_cuentas/consultas.css' %}">
   {% block head %}{% endblock %}
+  <script src="{% static 'seguridad/acciones.js' %}" defer></script>
 </head>
 <body>
   {% include "cuadro_cuentas/_nav.html" %}
   {% block cuerpo %}{% endblock %}
-  <script>window.CONTA = { preferenciasUrl: "{% url 'cuadro_cuentas:api_preferencias' 'TABLA' %}", punteoUrl: "{% url 'cuadro_cuentas:api_punteo' %}" };</script>
+  <script nonce="{{ csp_nonce }}">window.CONTA = { preferenciasUrl: "{% url 'cuadro_cuentas:api_preferencias' 'TABLA' %}", punteoUrl: "{% url 'cuadro_cuentas:api_punteo' %}" };</script>
   <script src="{% static 'cuadro_cuentas/tablas.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>

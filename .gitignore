@@ -8,6 +8,8 @@
 *.sqlite3
 *.dump
 *.log
+*.log.*
+logs/
 tablas/
 examples/
 __pycache__/

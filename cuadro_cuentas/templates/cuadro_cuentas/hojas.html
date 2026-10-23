@@ -28,7 +28,7 @@
             <div class="hoja-acciones">
               <button class="btn-sec" name="accion" value="editar">Guardar</button>
               <button class="btn-sec btn-peligro" name="accion" value="borrar"
-                      onclick="return confirm('¿Borrar la hoja «{{ hoja.nombre|escapejs }}»? Sus asientos no se borran: quedan sin hoja.')">Borrar</button>
+                      data-confirm="¿Borrar la hoja «{{ hoja.nombre }}»? Sus asientos no se borran: quedan sin hoja.">Borrar</button>
             </div>
           </form>
         </article>

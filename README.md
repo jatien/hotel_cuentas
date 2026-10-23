@@ -10,11 +10,13 @@ oficina; no está desplegada en producción.
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.example .env                    # y rellena DB_PASSWORD, SECRET_KEY, ALLOWED_HOSTS…
 python manage.py migrate
 python manage.py runserver 0.0.0.0:8000   # accesible desde otros PCs de la red local
 ```
 
-- Base de datos: PostgreSQL local (`cuentas`), configurada en `mysite/settings.py`.
+- Base de datos: PostgreSQL local (`cuentas`); credenciales en el `.env`, nunca en el código.
+- Ajustes por entorno en `mysite/settings/` (`DJANGO_ENV=dev|prod`). Seguridad y despliegue: [`docs/security.md`](docs/security.md).
 - El OCR de facturas necesita **Tesseract** con el idioma español (ver `requirements.txt`).
 - Los ficheros de datos (CSV, Excel, PDF, exports SQL) **no se suben a git**: están en `.gitignore`.
 

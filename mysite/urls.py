@@ -31,4 +31,5 @@ urlpatterns = [
     path("cajas/", include("cajas.urls")),
     path("facturas-ia/", include("invoice_agent.urls")),
     path("copilot/", include("copilot_pms.urls")),
+    path("seguridad/", include("seguridad.urls")),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

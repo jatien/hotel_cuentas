@@ -3,6 +3,7 @@
 # Web / base de datos
 Django>=6.1,<6.2
 psycopg[binary]>=3.2
+whitenoise>=6.9              # sirve /static/ desde Django en producción
 
 # Lectura de PDFs e imágenes (invoice_data)
 pypdfium2>=4.30
