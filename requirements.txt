@@ -11,7 +11,7 @@ gunicorn>=23.0; sys_platform != "win32"   # Debian / Docker
 
 # Cifrado (seguridad): campos cifrados y copias de seguridad con age
 cryptography>=44.0
-pyrage>=1.2                  # age en Python, sin instalar binarios (también en Windows)
+pyrage>=1.4.0                  # age en Python, sin instalar binarios (también en Windows)
 
 # Lectura de PDFs e imágenes (invoice_data)
 pypdfium2>=4.30
