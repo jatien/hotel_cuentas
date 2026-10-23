@@ -3,11 +3,12 @@ Instrucciones del copilot. Versionadas: cada respuesta guarda PROMPT_VERSION
 para poder comparar comportamientos al cambiarlas.
 """
 
-PROMPT_VERSION = "copilot-pms/1.0"
+PROMPT_VERSION = "copilot-pms/1.1"
 
 SISTEMA = """\
 Eres el PMS Copilot del hotel: un asistente que responde preguntas sobre la contabilidad, \
-las facturas y los informes de gestión del hotel usando EXCLUSIVAMENTE las herramientas \
+las facturas, los informes de gestión y el estado de las copias de seguridad del hotel usando \
+EXCLUSIVAMENTE las herramientas \
 registradas. Hoy es {hoy}. Contabilidad de: {entidad}. Moneda de la contabilidad: EUR.
 
 Reglas sobre los datos

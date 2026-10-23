@@ -1,0 +1,122 @@
+# Servidor Debian: PostgreSQL + Django (Gunicorn) + worker de facturas + Caddy (HTTPS).
+#
+#   cd <repositorio>
+#   docker compose -f deploy/docker/compose.yaml --env-file .env up -d --build
+#
+# Solo Caddy publica puertos (80/443). PostgreSQL y Gunicorn no son accesibles desde la LAN.
+# Los datos viven en CUENTAS_DATA_DIR (por defecto /srv/cuentas), pensado para la partición
+# cifrada con LUKS (docs/security.md §5).
+
+name: cuentas
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: deploy/docker/Dockerfile
+  image: cuentas-app:latest
+  env_file: ../../.env
+  environment:
+    DJANGO_ENV: prod
+    DB_HOST: db
+    DB_PORT: "5432"
+    # Solo Caddy (IPs fijas abajo) puede indicar la IP real del cliente
+    TRUSTED_PROXIES: 172.30.1.10,172.30.3.10
+    BACKUP_DIR: /app/backups
+  volumes:
+    - ${CUENTAS_DATA_DIR:-/srv/cuentas}/media:/app/media
+    - ${CUENTAS_DATA_DIR:-/srv/cuentas}/private_media:/app/private_media
+    - ${CUENTAS_DATA_DIR:-/srv/cuentas}/logs:/app/logs
+    - ${CUENTAS_BACKUP_DIR:-/srv/cuentas/backups}:/app/backups
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cuentas}
+      POSTGRES_USER: ${DB_USER:?Falta DB_USER en el .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en el .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - ${CUENTAS_DATA_DIR:-/srv/cuentas}/postgres:/var/lib/postgresql/data
+    networks: [datos]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    <<: *app
+    volumes:
+      - ${CUENTAS_DATA_DIR:-/srv/cuentas}/media:/app/media
+      - ${CUENTAS_DATA_DIR:-/srv/cuentas}/private_media:/app/private_media
+      - ${CUENTAS_DATA_DIR:-/srv/cuentas}/logs:/app/logs
+      - ${CUENTAS_BACKUP_DIR:-/srv/cuentas/backups}:/app/backups
+      - staticfiles:/app/staticfiles
+    networks: [proxy, datos, salida]
+
+  worker:
+    <<: *app
+    command: ["python", "manage.py", "invoice_agent_worker"]
+    healthcheck:
+      disable: true
+    networks: [datos, salida]
+
+  caddy:
+    image: caddy:2
+    ports:
+      # Publicar solo en la IP de la LAN del servidor: CUENTAS_BIND_IP=192.168.1.20
+      - "${CUENTAS_BIND_IP:-0.0.0.0}:80:80"
+      - "${CUENTAS_BIND_IP:-0.0.0.0}:443:443"
+    environment:
+      CUENTAS_HOSTS: ${CUENTAS_HOSTS:?Falta CUENTAS_HOSTS en el .env (p. ej. "pms.hotel.lan, 192.168.1.20")}
+      CUENTAS_UPSTREAM: web:8001
+      CUENTAS_LOG_DIR: /var/log/caddy
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data          # aquí está la autoridad de certificación interna (root.crt)
+      - caddy_config:/config
+      - ${CUENTAS_DATA_DIR:-/srv/cuentas}/logs:/var/log/caddy
+    networks:
+      proxy:
+        ipv4_address: 172.30.1.10
+      salida:
+        ipv4_address: 172.30.3.10
+    depends_on: [web]
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # Caddy ↔ Django. Sin salida a Internet.
+  proxy:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.1.0/24}]
+  # Django ↔ PostgreSQL. Sin salida a Internet.
+  datos:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.2.0/24}]
+  # Salida (modelos de IA, puertos publicados de Caddy).
+  salida:
+    ipam:
+      config: [{subnet: 172.30.3.0/24}]
+
+volumes:
+  staticfiles:
+  caddy_data:
+  caddy_config:

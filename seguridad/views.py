@@ -4,13 +4,18 @@ Vistas de infraestructura de seguridad.
     csp_report   recibe los informes de la Content Security Policy que envía el navegador
                  y los escribe en el log de seguridad (logs/security.log)
     health       comprobación para el proxy / Docker: el proceso responde y llega a la BD
+    media        ficheros subidos (/media/…) servidos por Django y no por el proxy, para que
+                 cuando haya usuarios pasen por la misma comprobación de permisos que las vistas
 """
 
 import json
 import logging
+from pathlib import PurePosixPath
 
+from django.conf import settings
 from django.db import connection
 from django.http import HttpResponse
+from django.views.static import serve
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -74,3 +79,24 @@ def health(request):
         logging.getLogger("seguridad").exception("health: sin conexión a la base de datos")
         return HttpResponse("db", status=503, content_type="text/plain")
     return HttpResponse("ok", content_type="text/plain")
+
+
+@require_GET
+def media(request, ruta):
+    """
+    Sirve un fichero de MEDIA_ROOT (facturas de invoice_data, adjuntos de asientos…).
+
+    - `serve` de Django ya impide salir de MEDIA_ROOT (../) y responde 404 si no existe.
+    - Solo PDF e imágenes se muestran en el navegador; cualquier otro tipo se descarga como
+      adjunto binario, así un .html o .svg subido nunca se ejecuta dentro de la app.
+    - No se guarda en cachés compartidas: son documentos internos.
+
+    Aquí irá la comprobación de permisos cuando exista la autorización (docs/security.md).
+    """
+    respuesta = serve(request, ruta, document_root=settings.MEDIA_ROOT)
+    extension = PurePosixPath(ruta).suffix.lower()
+    if extension not in settings.MEDIA_INLINE_EXTENSIONS:
+        respuesta["Content-Type"] = "application/octet-stream"
+        respuesta["Content-Disposition"] = "attachment"
+    respuesta["Cache-Control"] = "private, max-age=0, must-revalidate"
+    return respuesta

@@ -1,6 +1,8 @@
 .env
 *.csv
 *.sql
+# …salvo los scripts de despliegue (no contienen datos)
+!deploy/**/*.sql
 *.xlsx
 *.xls
 *.pdf
@@ -10,6 +12,9 @@
 *.log
 *.log.*
 logs/
+backups/
+*.age
+*.age.partial
 tablas/
 examples/
 __pycache__/

@@ -12,8 +12,11 @@ python -m venv venv
 pip install -r requirements.txt
 copy .env.example .env                    # y rellena DB_PASSWORD, SECRET_KEY, ALLOWED_HOSTS…
 python manage.py migrate
-python manage.py runserver 0.0.0.0:8000   # accesible desde otros PCs de la red local
+python manage.py runserver                # solo desarrollo
 ```
+
+Para usarla desde otros PCs de la red: Waitress + Caddy con HTTPS (`deploy/`, guía en
+[`docs/security.md`](docs/security.md) §4). `runserver 0.0.0.0` envía todo sin cifrar.
 
 - Base de datos: PostgreSQL local (`cuentas`); credenciales en el `.env`, nunca en el código.
 - Ajustes por entorno en `mysite/settings/` (`DJANGO_ENV=dev|prod`). Seguridad y despliegue: [`docs/security.md`](docs/security.md).

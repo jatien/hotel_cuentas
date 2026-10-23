@@ -32,8 +32,10 @@ CSRF_TRUSTED_ORIGINS = config(
 
 # --- HTTPS ---------------------------------------------------------------------------
 # Caddy termina TLS y reenvía a Django por 127.0.0.1 con X-Forwarded-Proto. Confiar en esa
-# cabecera solo es seguro porque Waitress/Gunicorn escuchan únicamente en localhost.
+# cabecera solo es seguro porque Waitress/Gunicorn escuchan únicamente en localhost (o en la red
+# interna de Docker) y porque ProxyClientIPMiddleware borra X-Forwarded-* que no vengan del proxy.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+TRUSTED_PROXIES = config("TRUSTED_PROXIES", default="127.0.0.1,::1", cast=Csv())
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
 # El health check del proxy entra por HTTP local; no se redirige.
 SECURE_REDIRECT_EXEMPT = [r"^seguridad/health/$"]

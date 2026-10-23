@@ -137,3 +137,110 @@ class AjustesProduccionTests(TestCase):
     def test_prod_rechaza_comodin_en_hosts(self):
         r = self._cargar(SECRET_KEY="k" * 64, ALLOWED_HOSTS="*")
         self.assertIn("ALLOWED_HOSTS", r.stderr)
+
+
+class ProxyClientIPTests(TestCase):
+    def _procesar(self, proxies, remota, reenviada=None, proto=None):
+        from django.test import RequestFactory
+
+        from seguridad.middleware import ProxyClientIPMiddleware
+
+        extra = {"REMOTE_ADDR": remota}
+        if reenviada is not None:
+            extra["HTTP_X_FORWARDED_FOR"] = reenviada
+        if proto is not None:
+            extra["HTTP_X_FORWARDED_PROTO"] = proto
+        request = RequestFactory().get("/", **extra)
+        with self.settings(TRUSTED_PROXIES=proxies):
+            ProxyClientIPMiddleware(lambda r: None)(request)
+        return request.META
+
+    def test_sin_proxies_no_toca_nada(self):
+        meta = self._procesar([], "192.168.1.5", "6.6.6.6")
+        self.assertEqual(meta["REMOTE_ADDR"], "192.168.1.5")
+        self.assertEqual(meta["HTTP_X_FORWARDED_FOR"], "6.6.6.6")
+
+    def test_desde_el_proxy_toma_la_ip_del_cliente(self):
+        meta = self._procesar(["127.0.0.1"], "127.0.0.1", "192.168.1.40", proto="https")
+        self.assertEqual(meta["REMOTE_ADDR"], "192.168.1.40")
+        self.assertEqual(meta["PROXY_ADDR"], "127.0.0.1")
+        self.assertEqual(meta["HTTP_X_FORWARDED_PROTO"], "https")
+
+    def test_ignora_lo_que_el_cliente_antepone(self):
+        # El cliente envía "6.6.6.6"; Caddy añade la IP real al final.
+        meta = self._procesar(["172.30.1.10"], "172.30.1.10", "6.6.6.6, 192.168.1.40")
+        self.assertEqual(meta["REMOTE_ADDR"], "192.168.1.40")
+
+    def test_salta_proxies_encadenados(self):
+        meta = self._procesar(["10.0.0.0/8"], "10.0.0.2", "192.168.1.40, 10.0.0.9")
+        self.assertEqual(meta["REMOTE_ADDR"], "192.168.1.40")
+
+    def test_cabeceras_de_quien_no_es_proxy_se_borran(self):
+        meta = self._procesar(["127.0.0.1"], "192.168.1.66", "6.6.6.6", proto="https")
+        self.assertEqual(meta["REMOTE_ADDR"], "192.168.1.66")
+        self.assertNotIn("HTTP_X_FORWARDED_FOR", meta)
+        self.assertNotIn("HTTP_X_FORWARDED_PROTO", meta)
+
+    def test_ip_invalida_no_rompe(self):
+        meta = self._procesar(["127.0.0.1"], "127.0.0.1", "no-es-ip")
+        self.assertEqual(meta["REMOTE_ADDR"], "127.0.0.1")
+
+
+class MediaTests(TestCase):
+    def setUp(self):
+        import tempfile
+
+        self.dir = tempfile.TemporaryDirectory()
+        raiz = Path(self.dir.name)
+        (raiz / "facturas").mkdir()
+        (raiz / "facturas" / "f.pdf").write_bytes(b"%PDF-1.4\n")
+        (raiz / "malo.html").write_text("<script>alert(1)</script>")
+        (raiz / "dibujo.svg").write_text("<svg onload='alert(1)'/>")
+        self.override = self.settings(MEDIA_ROOT=raiz)
+        self.override.enable()
+
+    def tearDown(self):
+        self.override.disable()
+        self.dir.cleanup()
+
+    def test_pdf_en_linea(self):
+        r = self.client.get("/media/facturas/f.pdf")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertNotIn("attachment", r.get("Content-Disposition", ""))
+        self.assertIn("private", r["Cache-Control"])
+
+    def test_html_y_svg_se_descargan(self):
+        for ruta in ("/media/malo.html", "/media/dibujo.svg"):
+            r = self.client.get(ruta)
+            self.assertEqual(r["Content-Type"], "application/octet-stream", ruta)
+            self.assertEqual(r["Content-Disposition"], "attachment", ruta)
+
+    def test_no_sale_de_media_root(self):
+        from django.test import Client
+
+        r = Client(raise_request_exception=False).get("/media/../manage.py")
+        self.assertIn(r.status_code, (400, 404))
+        r = Client(raise_request_exception=False).get("/media/%2e%2e/manage.py")
+        self.assertIn(r.status_code, (400, 404))
+
+    def test_inexistente(self):
+        self.assertEqual(self.client.get("/media/no.pdf").status_code, 404)
+
+    def test_solo_get(self):
+        self.assertEqual(self.client.post("/media/facturas/f.pdf").status_code, 405)
+
+
+class ServirTests(TestCase):
+    def test_no_escucha_en_la_red(self):
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaisesMessage(CommandError, "sin HTTPS"):
+            call_command("servir", host="0.0.0.0")
+
+    @override_settings(DEBUG=True)
+    def test_no_sirve_con_debug(self):
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaisesMessage(CommandError, "DEBUG"):
+            call_command("servir")

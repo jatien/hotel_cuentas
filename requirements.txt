@@ -5,6 +5,14 @@ Django>=6.1,<6.2
 psycopg[binary]>=3.2
 whitenoise>=6.9              # sirve /static/ desde Django en producción
 
+# Servidor WSGI de producción (detrás de Caddy, ver docs/security.md)
+waitress>=3.0                # Windows: python manage.py servir
+gunicorn>=23.0; sys_platform != "win32"   # Debian / Docker
+
+# Cifrado (seguridad): campos cifrados y copias de seguridad con age
+cryptography>=44.0
+pyrage>=1.2                  # age en Python, sin instalar binarios (también en Windows)
+
 # Lectura de PDFs e imágenes (invoice_data)
 pypdfium2>=4.30
 Pillow>=11.0
