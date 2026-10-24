@@ -1,0 +1,25 @@
+<svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+  {# Análisis: informes ladeados, uno con gráfico de líneas y otro con barras (como en el boceto) #}
+  <ellipse data-capa="Sombra" class="sombra" cx="80" cy="148" rx="56" ry="4.5"/>
+
+  {# Hoja de atrás: barras #}
+  <g data-capa="Informe de barras" transform="rotate(14 104 84)">
+    <rect data-capa="Hoja" class="p" x="72" y="30" width="62" height="96" rx="3"/>
+    <path data-capa="Título" class="trazo-acento suave" d="M82 44 H110" stroke-width="2.6"/>
+    <g data-capa="Barras" class="trazo-acento" stroke-width="5">
+      <path d="M86 112 V92"/><path d="M98 112 V80"/><path d="M110 112 V98"/><path d="M122 112 V70"/>
+    </g>
+    <path data-capa="Eje" d="M80 116 H128" stroke-width="2.4"/>
+  </g>
+
+  {# Hoja de delante: gráfico de líneas #}
+  <g data-capa="Informe de líneas" transform="rotate(-12 64 86)">
+    <rect data-capa="Hoja" class="p" x="28" y="32" width="70" height="104" rx="3"/>
+    <path data-capa="Título" class="trazo-oro" d="M38 46 H66" stroke-width="3.6"/>
+    <path data-capa="Subtítulo" class="suave" d="M38 56 H86" stroke-width="2.4"/>
+    <path data-capa="Ejes" d="M40 70 V122 H90" stroke-width="2.6"/>
+    <path data-capa="Área" class="crema" d="M46 118 L46 104 L58 96 L68 104 L84 80 L84 118 Z" stroke="none"/>
+    <path data-capa="Línea" class="trazo-acento" d="M46 104 L58 96 L68 104 L84 80" stroke-width="3.4"/>
+    <circle data-capa="Último dato" class="relleno-oro" cx="84" cy="80" r="4.2" stroke="none"/>
+  </g>
+</svg>

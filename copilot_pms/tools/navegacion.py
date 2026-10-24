@@ -48,7 +48,9 @@ def modulos_pms(p: ModulosArgs, ctx):
                 seccion["enlace_" + s.nombre.replace(" ", "_")] = s.url
             secciones.append(seccion)
         ramas.append({"clave": m.clave, "nombre": m.nombre, "descripcion": m.descripcion,
-                      "disponible": m.disponible, "secciones": secciones})
+                      "disponible": m.disponible, "secciones": secciones,
+                      # Pantalla de la rama en el inicio (icono, secciones y herramienta).
+                      "enlace_" + m.nombre.replace(" ", "_"): m.url_app})
     avisos = [f"«{r['nombre']}» todavía no está programada." for r in ramas if not r["disponible"]]
     return Resultado(datos={"ramas": ramas}, fuente="Menú de la página de inicio",
                      fecha_datos=consultado_en(), avisos=avisos)

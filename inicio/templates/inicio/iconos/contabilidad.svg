@@ -1,0 +1,44 @@
+<svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+  {# Contabilidad (boceto): libro de debe y haber en diagonal, con una hoja debajo, y una #}
+  {# calculadora retro apoyada arriba cuya pantalla sobresale por el borde del libro. #}
+  <ellipse class="sombra" cx="80" cy="150" rx="58" ry="4.5" data-capa="Sombra"/>
+
+  <g transform="rotate(32 80 84)" data-capa="Libro y calculadora">
+    {# Hoja de debajo #}
+    <rect class="p" x="53" y="26" width="58" height="124" rx="3" data-capa="Hoja de debajo"/>
+
+    {# Libro: dos columnas (debe | haber) con apuntes y signos + #}
+    <rect class="p" x="45" y="18" width="62" height="124" rx="3" data-capa="Libro"/>
+    <path d="M76 22 V138" stroke-width="2.2" data-capa="Separador debe | haber"/>
+    <g class="trazo-acento" stroke-width="2.6" data-capa="Apuntes">
+      <path d="M51 30 H66"/><path d="M51 82 H68"/><path d="M51 98 H64"/><path d="M51 114 H68"/>
+      <path d="M82 84 H98"/><path d="M82 100 H96"/><path d="M82 116 H100"/>
+    </g>
+    <g stroke-width="2.2" data-capa="Signos +">
+      <path d="M53 42 h7 M56.5 38.5 v7"/>
+      <path d="M53 128 h7 M56.5 124.5 v7"/>
+      <path d="M86 128 h7 M89.5 124.5 v7"/>
+    </g>
+    <path class="trazo-oro" d="M82 132 H101" stroke-width="3.2" data-capa="Total"/>
+
+    {# Calculadora retro: carcasa ancha, pantalla elevada que sobresale y teclas gruesas #}
+    <rect class="crema" x="62" y="20" width="50" height="56" rx="7" data-capa="Calculadora"/>
+    <path class="relleno-tinta" d="M66 24 L68 2 H108 L110 24 Z" stroke-width="2.4" data-capa="Pantalla (marco)"/>
+    <rect class="lcd" x="72" y="6" width="32" height="13" rx="2" stroke="none" data-capa="Pantalla LCD"/>
+    <path class="digitos" data-capa="Dígitos" d="M76 9 h5 M81 9 v4 M76 13 h5 M76 13 v4 M76 17 h5
+                             M86 9 v8
+                             M91 9 h5 M96 9 v8 M91 9 v8 M91 17 h5" stroke-width="1.6"/>
+    <g stroke-width="2.2" data-capa="Teclas">
+      <rect class="p" x="68" y="30" width="10" height="9" rx="2.5"/>
+      <rect class="p" x="81" y="30" width="10" height="9" rx="2.5"/>
+      <rect class="p" x="94" y="30" width="10" height="9" rx="2.5"/>
+      <rect class="p" x="68" y="43" width="10" height="9" rx="2.5"/>
+      <rect class="p" x="81" y="43" width="10" height="9" rx="2.5"/>
+      <rect class="oro" x="94" y="43" width="10" height="22" rx="2.5"/>
+      <rect class="p" x="68" y="56" width="10" height="9" rx="2.5"/>
+      <rect class="tinte trazo-acento" x="81" y="56" width="10" height="9" rx="2.5"/>
+    </g>
+    <path d="M96.5 54 h5 M99 51.5 v5" stroke-width="1.8" data-capa="Signo + de la tecla"/>
+    <path class="suave" d="M68 70 H90" stroke-width="2" data-capa="Placa solar"/>
+  </g>
+</svg>

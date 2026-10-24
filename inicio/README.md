@@ -1,24 +1,54 @@
 # inicio
 
-Página de inicio del PMS: una rueda ovalada e inclinada (lado derecho más alto, como en el boceto) con las cuatro ramas (Gestión de reservas, Gestión de
-facturas, Contabilidad y Análisis) y el chat del PMS Copilot en el centro.
+Página de inicio del PMS: una rueda ovalada y alargada (lado izquierdo más alto) con las
+cuatro ramas (Gestión de reservas, Gestión de facturas, Contabilidad y Análisis) y el chat
+del PMS Copilot en el centro. En móvil, un círculo.
+
+- **Girar**: es un engranaje pesado. El arrastre ofrece resistencia y al soltar avanza como
+  mucho una rama, con un golpe al encajar. Clic en una rama la trae arriba paso a paso.
+- **Entrar** (doble clic o Intro): el icono vuela a la esquina superior izquierda, debajo cae
+  el desplegable de secciones y a la derecha se abre la pantalla de la herramienta (la página
+  de Django de esa sección, en un iframe). La flecha del icono, Esc o «atrás» vuelven.
+  La URL es `/m/<rama>/?seccion=n`, así que recargar y compartir el enlace funcionan.
+- **Tema**: Hotel Abrat (dorado, azul mar y crema; Arvo y Mulish). `?tema=azul` muestra el
+  anterior para comparar.
 
 ## Piezas
 
 | Fichero | Qué hace |
 |---|---|
 | `modulos.py` | Registro de las ramas y sus secciones. Única fuente de verdad del menú: la plantilla, el JS y la herramienta `modulos_pms` del copilot leen de aquí. |
-| `views.py` | Geometría de la elipse y posición inicial de cada rama (para que se vea bien sin JS). |
+| `views.py` | Geometría de la elipse, posición inicial de cada rama y la vista `/m/<rama>/` con la rama abierta. |
 | `templates/inicio/home.html` | La rueda y el formulario del copilot. |
-| `static/inicio/js/rueda.js` | Giro por arrastre con inercia: las ramas recorren la elipse y las líneas dobles se redibujan siguiéndola. Encaje en 90°, clic para traer al frente, teclado. En móvil, círculo. |
-| `static/inicio/img/*.svg` | Ilustraciones propias de cada rama (sin licencias de terceros). |
-| `static/inicio/vendor/gsap/` | GSAP 3.15.0 (`gsap`, `Draggable`, `InertiaPlugin`), servido en local para que funcione en la red del hotel sin internet. |
+| `static/inicio/js/rueda.js` | Rueda (engranaje pesado), animación de entrada y salida de cada rama, desplegable, iframe e historial. |
+| `templates/inicio/iconos/*.svg` | Ilustraciones propias, en línea para que tomen los colores del tema (sin licencias de terceros). |
+| `static/inicio/vendor/gsap/` | GSAP 3.15.0 (`gsap`, `Draggable`), servido en local para que funcione en la red del hotel sin internet. |
+
+Las pantallas de cada sección se muestran tal cual dentro del iframe (por eso
+`X_FRAME_OPTIONS = 'SAMEORIGIN'` en settings); dentro del inicio se ocultan su cabecera
+«← Cuentas» y el menú lateral propio de la contabilidad, cuyas entradas pasan al desplegable.
 
 La página anterior de tarjetas sigue en `/clasico/`.
 
+## Ilustraciones y Penpot
+
+Los iconos se dibujan y editan en Penpot (proyecto «PMS icons»), no a mano en el SVG.
+En el proyecto llevan clases en vez de colores, para que el tema les dé color; `iconos_svg.py`
+traduce en los dos sentidos usando una paleta fija (Tinta, Papel, Crema, Tinte azul, Azul mar,
+Oro, Pantalla LCD), que también está en la biblioteca del fichero de Penpot.
+
+    python manage.py exportar_iconos <carpeta>   # proyecto → SVG con colores, para importar en Penpot
+    python manage.py importar_iconos <carpeta>   # SVG exportados de Penpot → templates/inicio/iconos/
+    python manage.py importar_iconos <carpeta> --solo facturas --comprobar   # solo revisar
+
+En Penpot: un tablero de 160×160 por rama, llamado como la rama (`facturas`...), dibujado
+solo con los colores de la paleta; exportar cada tablero como SVG con el nombre `<rama>.svg`.
+Un color fuera de la paleta no se rompe: se queda tal cual y el importador avisa.
+
 ## Añadir una sección
 
-Añadir un `Seccion("Nombre", "app:url_name", "descripción")` a la rama en `modulos.py`.
+Añadir un `Seccion("Nombre", "app:url_name", "descripción")` a la rama en `modulos.py`
+(opcional: `grupo="…"` para agruparla y `principal=True` para que sea la que se abre al entrar).
 Con `url_name=None` aparece como «próximamente». No hay que tocar la plantilla, el JS ni el copilot.
 
 ## Licencias
@@ -31,6 +61,6 @@ aplicaciones web. No se pueden quitar los avisos de licencia de los ficheros `.m
 
 1. Rueda: imágenes, líneas dobles, giro por arrastre, nombre de la rama de arriba, chat. ✔
    Ajustes: óvalo inclinado, factura saliendo por la ranura del ordenador, sin flechas ni texto inferior. ✔
-2. Doble clic: la imagen sube a la mitad superior con flecha de volver; debajo, panel con
-   las secciones a la izquierda y la pantalla de la herramienta a la derecha.
+2. Doble clic: el icono sube con su flecha de volver; desplegable de secciones debajo y la
+   herramienta a la derecha. Engranaje pesado, óvalo alargado, tema Hotel Abrat, iconos nuevos. ✔
 3. Chat del centro respondiendo en la propia página (API del copilot) en lugar de ir a `/copilot/`.

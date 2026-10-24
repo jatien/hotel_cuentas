@@ -1,0 +1,16 @@
+<svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+  {# Gestión de reservas: el edificio del hotel #}
+  <ellipse data-capa="Sombra" class="sombra" cx="80" cy="146" rx="52" ry="5"/>
+  <path data-capa="Edificio" class="p" d="M46 144 V40 Q46 22 64 22 H96 Q114 22 114 40 V144 Z"/>
+  <path data-capa="Tejado" class="trazo-oro" d="M46 40 Q46 22 64 22 H96 Q114 22 114 40" stroke-width="6"/>
+  <g data-capa="Ventanas" class="trazo-acento" stroke-width="4">
+    <path d="M60 48 H70"/><path d="M90 48 H100"/>
+    <path d="M60 63 H70"/><path d="M90 63 H100"/>
+    <path d="M60 78 H70"/><path d="M90 78 H100"/>
+    <path d="M60 93 H70"/><path d="M90 93 H100"/>
+  </g>
+  <path data-capa="Puerta" class="crema" d="M68 144 V120 Q68 110 80 110 Q92 110 92 120 V144"/>
+  <path data-capa="Marquesina" d="M60 106 H100"/>
+  <path data-capa="Suelo" d="M34 144 H126"/>
+  <path data-capa="Mástil" d="M80 22 V8"/><path data-capa="Bandera" class="oro" d="M80 8 L94 12 L80 16 Z" stroke-width="2.4"/>
+</svg>

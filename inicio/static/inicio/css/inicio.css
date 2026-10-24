@@ -1,12 +1,55 @@
-/* Página de inicio: rueda ovalada e inclinada con las cuatro ramas del PMS. */
-:root {
-  --fondo: #E9EDF2;
+/* Página de inicio: rueda de las cuatro ramas del PMS y pantalla de cada rama. */
+
+/* ------------------------------------------------------------------ temas */
+/* Hotel Abrat: dorado y azul mar sobre crema, tinta verde azulada, Arvo + Mulish. */
+[data-tema="abrat"] {
+  --fondo: #FBF6EC;
+  --fondo-brillo: #FFFDF8;
   --tarjeta: #FFFFFF;
+  --resalte: #FFF6E3;
+  --acento: #00A4E5;
+  --oro: #F9B53A;
+  --oro-oscuro: #C98A17;
+  --tinta: #33403E;
+  --tinta-suave: #727176;
+  --linea: #CFC2A5;
+  --sombra: 51 64 62;
+  --letra-titulos: "Arvo", Georgia, serif;
+  --letra: "Mulish", system-ui, "Segoe UI", sans-serif;
+
+  --ic-tinta: #33403E;
+  --ic-acento: #00A4E5;
+  --ic-oro: #F9B53A;
+  --ic-crema: #FCE8C5;
+  --ic-tinte: #DDF2FB;
+  --ic-papel: #FFFFFF;
+  --ic-lcd: #D6E4C3;
+  --ic-digitos: #33403E;
+}
+/* Tema anterior (azul), con ?tema=azul */
+[data-tema="azul"] {
+  --fondo: #E9EDF2;
+  --fondo-brillo: #F6F8FB;
+  --tarjeta: #FFFFFF;
+  --resalte: #EEF2FC;
   --acento: #2D4FC4;
-  --acento-tinte: #EEF2FC;
+  --oro: #2D4FC4;
+  --oro-oscuro: #22399A;
   --tinta: #1C2733;
   --tinta-suave: #5B6878;
   --linea: #9AA6B6;
+  --sombra: 28 39 51;
+  --letra-titulos: "Mulish", system-ui, sans-serif;
+  --letra: "Mulish", system-ui, "Segoe UI", sans-serif;
+
+  --ic-tinta: #1C2733;
+  --ic-acento: #2D4FC4;
+  --ic-oro: #2D4FC4;
+  --ic-crema: #EEF2FC;
+  --ic-tinte: #EEF2FC;
+  --ic-papel: #FFFFFF;
+  --ic-lcd: #EEF2FC;
+  --ic-digitos: #2D4FC4;
 }
 
 * { box-sizing: border-box; }
@@ -14,9 +57,10 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
-  background: radial-gradient(ellipse at 50% 45%, #F6F8FB 0%, var(--fondo) 65%);
+  font-family: var(--letra);
+  background: radial-gradient(ellipse at 50% 45%, var(--fondo-brillo) 0%, var(--fondo) 70%);
   color: var(--tinta);
+  overflow-x: hidden;
 }
 
 .escena {
@@ -25,13 +69,40 @@ body {
   place-items: center;
   padding: 1rem;
 }
+body.con-app .escena { visibility: hidden; }
+
+/* ----------------------------------------------------------- ilustraciones */
+.icono {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--ic-tinta);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icono .p { fill: var(--ic-papel); }
+.icono .tinte { fill: var(--ic-tinte); }
+.icono .crema { fill: var(--ic-crema); }
+.icono .oro, .icono .relleno-oro { fill: var(--ic-oro); }
+.icono .relleno-tinta { fill: var(--ic-tinta); }
+.icono .relleno-acento { fill: var(--ic-acento); }
+.icono .lcd { fill: var(--ic-lcd); }
+.icono .digitos { stroke: var(--ic-digitos); }
+.icono .trazo-acento { stroke: var(--ic-acento); }
+.icono .trazo-oro { stroke: var(--ic-oro); }
+.icono .trazo-papel { stroke: var(--ic-papel); }
+.icono .suave { opacity: .55; }
+.icono .sombra { fill: var(--ic-tinta); opacity: .08; stroke: none; }
 
 /* ------------------------------------------------------------------ rueda */
-/* Proporción 290 × 200, la del viewBox de las líneas. Las imágenes miden 52 unidades. */
+/* Proporción 340 × 190, la del viewBox de las líneas. Las imágenes miden 52 unidades. */
 .rueda {
   position: relative;
-  width: min(96vw, 1000px, 138vh);
-  aspect-ratio: 290 / 200;
+  width: min(96vw, 1100px, 170vh);
+  aspect-ratio: 340 / 190;
   cursor: grab;
   touch-action: none;    /* el arrastre lo gestiona Draggable */
   user-select: none;
@@ -48,57 +119,47 @@ body {
   overflow: visible;
   fill: none;
   stroke: var(--linea);
-  stroke-width: 1.1;
+  stroke-width: 1.2;
   stroke-linecap: round;
-  stroke-linejoin: round;
   pointer-events: none;
 }
 
-.rueda-asa {
-  position: absolute;
-  inset: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
+.rueda-asa { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
 
-/* --------------------------------------------------------------- imágenes */
 .modulo {
   position: absolute;
-  width: 17.93%;                 /* 52 / 290 */
+  width: 15.294%;                  /* 52 / 340 */
   aspect-ratio: 1;
-  margin: -8.965% 0 0 -8.965%;   /* centra en left/top (los % de margin van sobre el ancho) */
+  margin: -7.647% 0 0 -7.647%;     /* centra en left/top (los % de margin van sobre el ancho) */
   border-radius: 28%;
   -webkit-tap-highlight-color: transparent;
   outline: none;
 }
 
-.modulo-cara {
+.modulo-cara, .app-icono-cara {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  padding: 12%;
-  border-radius: inherit;
+  padding: 11%;
+  border-radius: 28%;
   background: var(--tarjeta);
-  box-shadow: 0 1px 2px rgb(28 39 51 / .06), 0 12px 28px -16px rgb(28 39 51 / .35);
-  transition: transform .25s ease, box-shadow .25s ease, background .25s ease;
+  box-shadow: 0 1px 2px rgb(var(--sombra) / .06), 0 12px 28px -16px rgb(var(--sombra) / .4);
 }
-.modulo-cara img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.modulo-cara { transition: transform .25s ease, box-shadow .25s ease, background .25s ease; }
 
 /* Pequeño resalte al pasar el ratón o con el foco del teclado */
 .modulo:hover .modulo-cara,
 .modulo:focus-visible .modulo-cara {
   transform: scale(1.07);
-  background: var(--acento-tinte);
-  box-shadow: 0 0 0 3px rgb(45 79 196 / .35), 0 18px 34px -16px rgb(45 79 196 / .55);
+  background: var(--resalte);
+  box-shadow: 0 0 0 3px var(--oro), 0 18px 34px -16px rgb(var(--sombra) / .5);
 }
-
-/* La rama que queda arriba */
 .modulo.arriba .modulo-cara {
-  box-shadow: 0 0 0 2px var(--acento), 0 18px 34px -18px rgb(45 79 196 / .5);
+  box-shadow: 0 0 0 2.5px var(--oro), 0 18px 34px -18px rgb(var(--sombra) / .5);
 }
 
-.modulo-futuro .modulo-cara img { opacity: .55; filter: grayscale(.5); }
+.modulo-futuro .modulo-cara .icono { opacity: .6; filter: grayscale(.6); }
 .modulo-futuro .modulo-cara::after {
   content: "Próximamente";
   position: absolute;
@@ -112,31 +173,31 @@ body {
   white-space: nowrap;
 }
 
-/* ------------------------------------------- nombre de la rama de arriba */
-/* rueda.js lo coloca bajo la rama de arriba ajustando left/right/top.
+/* Nombre de la rama de arriba: rueda.js lo coloca bajo ella (left/right/top).
    Sin `translate`: GSAP lo convertiría a píxeles al animarlo y quedaría descentrado. */
 .rueda-nombre {
   position: absolute;
   left: 0;
   right: 0;
-  top: 36%;
+  top: 33%;
   margin: 0;
   text-align: center;
-  font-size: clamp(1rem, 2.6vmin, 1.35rem);
-  font-weight: 600;
-  letter-spacing: -.01em;
-  color: var(--acento);
+  font-family: var(--letra-titulos);
+  font-size: clamp(1rem, 2.6vmin, 1.4rem);
+  font-weight: 700;
+  color: var(--tinta);
   white-space: nowrap;
   pointer-events: none;
 }
 
-/* ------------------------------------------------------- chat del copilot */
+/* Chat del copilot en el centro */
 .copilot {
   position: absolute;
-  left: 32%;
-  right: 32%;
+  left: 34%;
+  right: 34%;
   top: calc(50% - 1.35rem);   /* alto fijo de 2.7rem: centrado sin translate */
   height: 2.7rem;
+  z-index: 300;
   display: flex;
   align-items: center;
   gap: .25rem;
@@ -144,13 +205,13 @@ body {
   border: 1.5px solid var(--linea);
   border-radius: 999px;
   background: var(--tarjeta);
-  box-shadow: 0 10px 28px -18px rgb(28 39 51 / .4);
+  box-shadow: 0 10px 28px -18px rgb(var(--sombra) / .45);
   cursor: auto;
   transition: border-color .2s ease, box-shadow .2s ease;
 }
 .copilot:focus-within {
   border-color: var(--acento);
-  box-shadow: 0 0 0 4px rgb(45 79 196 / .15), 0 10px 28px -18px rgb(28 39 51 / .4);
+  box-shadow: 0 0 0 4px rgb(0 164 229 / .15), 0 10px 28px -18px rgb(var(--sombra) / .45);
 }
 .copilot input {
   flex: 1;
@@ -159,7 +220,7 @@ body {
   outline: 0;
   background: transparent;
   font: inherit;
-  font-size: clamp(.78rem, 1.9vmin, .95rem);
+  font-size: clamp(.8rem, 1.9vmin, .95rem);
   color: var(--tinta);
 }
 .copilot input::placeholder { color: var(--tinta-suave); }
@@ -171,24 +232,148 @@ body {
   height: 2rem;
   border: 0;
   border-radius: 50%;
-  background: var(--acento);
+  background: var(--oro);
   cursor: pointer;
 }
-.copilot button svg { width: 1rem; height: 1rem; fill: none; stroke: #fff; stroke-width: 2.4;
-                      stroke-linecap: round; stroke-linejoin: round; }
+.copilot button svg, .app-volver svg, .app-desplegar svg {
+  fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+}
+.copilot button svg { width: 1rem; height: 1rem; color: #fff; }
+
+/* -------------------------------------------------- pantalla de una rama */
+.app {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) 1fr;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  background: var(--fondo);
+}
+.app[hidden] { display: none; }
+.app.en-transicion { pointer-events: none; }
+
+.app-lateral { display: flex; flex-direction: column; gap: .9rem; min-height: 0; }
+
+.app-cabecera { display: flex; align-items: center; gap: .9rem; }
+.app-icono { position: relative; flex: none; width: 104px; aspect-ratio: 1; }
+.app-icono-cara { box-shadow: 0 0 0 2.5px var(--oro), 0 18px 34px -18px rgb(var(--sombra) / .5); }
+
+/* Flecha de volver en la esquina superior derecha del icono */
+.app-volver {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--oro);
+  color: var(--tinta);
+  box-shadow: 0 6px 14px -6px rgb(var(--sombra) / .6);
+  transition: transform .2s ease, background .2s ease;
+}
+.app-volver svg { width: 18px; height: 18px; }
+.app-volver:hover, .app-volver:focus-visible { transform: scale(1.1) rotate(-12deg); background: var(--oro-oscuro); color: #fff; outline: none; }
+
+.app-nombre {
+  margin: 0;
+  font-family: var(--letra-titulos);
+  font-size: 1.3rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+/* Desplegable de secciones bajo el icono */
+.app-desplegar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: .55rem .8rem;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tinta-suave);
+  font: 600 .78rem/1 var(--letra);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.app-desplegar:hover { background: var(--resalte); }
+.app-desplegar svg { width: 18px; height: 18px; transition: transform .25s ease; }
+.app-desplegar[aria-expanded="false"] svg { transform: rotate(-90deg); }
+
+.app-secciones {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  overflow: auto;
+}
+.app-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  padding: .7rem .9rem;
+  border-radius: 14px;
+  border-left: 4px solid transparent;
+  background: var(--tarjeta);
+  color: var(--tinta);
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgb(var(--sombra) / .05);
+  transition: background .2s ease, border-color .2s ease, transform .2s ease;
+}
+.app-grupo {
+  margin: .6rem .2rem 0;
+  color: var(--tinta-suave);
+  font: 700 .7rem/1 var(--letra);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.app-grupo:first-child { margin-top: 0; }
+.app-seccion strong { font-weight: 700; font-size: .95rem; }
+.app-seccion:not(:has(small)) { padding: .5rem .9rem; }    /* menús largos agrupados: filas compactas */
+.app-seccion small { color: var(--tinta-suave); font-size: .8rem; }
+a.app-seccion:hover, a.app-seccion:focus-visible { background: var(--resalte); transform: translateX(3px); outline: none; }
+.app-seccion.activa { border-left-color: var(--oro); background: var(--resalte); }
+.app-seccion.futura { opacity: .6; }
+
+.app-contenido {
+  position: relative;
+  min-height: 0;
+  border-radius: 20px;
+  background: var(--tarjeta);
+  box-shadow: 0 1px 2px rgb(var(--sombra) / .06), 0 20px 44px -26px rgb(var(--sombra) / .45);
+  overflow: hidden;
+}
+.app-marco { display: block; width: 100%; height: 100%; border: 0; background: var(--tarjeta); }
+.app-marco[hidden] { display: none; }
+.app-vacio { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 2rem; }
+.app-vacio[hidden] { display: none; }
+.app-vacio h2 { margin: 0 0 .4rem; font-family: var(--letra-titulos); font-size: 1.4rem; }
+.app-vacio p { margin: 0; color: var(--tinta-suave); }
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
 
-/* En pantallas estrechas el óvalo no cabe tumbado: se usa un círculo. */
-@media (max-width: 600px) {
+/* ------------------------------------------------------------------ móvil */
+@media (max-width: 700px) {
   .rueda { aspect-ratio: 1; width: 96vw; }
   .modulo { width: 26%; margin: -13% 0 0 -13%; }
   .copilot { left: 29%; right: 29%; padding-left: .7rem; }
+
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; padding: .75rem; gap: .75rem; }
+  .app-icono { width: 72px; }
+  .app-secciones { max-height: 40vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .modulo-cara, .copilot { transition: none; }
+  .modulo-cara, .copilot, .app-seccion, .app-volver { transition: none; }
 }

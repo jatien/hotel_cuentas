@@ -11,12 +11,16 @@ from dataclasses import dataclass, field
 
 from django.urls import NoReverseMatch, reverse
 
+from cuadro_cuentas.templatetags.cuadro_cuentas_tags import MENU as MENU_CONTABILIDAD
+
 
 @dataclass(frozen=True)
 class Seccion:
     nombre: str
     url_name: str | None = None  # nombre de la URL de Django; None = todavía no programada
     descripcion: str = ""
+    grupo: str = ""              # encabezado bajo el que aparece en el desplegable
+    principal: bool = False      # la que se abre al entrar en la rama
 
     @property
     def url(self) -> str | None:
@@ -32,7 +36,7 @@ class Seccion:
 class Modulo:
     clave: str
     nombre: str
-    imagen: str  # ruta dentro de static/
+    icono: str  # plantilla SVG en línea (templates/inicio/iconos/), toma los colores del tema
     descripcion: str
     secciones: tuple = field(default_factory=tuple)
 
@@ -41,13 +45,27 @@ class Modulo:
         """Una rama está disponible si al menos una de sus secciones tiene vista."""
         return any(s.url for s in self.secciones)
 
+    @property
+    def indice_inicial(self) -> int | None:
+        """La sección principal si tiene pantalla; si no, la primera que la tenga."""
+        disponibles = [i for i, s in enumerate(self.secciones) if s.url]
+        principal = next((i for i in disponibles if self.secciones[i].principal), None)
+        return principal if principal is not None else (disponibles[0] if disponibles else None)
+
+    @property
+    def url_app(self) -> str:
+        """Pantalla de la rama dentro del inicio: icono arriba, secciones y la herramienta."""
+        return reverse("home_modulo", args=[self.clave])
+
     def a_dict(self) -> dict:
         return {
             "clave": self.clave,
+            "url_app": self.url_app,
             "nombre": self.nombre,
             "descripcion": self.descripcion,
             "disponible": self.disponible,
-            "secciones": [{"nombre": s.nombre, "url": s.url, "descripcion": s.descripcion}
+            "inicial": self.indice_inicial,
+            "secciones": [{"nombre": s.nombre, "url": s.url, "descripcion": s.descripcion, "grupo": s.grupo}
                           for s in self.secciones],
         }
 
@@ -55,7 +73,7 @@ class Modulo:
 # Orden de la rueda, en el sentido de las agujas del reloj empezando por arriba.
 MODULOS: tuple[Modulo, ...] = (
     Modulo(
-        "reservas", "Gestión de reservas", "inicio/img/reservas.svg",
+        "reservas", "Gestión de reservas", "inicio/iconos/reservas.svg",
         "Reservas, recepción, habitaciones y housekeeping.",
         (
             Seccion("Calendario de reservas", None, "Ocupación por habitación y día"),
@@ -64,7 +82,7 @@ MODULOS: tuple[Modulo, ...] = (
         ),
     ),
     Modulo(
-        "facturas", "Gestión de facturas", "inicio/img/facturas.svg",
+        "facturas", "Gestión de facturas", "inicio/iconos/facturas.svg",
         "Facturas de proveedores y acreedores, con extracción automática.",
         (
             Seccion("Facturas", "invoice_data:index", "Facturas importadas"),
@@ -73,18 +91,14 @@ MODULOS: tuple[Modulo, ...] = (
         ),
     ),
     Modulo(
-        "contabilidad", "Contabilidad", "inicio/img/contabilidad.svg",
+        "contabilidad", "Contabilidad", "inicio/iconos/contabilidad.svg",
         "Libro diario, plan de cuentas, balances y cuentas anuales (PGC 2007).",
-        (
-            Seccion("Libro diario", "cuadro_cuentas:diario", "Asientos del ejercicio"),
-            Seccion("Plan de cuentas", "cuadro_cuentas:plan_cuentas", "Cuentas y subcuentas"),
-            Seccion("Extractos", "cuadro_cuentas:extractos", "Movimientos de una cuenta"),
-            Seccion("Sumas y saldos", "cuadro_cuentas:sumas_saldos", "Balance de sumas y saldos"),
-            Seccion("Cuentas anuales", "cuadro_cuentas:cuentas_anuales", "Balance y pérdidas y ganancias"),
-        ),
+        # El mismo menú que el lateral propio de la contabilidad (que se oculta dentro del inicio).
+        tuple(Seccion(nombre, f"cuadro_cuentas:{ruta}", grupo=grupo, principal=(ruta == "diario"))
+              for grupo, enlaces in MENU_CONTABILIDAD for nombre, ruta in enlaces),
     ),
     Modulo(
-        "analisis", "Análisis", "inicio/img/analisis.svg",
+        "analisis", "Análisis", "inicio/iconos/analisis.svg",
         "Beneficio por mes y departamento, cajas diarias y costes de personal.",
         (
             Seccion("Beneficios", "analisis:resumen", "Ingresos frente a gastos"),

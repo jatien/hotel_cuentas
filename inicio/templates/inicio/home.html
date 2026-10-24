@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cuentas · Gestión hotelera</title>
+  <title>{% if abierto %}{{ abierto.nombre }} · {% endif %}Gestión hotelera</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'inicio/css/inicio.css' %}">
 </head>
-<body>
-  <main class="escena">
+<body data-tema="abrat" class="{% if abierto %}con-app{% endif %}">
+
+  {# ============================== RUEDA ============================== #}
+  <main class="escena" id="escena">
     <div class="rueda" id="rueda" tabindex="0" role="group"
-         aria-label="Menú principal. Arrastra o usa las flechas del teclado para girar la rueda."
+         aria-label="Menú principal. Arrastra o usa las flechas del teclado para girar la rueda; doble clic o Intro para entrar."
          data-rx="{{ elipse.rx }}" data-ry="{{ elipse.ry }}" data-inclinacion="{{ elipse.inclinacion }}"
-         data-ancho="{{ elipse.ancho }}" data-alto="{{ elipse.alto }}">
+         data-ancho="{{ elipse.ancho }}" data-alto="{{ elipse.alto }}" data-img="{{ elipse.img }}"
+         data-giro="{{ giro_inicial|stringformat:'g' }}">
 
       {# Las líneas dobles entre ramas las dibuja rueda.js siguiendo la elipse #}
       <svg class="rueda-lineas" id="rueda-lineas"
@@ -22,18 +25,15 @@
            aria-hidden="true"></svg>
 
       {% for r in rueda %}{% with m=r.modulo %}
-      <a class="modulo{% if not m.disponible %} modulo-futuro{% endif %}"
-         href="{% if m.secciones.0.url %}{{ m.secciones.0.url }}{% else %}#{% endif %}"
+      <a class="modulo{% if not m.disponible %} modulo-futuro{% endif %}" href="{{ m.url_app }}"
          data-indice="{{ forloop.counter0 }}" data-clave="{{ m.clave }}"
          style="left: {{ r.x|stringformat:'g' }}%; top: {{ r.y|stringformat:'g' }}%"
          aria-label="{{ m.nombre }}{% if not m.disponible %} (próximamente){% endif %}">
-        <span class="modulo-cara">
-          <img src="{% static m.imagen %}" alt="" draggable="false" width="160" height="160">
-        </span>
+        <span class="modulo-cara">{% include m.icono %}</span>
       </a>
       {% endwith %}{% endfor %}
 
-      <p class="rueda-nombre" id="rueda-nombre" aria-live="polite">{{ modulos.0.nombre }}</p>
+      <p class="rueda-nombre" id="rueda-nombre" aria-live="polite">{% if abierto %}{{ abierto.nombre }}{% else %}{{ modulos.0.nombre }}{% endif %}</p>
 
       <form class="copilot" method="post" action="{% url 'copilot_pms:preguntar' %}">
         {% csrf_token %}
@@ -45,15 +45,60 @@
         </button>
       </form>
 
-      {# Asa invisible que gira con el arrastre; la rueda lee su rotación #}
+      {# Asa invisible que recibe el arrastre; la rueda lee cuánto se ha girado #}
       <div class="rueda-asa" id="rueda-asa" aria-hidden="true"></div>
     </div>
   </main>
 
+  {# ======================= PANTALLA DE UNA RAMA ======================= #}
+  {# rueda.js la rellena al hacer doble clic; el servidor la pinta ya abierta en /m/<rama>/ #}
+  <section class="app" id="app" {% if not abierto %}hidden{% endif %} data-clave="{{ abierto.clave|default:'' }}"
+           aria-labelledby="app-nombre">
+    <aside class="app-lateral">
+      <div class="app-cabecera">
+        <div class="app-icono" id="app-icono">
+          <span class="app-icono-cara" id="app-icono-cara">{% if abierto %}{% include abierto.icono %}{% endif %}</span>
+          <a class="app-volver" id="app-volver" href="{% url 'home' %}" aria-label="Volver al inicio" title="Volver al inicio">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+          </a>
+        </div>
+        <h1 class="app-nombre" id="app-nombre">{{ abierto.nombre }}</h1>
+      </div>
+
+      <button class="app-desplegar" id="app-desplegar" type="button" aria-expanded="true" aria-controls="app-secciones">
+        <span>Secciones</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <ul class="app-secciones" id="app-secciones">
+        {% for s in abierto.secciones %}
+        {% ifchanged s.grupo %}{% if s.grupo %}<li class="app-grupo">{{ s.grupo }}</li>{% endif %}{% endifchanged %}
+        <li>
+          {% if s.url %}
+          <a class="app-seccion{% if s == seccion_activa %} activa{% endif %}" href="{{ s.url }}" target="app-marco"
+             data-indice="{{ forloop.counter0 }}">
+            <strong>{{ s.nombre }}</strong>{% if s.descripcion %}<small>{{ s.descripcion }}</small>{% endif %}
+          </a>
+          {% else %}
+          <span class="app-seccion futura"><strong>{{ s.nombre }}</strong><small>Próximamente</small></span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    <div class="app-contenido">
+      <iframe class="app-marco" id="app-marco" name="app-marco" title="{{ abierto.nombre }}"
+              {% if seccion_activa %}src="{{ seccion_activa.url }}"{% else %}hidden{% endif %}></iframe>
+      <div class="app-vacio" id="app-vacio" {% if seccion_activa or not abierto %}hidden{% endif %}>
+        <h2>Todavía en preparación</h2>
+        <p id="app-vacio-texto">{{ abierto.descripcion }}</p>
+      </div>
+    </div>
+  </section>
+
   {{ modulos_json|json_script:"modulos-datos" }}
   <script src="{% static 'inicio/vendor/gsap/gsap.min.js' %}"></script>
   <script src="{% static 'inicio/vendor/gsap/Draggable.min.js' %}"></script>
-  <script src="{% static 'inicio/vendor/gsap/InertiaPlugin.min.js' %}"></script>
   <script src="{% static 'inicio/js/rueda.js' %}"></script>
 </body>
 </html>
