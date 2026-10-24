@@ -1,35 +1,40 @@
 <svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
-  {# Gestión de facturas: ordenador que imprime una factura por la ranura de la unidad inferior #}
-  <ellipse class="sombra" cx="86" cy="151" rx="50" ry="4"/>
+  {# Gestión de facturas (boceto): pantalla sobre una unidad ancha; la factura sale por un #}
+  {# orificio redondeado de la unidad, cae por delante y se enrolla hacia la derecha abajo. #}
+  <ellipse class="sombra" cx="84" cy="152" rx="56" ry="4"/>
 
   {# Pantalla #}
-  <rect class="p" x="38" y="8" width="84" height="54" rx="6"/>
-  <rect class="tinte trazo-acento" x="46" y="16" width="68" height="38" rx="3"/>
-  <path class="trazo-acento" d="M54 27 H78"/>
-  <path class="trazo-acento suave" d="M54 36 H98"/>
-  <path class="trazo-acento suave" d="M54 44 H90"/>
-  <path d="M80 62 V72"/><path d="M68 72 H92"/>
+  <rect class="p" x="38" y="6" width="84" height="52" rx="6"/>
+  <rect class="tinte trazo-acento" x="46" y="14" width="68" height="36" rx="3"/>
+  <path class="trazo-acento" d="M54 24 H76"/>
+  <path class="trazo-acento suave" d="M54 32 H100"/>
+  <path class="trazo-acento suave" d="M54 40 H92"/>
+  <path d="M80 58 V68"/>
 
   {# Unidad inferior #}
-  <rect class="crema" x="20" y="72" width="120" height="30" rx="6"/>
-  <circle class="relleno-oro" cx="31" cy="82" r="3" stroke="none"/>
-  <path class="suave" d="M30 94 H50" stroke-width="2.4"/>
+  <rect class="crema" x="14" y="68" width="132" height="36" rx="6"/>
+  <circle class="relleno-oro" cx="26" cy="80" r="3" stroke="none"/>
+  <path class="suave" d="M24 94 H40" stroke-width="2.4"/>
 
-  {# Folio: sale de la ranura, se ladea y se curva hacia la derecha #}
-  <path class="p" d="M66 97 L112 97
-                     C116 112 128 122 138 128
-                     C140 134 134 140 126 138
-                     C118 140 104 145 94 150
-                     C88 136 80 120 70 110
-                     C67 106 66 101 66 97 Z"/>
-  <path class="crema" d="M126 138 C134 140 140 134 138 128 C131 127 126 131 126 138 Z" stroke-width="2.4"/>
+  {# Orificio redondeado por el que sale la factura #}
+  <path class="relleno-tinta" d="M52 92 C52 74 98 74 98 92 Z" stroke-width="2.4"/>
+
+  {# Factura: sale del orificio, se dobla en el borde de la unidad y se enrolla a la derecha #}
+  <path class="p" d="M58 88
+                     C60 82 90 82 92 88
+                     C94 104 100 124 112 136
+                     C118 142 128 142 132 136
+                     C134 146 124 154 112 152
+                     L74 154
+                     C70 132 64 108 58 88 Z"/>
+  <path class="crema" d="M112 136 C118 142 128 142 132 136 C134 146 124 154 112 152 C120 150 118 140 112 136 Z"
+        stroke-width="2.4"/>
+  <path class="suave" d="M61 104 C72 102 84 102 95 104" stroke-width="1.8"/>
   <g class="trazo-acento" stroke-width="2.6">
-    <path d="M76 106 Q88 104 100 106"/>
-    <path class="suave" d="M80 115 Q95 113 110 116"/>
-    <path class="suave" d="M85 124 Q101 122 118 126"/>
+    <path d="M68 96 H84"/>
+    <path class="suave" d="M66 112 L94 110"/>
+    <path class="suave" d="M69 122 L99 120"/>
+    <path class="suave" d="M72 132 L104 130"/>
   </g>
-  <path class="trazo-oro" d="M95 136 Q106 133 118 134" stroke-width="3.4"/>
-
-  {# Ranura (encima del folio: parece que sale de dentro) #}
-  <rect class="relleno-tinta" x="60" y="93" width="58" height="7" rx="3.5" stroke="none"/>
+  <path class="trazo-oro" d="M80 144 L104 143" stroke-width="3.4"/>
 </svg>

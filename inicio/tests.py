@@ -109,3 +109,47 @@ class HerramientaCopilotTests(TestCase):
 
     def test_rama_inexistente_no_valida(self):
         self.assertNotEqual(self.run_tool(modulo="bar").estado, EstadoLlamada.OK)
+
+
+class PuentePenpotTests(TestCase):
+    """exportar() da colores reales para Penpot; importar() los devuelve a clases del tema."""
+
+    def setUp(self):
+        from inicio.iconos_svg import exportar, importar
+        self.exportar, self.importar = exportar, importar
+
+    def _icono(self, clave):
+        from pathlib import Path
+        from django.template.loader import get_template
+        return Path(get_template(por_clave(clave).icono).origin.name).read_text(encoding="utf-8")
+
+    def test_exportar_pone_colores_y_quita_clases(self):
+        svg = self.exportar(self._icono("facturas"))
+        self.assertIn('xmlns="http://www.w3.org/2000/svg"', svg)
+        self.assertIn('fill="#FCE8C5"', svg)            # crema
+        self.assertIn('stroke="#00A4E5"', svg)          # trazo azul mar
+        self.assertNotIn("class=", svg)
+        self.assertNotIn("{#", svg)
+
+    def test_ida_y_vuelta_conserva_las_clases(self):
+        import re
+        for m in MODULOS:
+            original = self._icono(m.clave)
+            vuelta, avisos = self.importar(self.exportar(original))
+            self.assertEqual(avisos, [], m.clave)
+            clases = lambda s: sorted(c for grupo in re.findall(r'class="([^"]+)"', s) for c in grupo.split()
+                                      if c not in ("icono", "digitos"))
+            normaliza = lambda cs: sorted("oro" if c == "relleno-oro" else c for c in cs)
+            self.assertEqual(normaliza(clases(vuelta)), normaliza(clases(original)), m.clave)
+
+    def test_importar_estilo_de_penpot(self):
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">'
+               '<g><path d="M0 0H10" style="fill:none;stroke:#00a4e5;stroke-width:3;opacity:0.55"/>'
+               '<rect width="5" height="5" style="fill:#FCE8C5;stroke:#33403E"/>'
+               '<circle r="2" fill="#123456"/></g></svg>')
+        salida, avisos = self.importar(svg)
+        self.assertIn('class="trazo-acento suave"', salida)
+        self.assertIn('class="crema"', salida)
+        self.assertTrue(salida.startswith('<svg class="icono" viewBox="0 0 160 160"'))
+        self.assertEqual(len(avisos), 1)                 # #123456 no es de la paleta
+        self.assertIn("#123456", avisos[0])

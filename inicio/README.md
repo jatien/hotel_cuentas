@@ -30,6 +30,21 @@ Las pantallas de cada sección se muestran tal cual dentro del iframe (por eso
 
 La página anterior de tarjetas sigue en `/clasico/`.
 
+## Ilustraciones y Penpot
+
+Los iconos se dibujan y editan en Penpot (proyecto «PMS icons»), no a mano en el SVG.
+En el proyecto llevan clases en vez de colores, para que el tema les dé color; `iconos_svg.py`
+traduce en los dos sentidos usando una paleta fija (Tinta, Papel, Crema, Tinte azul, Azul mar,
+Oro, Pantalla LCD), que también está en la biblioteca del fichero de Penpot.
+
+    python manage.py exportar_iconos <carpeta>   # proyecto → SVG con colores, para importar en Penpot
+    python manage.py importar_iconos <carpeta>   # SVG exportados de Penpot → templates/inicio/iconos/
+    python manage.py importar_iconos <carpeta> --solo facturas --comprobar   # solo revisar
+
+En Penpot: un tablero de 160×160 por rama, llamado como la rama (`facturas`...), dibujado
+solo con los colores de la paleta; exportar cada tablero como SVG con el nombre `<rama>.svg`.
+Un color fuera de la paleta no se rompe: se queda tal cual y el importador avisa.
+
 ## Añadir una sección
 
 Añadir un `Seccion("Nombre", "app:url_name", "descripción")` a la rama en `modulos.py`
