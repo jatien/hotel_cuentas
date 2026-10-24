@@ -1,40 +1,40 @@
 <svg class="icono" viewBox="0 0 160 160" aria-hidden="true" focusable="false">
   {# Gestión de facturas (boceto): pantalla sobre una unidad ancha; la factura sale por un #}
   {# orificio redondeado de la unidad, cae por delante y se enrolla hacia la derecha abajo. #}
-  <ellipse class="sombra" cx="84" cy="152" rx="56" ry="4"/>
+  <ellipse class="sombra" cx="84" cy="152" rx="56" ry="4" data-capa="Sombra"/>
 
   {# Pantalla #}
-  <rect class="p" x="38" y="6" width="84" height="52" rx="6"/>
-  <rect class="tinte trazo-acento" x="46" y="14" width="68" height="36" rx="3"/>
-  <path class="trazo-acento" d="M54 24 H76"/>
-  <path class="trazo-acento suave" d="M54 32 H100"/>
-  <path class="trazo-acento suave" d="M54 40 H92"/>
-  <path d="M80 58 V68"/>
+  <rect class="p" x="38" y="6" width="84" height="52" rx="6" data-capa="Pantalla"/>
+  <rect class="tinte trazo-acento" x="46" y="14" width="68" height="36" rx="3" data-capa="Pantalla (cristal)"/>
+  <path class="trazo-acento" d="M54 24 H76" data-capa="Línea de título"/>
+  <path class="trazo-acento suave" d="M54 32 H100" data-capa="Línea 1"/>
+  <path class="trazo-acento suave" d="M54 40 H92" data-capa="Línea 2"/>
+  <path d="M80 58 V68" data-capa="Soporte"/>
 
   {# Unidad inferior #}
-  <rect class="crema" x="14" y="68" width="132" height="36" rx="6"/>
-  <circle class="relleno-oro" cx="26" cy="80" r="3" stroke="none"/>
-  <path class="suave" d="M24 94 H40" stroke-width="2.4"/>
+  <rect class="crema" x="14" y="68" width="132" height="36" rx="6" data-capa="Unidad"/>
+  <circle class="relleno-oro" cx="26" cy="80" r="3" stroke="none" data-capa="Piloto"/>
+  <path class="suave" d="M24 94 H40" stroke-width="2.4" data-capa="Rejilla"/>
 
   {# Orificio redondeado por el que sale la factura #}
-  <path class="relleno-tinta" d="M52 92 C52 74 98 74 98 92 Z" stroke-width="2.4"/>
+  <path class="relleno-tinta" d="M52 92 C52 74 98 74 98 92 Z" stroke-width="2.4" data-capa="Orificio"/>
 
   {# Factura: sale del orificio, se dobla en el borde de la unidad y se enrolla a la derecha #}
-  <path class="p" d="M58 88
+  <path class="p" data-capa="Factura" d="M58 88
                      C60 82 90 82 92 88
                      C94 104 100 124 112 136
                      C118 142 128 142 132 136
                      C134 146 124 154 112 152
                      L74 154
                      C70 132 64 108 58 88 Z"/>
-  <path class="crema" d="M112 136 C118 142 128 142 132 136 C134 146 124 154 112 152 C120 150 118 140 112 136 Z"
+  <path class="crema" data-capa="Rizo del papel" d="M112 136 C118 142 128 142 132 136 C134 146 124 154 112 152 C120 150 118 140 112 136 Z"
         stroke-width="2.4"/>
-  <path class="suave" d="M61 104 C72 102 84 102 95 104" stroke-width="1.8"/>
-  <g class="trazo-acento" stroke-width="2.6">
+  <path class="suave" data-capa="Pliegue" d="M61 104 C72 102 84 102 95 104" stroke-width="1.8"/>
+  <g class="trazo-acento" stroke-width="2.6" data-capa="Líneas de la factura">
     <path d="M68 96 H84"/>
     <path class="suave" d="M66 112 L94 110"/>
     <path class="suave" d="M69 122 L99 120"/>
     <path class="suave" d="M72 132 L104 130"/>
   </g>
-  <path class="trazo-oro" d="M80 144 L104 143" stroke-width="3.4"/>
+  <path class="trazo-oro" d="M80 144 L104 143" stroke-width="3.4" data-capa="Total"/>
 </svg>
