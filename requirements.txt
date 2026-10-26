@@ -15,7 +15,7 @@ pyrage>=1.2                  # age en Python, sin instalar binarios (también en
 
 # Lectura de PDFs e imágenes (invoice_data)
 pypdfium2>=4.30
-Pillow>=11.0
+Pillow>=13.0.0
 
 # OCR (invoice_data/services/ocr.py y extractor.py)
 # Requiere tener instalado el programa Tesseract con el idioma español ("spa"):
