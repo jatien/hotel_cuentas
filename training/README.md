@@ -117,8 +117,11 @@ valores **aprobados por una persona** (no los que dijo el modelo). Por eso:
 
 ### En el servidor de casa (GPU de 16 GB)
 
+Con 16 GB, sirve `merged-fp8/` (ver «Opción local» más abajo: `cuantizar_fp8.py` y el servicio `serve`).
+La cuantización `--quantization fp8` al cargar necesita memoria para los pesos en 16 bits.
+
 ```bash
-vllm serve /ruta/merged --served-model-name factura-qwen --quantization fp8 \
+vllm serve /ruta/merged-fp8 --served-model-name factura-qwen \
   --max-model-len 16384 --limit-mm-per-prompt '{"image":6,"video":0}' --api-key <clave>
 ```
 Y en el `.env` de Django: `INVOICE_AGENT_BASE_URL=http://<ip-servidor>:8000/v1`,
@@ -127,6 +130,76 @@ Y en el `.env` de Django: `INVOICE_AGENT_BASE_URL=http://<ip-servidor>:8000/v1`,
 Alternativa con Ollama: convertir `merged/` a GGUF con `llama.cpp` (`convert_hf_to_gguf.py`, que
 genera también el fichero `mmproj` de visión) y cuantizar a `Q4_K_M`. Es más sencillo de mantener,
 pero conviene volver a medir con `invoice_agent_evaluate`, porque 4 bits pierden algo más que FP8.
+
+## Opción local: el PC con la RTX 5080 (16 GB, Docker)
+
+El PC nuevo (Ubuntu, RTX 5080 de 16 GB, 32 GB de RAM) puede hacer los pasos 4-11 sin alquilar GPU.
+Todo va en contenedores (`training/local/`): el venv de Django usa Python 3.14 y las librerías de
+entrenamiento aún no lo soportan, y la RTX 5080 (Blackwell, `sm_120`) necesita PyTorch con CUDA 12.8.
+
+Qué cambia frente a RunPod para que quepa en 16 GB:
+
+| | RunPod (48 GB) | RTX 5080 (16 GB) |
+|---|---|---|
+| Entrenamiento | LoRA en 16 bits | **QLoRA en 4 bits** (`--load-in-4bit`) |
+| Longitud máxima | 12288 tokens | **8192** (≈ facturas de hasta 2-3 páginas; las más largas se descartan) |
+| Servir el modelo | vLLM en 16 bits | vLLM con **pesos FP8 cuantizados antes** (`cuantizar_fp8.py`) |
+| Línea base | `Qwen/Qwen2.5-VL-7B-Instruct` | `RedHatAI/Qwen2.5-VL-7B-Instruct-FP8-Dynamic` |
+
+La cuantización FP8 «al vuelo» de vLLM (`--quantization fp8`) carga primero los ~16,6 GB en 16 bits
+y no cabe; por eso el modelo fusionado se convierte a FP8 en la CPU con `cuantizar_fp8.py`.
+
+```
+ PC del hotel (Django)                          PC con RTX 5080 (Docker)
+ ─────────────────────                          ────────────────────────
+ 1-3 importar, revisar, aprobar, exportar ──►  check → serve (base) ◄── evaluate (línea base)
+                                                train (QLoRA) → fp8 → serve (afinado) ◄── evaluate
+                                                si mejora: serve queda como modelo de producción
+```
+
+### Preparar (una vez)
+
+```bash
+cd ~/Projects/hotel_cuentas
+mkdir -p ~/factura-ia/outputs ~/factura-ia/cache        # con tu usuario, no como root
+cp training/local/.env.example training/local/.env      # rellena rutas, HOST_UID/GID y VLLM_API_KEY
+# copia aquí el dataset exportado (DATASET_DIR), p. ej. con scp desde el PC del hotel
+docker compose -f training/local/compose.yaml build
+docker compose -f training/local/compose.yaml run --rm gpu-check
+```
+
+`gpu-check` debe mostrar `sm_120`, bf16 y al menos ~14 GiB libres. Si no, cierra lo que use la GPU:
+`sudo systemctl stop ollama` (vuelve a arrancarlo al terminar) y el navegador con aceleración.
+
+### Ejecutar
+
+```bash
+C="docker compose -f training/local/compose.yaml"
+$C run --rm check                 # dataset correcto y cuántos ejemplos superan MAX_SEQ_LEN
+$C up serve                       # línea base: Ctrl+C al terminar la evaluación
+$C run --rm train                 # QLoRA → OUTPUTS_DIR/run1/{lora,merged,val_report.json}
+$C run --rm fp8                   # merged/ → merged-fp8/
+SERVE_MODEL=/outputs/run1/merged-fp8 $C up serve
+```
+
+En el `.env` de Django (este PC o el del hotel, con `SERVE_BIND` en la IP de la LAN):
+
+```
+INVOICE_AGENT_BASE_URL=http://<ip-o-localhost>:8000/v1
+INVOICE_AGENT_API_KEY=<VLLM_API_KEY>
+INVOICE_AGENT_MODEL=factura-qwen
+INVOICE_AGENT_VISION_MODE=always
+```
+
+y se mide igual que en RunPod: `invoice_agent_evaluate <dataset>/test --vision-mode always --output base.json`
+(y `afinado.json` con el modelo nuevo).
+
+- **Si se corta** (apagón, error de memoria a mitad): `TRAIN_ARGS=--resume` continúa desde el último checkpoint.
+- **Si falta memoria (CUDA out of memory)**: baja `MAX_SEQ_LEN` a 6144 (se descartan más facturas largas;
+  `check` dice cuántas) o entrena esa ejecución en RunPod con los mismos scripts.
+- `serve` usa la imagen `vllm/vllm-openai:latest`; cuando una versión funcione, fíjala en `VLLM_IMAGE`.
+- Datos: el dataset, los checkpoints y el modelo contienen facturas reales. Quedan fuera del repositorio
+  (`OUTPUTS_DIR`, `CACHE_DIR`) y `serve` solo escucha en `127.0.0.1` salvo que cambies `SERVE_BIND`.
 
 ## Parámetros de entrenamiento
 
@@ -137,8 +210,9 @@ pero conviene volver a medir con `invoice_agent_evaluate`, porque 4 bits pierden
 | `--lora-r` / `--lora-alpha` | 16 / 16 | 32/32 con más de ~1.000 facturas |
 | `--grad-accum` | 8 | Lote efectivo; con pocos datos, 4 da más pasos |
 | `--vision-layers` | no | Probar si falla mucho en escaneos o fotos (más riesgo de sobreajuste) |
-| `--load-in-4bit` | no | GPUs de 24 GB |
-| `--max-seq-len` | 12288 | Una página ≈ 4.000 tokens; facturas más largas se descartan |
+| `--resume` | no | Continuar una ejecución cortada desde su último checkpoint |
+| `--load-in-4bit` | no (sí en `training/local`) | GPUs de 16-24 GB |
+| `--max-seq-len` | 12288 (8192 en `training/local`) | Una página ≈ 4.000 tokens; facturas más largas se descartan |
 
 ## Notas
 

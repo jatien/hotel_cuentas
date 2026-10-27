@@ -1,0 +1,123 @@
+# Afinado de Qwen2.5-VL-7B en el PC local (RTX 5080, 16 GB) con Docker. Ver training/README.md.
+#
+#   cp training/local/.env.example training/local/.env      # y rellenar DATASET_DIR, VLLM_API_KEY…
+#   docker compose -f training/local/compose.yaml build
+#   docker compose -f training/local/compose.yaml run --rm gpu-check
+#   docker compose -f training/local/compose.yaml run --rm check
+#   docker compose -f training/local/compose.yaml up serve          # línea base (Ctrl+C al acabar)
+#   docker compose -f training/local/compose.yaml run --rm train
+#   docker compose -f training/local/compose.yaml run --rm fp8
+#   SERVE_MODEL=/outputs/run1/merged-fp8 docker compose -f training/local/compose.yaml up serve
+#
+# Entrenar y servir usan la misma GPU: nunca a la vez. Para Ollama antes de entrenar
+# (sudo systemctl stop ollama) o se quedará con parte de los 16 GB.
+
+name: factura-ia
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+x-job: &job
+  <<: *gpu
+  # Mismo usuario que en el anfitrión: los resultados en OUTPUTS_DIR no quedan como root.
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+  ipc: host
+  working_dir: /tmp   # Unsloth escribe aquí su caché de kernels compilados (unsloth_compiled_cache)
+  env_file: [.env]
+  environment:
+    HOME: /tmp
+    HF_HOME: /cache/hf
+    TRITON_CACHE_DIR: /cache/triton
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True   # menos fragmentación con 16 GB
+    TOKENIZERS_PARALLELISM: "false"
+  volumes:
+    - ..:/app/training:ro
+    - ${DATASET_DIR:?Define DATASET_DIR en training/local/.env}:/data:ro
+    - ${OUTPUTS_DIR:-../outputs}:/outputs
+    - ${CACHE_DIR:-../outputs/.cache}:/cache
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  # Comprueba que el contenedor ve la RTX 5080 con un PyTorch que la soporta (sm_120).
+  gpu-check:
+    <<: *job
+    build: &train-build
+      context: ../..
+      dockerfile: training/local/Dockerfile
+      target: train
+    image: factura-ia-train:latest
+    command:
+      - python
+      - -c
+      - |
+        import os, torch, bitsandbytes
+        assert torch.cuda.is_available(), "CUDA no disponible en el contenedor"
+        p = torch.cuda.get_device_properties(0)
+        free, total = torch.cuda.mem_get_info()
+        print(f"torch {torch.__version__} · CUDA {torch.version.cuda} · {p.name} · sm_{p.major}{p.minor}")
+        print(f"VRAM libre {free/2**30:.1f} de {total/2**30:.1f} GiB · bf16 {torch.cuda.is_bf16_supported()}")
+        print(f"bitsandbytes {bitsandbytes.__version__}")
+        x = torch.randn(2048, 2048, device="cuda", dtype=torch.bfloat16); (x @ x).sum().item()
+        print("OK: la GPU calcula en bf16")
+        if free < 14 * 2**30:
+            print("Aviso: hay menos de 14 GiB libres. Cierra Ollama, juegos o el navegador con aceleración.")
+
+  # Revisa el dataset exportado por Django (no usa la GPU).
+  check:
+    <<: *job
+    deploy: {}
+    image: factura-ia-train:latest
+    command: python /app/training/check_dataset.py /data --max-tokens ${MAX_SEQ_LEN:-8192}
+
+  # QLoRA en 4 bits: lo que cabe en 16 GB. Los parámetros extra van en TRAIN_ARGS (.env).
+  train:
+    <<: *job
+    build: *train-build
+    image: factura-ia-train:latest
+    command: >-
+      python /app/training/train_qwen25vl.py --data /data --output /outputs/${RUN:-run1}
+      --load-in-4bit --max-seq-len ${MAX_SEQ_LEN:-8192} ${TRAIN_ARGS:-}
+
+  # merged/ (16 bits, ~16,6 GB) → merged-fp8/ (~9 GB), en CPU. Necesita ~24 GB de RAM libre.
+  fp8:
+    <<: *job
+    deploy: {}
+    build:
+      context: ../..
+      dockerfile: training/local/Dockerfile
+      target: fp8
+    image: factura-ia-fp8:latest
+    command: python /app/training/cuantizar_fp8.py /outputs/${RUN:-run1}/merged /outputs/${RUN:-run1}/merged-fp8
+
+  # API compatible con OpenAI para que Django (invoice_agent_evaluate / worker) use el modelo.
+  # Por defecto la versión FP8 oficial del modelo base: es la línea base con la que comparar.
+  serve:
+    <<: *gpu
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    ipc: host
+    env_file: [.env]
+    environment:
+      HOME: /tmp
+      HF_HOME: /cache/hf
+    volumes:
+      - ${OUTPUTS_DIR:-../outputs}:/outputs:ro
+      - ${CACHE_DIR:-../outputs/.cache}:/cache
+    # 127.0.0.1 = solo este PC. Para evaluar desde el PC del hotel: SERVE_BIND=<IP de la LAN>.
+    ports:
+      - "${SERVE_BIND:-127.0.0.1}:8000:8000"
+    command: >-
+      --model ${SERVE_MODEL:-RedHatAI/Qwen2.5-VL-7B-Instruct-FP8-Dynamic}
+      --served-model-name factura-qwen
+      --api-key ${VLLM_API_KEY:?Define VLLM_API_KEY en training/local/.env}
+      --host 0.0.0.0 --port 8000
+      --max-model-len ${MAX_MODEL_LEN:-12288}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.88}
+      --limit-mm-per-prompt '{"image":6,"video":0}'
