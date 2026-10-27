@@ -4,8 +4,10 @@ Página de inicio del PMS: una rueda ovalada y alargada (lado izquierdo más alt
 cuatro ramas (Gestión de reservas, Gestión de facturas, Contabilidad y Análisis) y el chat
 del PMS Copilot en el centro. En móvil, un círculo.
 
-- **Girar**: es un engranaje pesado. El arrastre ofrece resistencia y al soltar avanza como
-  mucho una rama, con un golpe al encajar. Clic en una rama la trae arriba paso a paso.
+- **Girar**: es un engranaje pesado. El arrastre ofrece resistencia y nunca pasa de una rama;
+  al soltar cae a la rama más cercana (un tirón rápido la lleva a la siguiente) y nunca se
+  queda a medias. Clic en una rama la trae arriba paso a paso. Sin rebotes: al parar solo se
+  mueven los iconos, nunca el chat ni el resto de la página.
 - **Entrar** (doble clic o Intro): el icono vuela a la esquina superior izquierda, debajo cae
   el desplegable de secciones y a la derecha se abre la pantalla de la herramienta (la página
   de Django de esa sección, en un iframe). La flecha del icono, Esc o «atrás» vuelven.

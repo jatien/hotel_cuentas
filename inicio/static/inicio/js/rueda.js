@@ -4,9 +4,9 @@
  * Rueda
  * - Las ramas se reparten sobre una elipse inclinada (círculo en móvil). Un «asa» invisible
  *   recibe el arrastre (GSAP Draggable) y la rueda se recoloca según `rotor.giro`.
- * - Engranaje pesado: el arrastre ofrece resistencia (nunca pasa de media posición) y al
- *   soltar avanza como mucho UNA rama, con un golpe al encajar. Clic o teclado: también
- *   de una en una, con su golpe en cada paso.
+ * - Engranaje pesado: el arrastre ofrece resistencia y nunca pasa de una rama; al soltar
+ *   cae a la rama más cercana (un tirón rápido la lleva a la siguiente) y nunca se queda a
+ *   medias. Clic o teclado: de una en una. Sin rebotes: al parar no se mueve nada más.
  * - El nombre de la rama de arriba aparece debajo de ella.
  *
  * Rama abierta (doble clic o Intro)
@@ -102,21 +102,28 @@
   const indiceArriba = (giro) => mod(Math.round(-giro / paso), n);
   let arriba = -1;
 
+  // Tamaño del contenedor en píxeles (para mover con transform, que es lo más fluido).
+  let anchoPx = rueda.clientWidth, altoPx = rueda.clientHeight;
+  new ResizeObserver(() => { anchoPx = rueda.clientWidth; altoPx = rueda.clientHeight; colocar(); }).observe(rueda);
+  const trazoLineas = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  lineas.replaceChildren(trazoLineas);
+  modulosEl.forEach((el) => { el.style.left = "0"; el.style.top = "0"; el.style.willChange = "transform"; });
+
   function colocar() {
     const fases = modulosEl.map((_, i) => i * paso + rotor.giro);
     const centros = fases.map((f) => punto(f, g.rx, g.ry));
     modulosEl.forEach((el, i) => {
       const [x, y] = aPorcentaje(centros[i]);
-      el.style.left = x + "%";
-      el.style.top = y + "%";
-      el.style.zIndex = String(Math.round(centros[i][1] + 200)); // las de abajo, delante
+      el.style.transform = `translate3d(${(x * anchoPx / 100).toFixed(2)}px, ${(y * altoPx / 100).toFixed(2)}px, 0)`;
+      const z = String(Math.round(centros[i][1] + 200)); // las de abajo, delante
+      if (el.style.zIndex !== z) el.style.zIndex = z;
     });
     let d = "";
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       for (const s of [-SEPARACION, SEPARACION]) d += arco(fases[i], fases[i] + paso, s, centros[i], centros[j]) + " ";
     }
-    lineas.innerHTML = '<path d="' + d.trim() + '"/>';
+    trazoLineas.setAttribute("d", d.trim());
 
     const i = indiceArriba(rotor.giro);
     if (i !== arriba) {
@@ -144,28 +151,34 @@
       .fromTo(nombre, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.out" });
   }
 
-  /** Golpe al encajar: la rueda da un pequeño tirón en sentido contrario y se asienta. */
-  function golpe(dir) {
-    if (sinMovimiento || !dir) return;
-    gsap.fromTo(rueda, { x: -dir * 5, y: 2 }, { x: 0, y: 0, duration: 0.55, ease: "elastic.out(1.2, 0.3)" });
+  // Movimiento del engranaje. Una sola animación a la vez sobre `rotor` (overwrite) y sin
+  // rebote al final: la rueda llega y se queda quieta, sin mover nada más de la página.
+  const PESADO = "power3.inOut";    // arranca despacio (pesa) y frena suave
+  const ASENTAR = "power3.out";     // al soltar: cae al encaje más cercano
+
+  function animarGiro(destino, duracion, ease, alTerminar) {
+    objetivo = destino;
+    gsap.to(rotor, {
+      giro: destino, duration: dur(duracion), ease, overwrite: true,
+      onUpdate: colocar,
+      onComplete() { rotor.giro = destino; colocar(); if (alTerminar) alTerminar(); },
+    });
   }
 
   // Pasos pendientes (clic en una rama lejana o varias flechas): se dan de uno en uno.
   let pendientes = 0;
   let girando = false;
+  let arrastrando = false;
   let objetivo = rotor.giro;
 
   function siguientePaso() {
-    if (pendientes === 0) { girando = false; return; }
+    if (pendientes === 0 || arrastrando) { girando = false; asegurarEncaje(); return; }
     girando = true;
     const dir = Math.sign(pendientes);
     pendientes -= dir;
-    objetivo = ajustar(rotor.giro) + dir * paso;
-    // back.inOut: coge impulso hacia atrás, arranca pesado y se pasa un poco al encajar.
-    gsap.to(rotor, {
-      giro: objetivo, duration: dur(0.95), ease: "back.inOut(1.4)", onUpdate: colocar,
-      onComplete() { colocar(); golpe(dir); gsap.delayedCall(dur(0.12), siguientePaso); },
-    });
+    // Si se estaba asentando (tras un arrastre), se cuenta desde donde iba a quedar.
+    const desde = gsap.isTweening(rotor) ? objetivo : ajustar(rotor.giro);
+    animarGiro(desde + dir * paso, 0.9, PESADO, () => gsap.delayedCall(dur(0.1), siguientePaso));
   }
 
   /** Gira `pasos` posiciones (positivo = horario), una a una. */
@@ -177,18 +190,51 @@
 
   /** Lleva la rama i arriba por el camino más corto. */
   function traerArriba(i) {
-    const base = girando ? objetivo : ajustar(rotor.giro);
+    if (arrastrando) return;
+    const base = gsap.isTweening(rotor) ? objetivo : ajustar(rotor.giro);
     let pasos = Math.round((-i * paso - base) / paso);
     pasos = mod(pasos + n / 2, n) - n / 2;           // entre -n/2 y n/2
+    if (!pasos) return;
     pendientes = pasos;
     if (!girando) siguientePaso();
   }
 
-  // Arrastre con resistencia: como mucho media posición mientras se arrastra.
-  let baseGiro = 0;
-  let inicioGiro = 0;
-  let baseAsa = 0;
-  let ultimoArrastre = 0;
+  /** Red de seguridad: si la rueda quedó entre dos ramas sin nada moviéndola, cae a la más cercana. */
+  function asegurarEncaje() {
+    if (arrastrando || girando || gsap.isTweening(rotor)) return;
+    const destino = ajustar(rotor.giro);
+    if (Math.abs(destino - rotor.giro) > 0.01) {
+      animarGiro(destino, 0.25 + 0.5 * Math.abs(destino - rotor.giro) / paso, ASENTAR);
+    }
+  }
+
+  // Arrastre con resistencia (engranaje pesado): la rueda sigue al ratón a algo más de la
+  // mitad de su velocidad y nunca pasa de una rama. Al soltar cae a la rama más cercana;
+  // un tirón rápido la empuja a la siguiente. Nunca se queda a medias.
+  const RESISTENCIA = 0.55;
+  let baseGiro = 0, inicioGiro = 0, baseAsa = 0, ultimoArrastre = 0;
+  let muestras = [];   // [tiempo, giro] recientes, para medir el tirón
+
+  function soltar(velocidad) {
+    if (!arrastrando) return;
+    arrastrando = false;
+    ultimoArrastre = Date.now();
+    rueda.classList.remove("arrastrando");
+    let destino = ajustar(rotor.giro);
+    // Tirón: con velocidad suficiente avanza una rama en ese sentido aunque no llegara a la mitad.
+    if (destino === baseGiro && Math.abs(velocidad) > paso * 1.2) destino = baseGiro + Math.sign(velocidad) * paso;
+    destino = Math.max(baseGiro - paso, Math.min(baseGiro + paso, destino));
+    animarGiro(destino, 0.3 + 0.55 * Math.abs(destino - rotor.giro) / paso, ASENTAR);
+    gsap.set(asa, { rotation: 0 });
+  }
+
+  function velocidadReciente() {
+    const ahora = performance.now();
+    const recientes = muestras.filter(([t]) => ahora - t < 120);
+    if (recientes.length < 2) return 0;
+    const [t0, g0] = recientes[0], [t1, g1] = recientes[recientes.length - 1];
+    return t1 > t0 ? ((g1 - g0) / (t1 - t0)) * 1000 : 0;   // grados por segundo
+  }
 
   const [arrastre] = Draggable.create(asa, {
     type: "rotation",
@@ -198,33 +244,32 @@
     minimumMovement: 6,
     onDragStart() {
       gsap.killTweensOf(rotor);
+      gsap.killTweensOf(siguientePaso);
       pendientes = 0;
       girando = false;
+      arrastrando = true;
       inicioGiro = rotor.giro;
       baseGiro = ajustar(rotor.giro);
       baseAsa = this.rotation;
+      muestras = [];
       rueda.classList.add("arrastrando");
     },
     onDrag() {
-      const delta = this.rotation - baseAsa;
-      // tanh satura: cuanto más se tira, menos avanza. Engranaje pesado.
-      rotor.giro = inicioGiro + paso * 0.5 * Math.tanh(delta / (paso * 1.3));
+      if (!arrastrando) return;
+      const delta = (this.rotation - baseAsa) * RESISTENCIA;
+      rotor.giro = Math.max(baseGiro - paso, Math.min(baseGiro + paso, inicioGiro + delta));
+      muestras.push([performance.now(), rotor.giro]);
+      if (muestras.length > 12) muestras.shift();
       colocar();
     },
-    onDragEnd() {
-      ultimoArrastre = Date.now();
-      rueda.classList.remove("arrastrando");
-      const recorrido = rotor.giro - baseGiro;
-      const dir = Math.abs(recorrido) > paso * 0.15 ? Math.sign(recorrido) : 0;
-      objetivo = baseGiro + dir * paso;
-      gsap.to(rotor, {
-        giro: objetivo, duration: dur(dir ? 0.75 : 0.45), ease: dir ? "back.out(1.6)" : "power2.out",
-        onUpdate: colocar, onComplete() { colocar(); golpe(dir); },
-      });
-      gsap.set(asa, { rotation: 0 });
-      this.update();
-    },
+    onDragEnd() { soltar(velocidadReciente()); this.update(); },
   });
+
+  // Si se suelta fuera de la ventana, se cambia de pestaña o el sistema cancela el gesto,
+  // Draggable puede no enterarse: se fuerza el encaje.
+  ["pointercancel", "blur"].forEach((ev) => window.addEventListener(ev, () => { soltar(0); asegurarEncaje(); }));
+  document.addEventListener("visibilitychange", () => { soltar(0); asegurarEncaje(); });
+  rueda.addEventListener("pointerup", () => setTimeout(asegurarEncaje, 400));
 
   modulosEl.forEach((el, i) => {
     // Sin JS cada icono es un enlace a /m/<rama>/. Con JS se quita el href: Draggable deja
@@ -373,6 +418,7 @@
 
     // Al volver, la rama abierta estará arriba.
     gsap.killTweensOf(rotor);
+    gsap.killTweensOf(siguientePaso);
     pendientes = 0;
     girando = false;
     rotor.giro = -i * paso + Math.round((rotor.giro + i * paso) / 360) * 360;
@@ -536,9 +582,11 @@
   } else {
     history.replaceState({ modulo: null }, "", location.href);
     if (!sinMovimiento) {
-      gsap.from(modulosEl, { opacity: 0, y: 14, duration: 0.6, stagger: 0.09, ease: "power2.out" });
+      // Se anima la cara de cada icono, no el icono: su transform lo controla la rueda.
+      gsap.from(modulosEl.map((el) => el.querySelector(".modulo-cara")),
+                { opacity: 0, y: 14, duration: 0.6, stagger: 0.09, ease: "power2.out", clearProps: "transform,opacity" });
       gsap.from(lineas, { opacity: 0, duration: 0.8, delay: 0.25 });
-      gsap.from(".copilot", { opacity: 0, scale: 0.94, duration: 0.5, delay: 0.35, ease: "back.out(2)" });
+      gsap.from(".copilot", { opacity: 0, duration: 0.5, delay: 0.35, ease: "power2.out", clearProps: "opacity" });
     }
   }
 })();
