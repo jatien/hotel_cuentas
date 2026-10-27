@@ -198,15 +198,33 @@ def prepare(
                     pages.append(_ocr_page(index + 1, image, engine, allow_vision, always))
     except PreparationError:
         raise
-    except FileNotFoundError as error:
-        raise PreparationError("ORIGINAL_MISSING", "No se encuentra el fichero original.") from error
-    except (pdfium.PdfiumError, OSError) as error:
-        raise PreparationError("DOCUMENT_UNREADABLE", f"No se puede leer el documento: {type(error).__name__}") from error
     except Exception as error:
-        # p. ej. Tesseract no instalado: puede arreglarse y reintentarse.
+        if _is_tesseract_missing(error):
+            # TesseractNotFoundError hereda de OSError: sin esto se confundiría con un PDF dañado
+            # y el documento quedaría como error definitivo. Instalarlo lo arregla: se reintenta.
+            raise PreparationError(
+                "OCR_NOT_INSTALLED",
+                "Tesseract no está instalado o TESSERACT_CMD apunta a otro sitio "
+                "(Linux: sudo apt install tesseract-ocr tesseract-ocr-spa).",
+                True,
+            ) from error
+        if isinstance(error, FileNotFoundError):
+            raise PreparationError("ORIGINAL_MISSING", "No se encuentra el fichero original.") from error
+        if isinstance(error, (pdfium.PdfiumError, OSError)):
+            raise PreparationError("DOCUMENT_UNREADABLE", f"No se puede leer el documento: {type(error).__name__}") from error
+        # p. ej. un fallo de Tesseract: puede arreglarse y reintentarse.
         logger.exception("invoice_agent preparation failed")
         raise PreparationError("PREPARATION_FAILED", f"Fallo preparando el documento: {type(error).__name__}", True) from error
 
     if not any(p.chars for p in pages) and not any(p.image_jpeg for p in pages):
         raise PreparationError("NO_CONTENT", "No se ha podido obtener texto del documento ni enviarlo como imagen.")
     return PreparedDocument(pages=pages, method=_summary_method(pages))
+
+
+def _is_tesseract_missing(error: Exception) -> bool:
+    try:
+        from pytesseract import TesseractNotFoundError
+    except ImportError:
+        return False
+    return isinstance(error, TesseractNotFoundError)
+

@@ -4,6 +4,7 @@
 #   training/local/pipeline.sh           # todo: bajar de Drive, etiquetar, subir JSON, entrenar
 #   training/local/pipeline.sh datos     # solo bajar, etiquetar, subir JSON y exportar el dataset
 #   training/local/pipeline.sh entrenar  # solo entrenar con el dataset ya exportado (check, train, fp8)
+#   RETRY_FAILED=1 training/local/pipeline.sh datos   # reintenta también las que quedaron en «Error»
 #
 # Lee training/local/.env (rutas, RCLONE_REMOTE, EMPRESA_NIF…). Repetirlo es seguro: las facturas ya
 # importadas o etiquetadas no se vuelven a procesar ni a pagar.
@@ -40,6 +41,7 @@ datos() {
   echo "== Importar, etiquetar con el profesor y exportar el dataset"
   EXTRA=()
   [[ -n "${MAX_EXTRACT:-}" ]] && EXTRA+=(--max-extract "$MAX_EXTRACT")
+  [[ "${RETRY_FAILED:-}" == "1" ]] && EXTRA+=(--retry-failed)
   (cd "$REPO" && "$DJANGO_PY" manage.py invoice_agent_pipeline "$DRIVE_DIR" --empresa "$EMPRESA_NIF" \
       --labels "$LABELS_DIR" --dataset "$DATASET_DIR" "${EXTRA[@]}")
 
