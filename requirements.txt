@@ -25,7 +25,7 @@ Pillow>=11.0
 pytesseract>=0.3.13
 
 # Solo para los tests (invoice_data/tests/fixtures.py)
-reportlab>=4.0
+reportlab>=5.1.0
 
 # Limpieza de imagen antes de OCR (invoice_data/services/preprocessing.py)
 opencv-python-headless>=4.9
