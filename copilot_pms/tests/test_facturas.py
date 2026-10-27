@@ -98,13 +98,23 @@ class FacturasTests(TestCase):
         self.assertEqual(self.run_tool("documento_factura", referencia="https://x").estado, EstadoLlamada.INVALIDO)
 
     def test_estado_entrenamiento_cuenta_solo_las_empresas_del_contexto(self):
+        """Qué cuenta como «lista para entrenar» lo decide invoice_agent (dataset.exportable, con sus tests);
+        aquí se comprueban las cuentas de la herramienta y el filtro por empresa."""
+        from unittest import mock
+
         self._factura(self.hotel, "P-1", Decimal("10.00"))
         Documento.objects.filter(borrador__numero_factura="P-1").update(estado="pending_approval")
-        self._factura(self.hotel, "R-1", Decimal("11.00"))
-        Documento.objects.filter(borrador__numero_factura="R-1").update(estado="needs_review")
-        r = self.run_tool("estado_entrenamiento_facturas")
+        for numero in ("R-1", "R-2"):
+            self._factura(self.hotel, numero, Decimal("11.00"))
+        Documento.objects.filter(borrador__numero_factura__in=["R-1", "R-2"]).update(estado="needs_review")
+        listas = list(Borrador.objects.filter(numero_factura__in=["F-2026/0042", "P-1", "R-1"])
+                      .select_related("documento"))
+        with mock.patch("invoice_agent.services.dataset.exportable", return_value=listas) as exportable:
+            r = self.run_tool("estado_entrenamiento_facturas")
+        self.assertEqual(exportable.call_args.kwargs["empresa_ids"], frozenset({self.hotel.pk}))
         self.assertEqual(r.estado, EstadoLlamada.OK)
-        self.assertEqual(r.datos["listas_para_entrenar"], 2)  # la de la otra empresa no cuenta
-        self.assertEqual(r.datos["aprobadas_por_una_persona"], 1)
+        self.assertEqual(r.datos["listas_para_entrenar"], 3)
+        self.assertEqual(r.datos["aprobadas_por_una_persona"], 1)  # la de la otra empresa no cuenta
+        self.assertEqual(r.datos["en_revision_solo_por_avisos_de_contexto"], 1)
         self.assertEqual(r.datos["necesitan_revision"], 1)
         self.assertTrue(r.avisos)

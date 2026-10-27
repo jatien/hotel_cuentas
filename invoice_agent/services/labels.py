@@ -20,9 +20,10 @@ from pydantic import ValidationError
 
 from invoice_agent.models import Borrador, EstadoDocumento
 from invoice_agent.schemas import ExtractionOutput
-from invoice_agent.services.dataset import _corrected_columns, build_target
+from invoice_agent.services.dataset import _corrected_columns, build_target, trainable
 
-TRUSTED_STATES = (EstadoDocumento.APPROVED, EstadoDocumento.PENDING_APPROVAL)
+# «Necesita revisión» solo si lo único pendiente son avisos de contexto (dataset.trainable).
+TRUSTED_STATES = (EstadoDocumento.APPROVED, EstadoDocumento.PENDING_APPROVAL, EstadoDocumento.NEEDS_REVIEW)
 
 
 @dataclass
@@ -65,6 +66,8 @@ def export_labels(folder: Path, *, states=TRUSTED_STATES, empresa_ids=None) -> L
     used: set[str] = set()
     for borrador in borradores:
         documento = borrador.documento
+        if documento.estado == EstadoDocumento.NEEDS_REVIEW and not trainable(borrador):
+            continue
         name = f"{Path(documento.original_filename).stem}.json"
         if name in used:  # dos facturas con el mismo nombre en carpetas distintas
             name = f"{Path(documento.original_filename).stem}__{str(documento.public_id)[:8]}.json"
