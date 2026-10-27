@@ -52,8 +52,8 @@ class Command(BaseCommand):
         parser.add_argument("--own-nif", default="", help="NIF de la empresa receptora para las comprobaciones.")
         parser.add_argument("--output", help="Guarda el informe JSON en este fichero.")
         parser.add_argument(
-            "--vision-mode", choices=["auto", "always", "never"],
-            help="Imágenes al modelo (por defecto, INVOICE_AGENT_VISION_MODE). Usa «always» con el modelo afinado.",
+            "--vision-mode", choices=["image_only", "auto", "always", "never"],
+            help="Cómo ve el modelo las facturas (por defecto, INVOICE_AGENT_VISION_MODE). Usa el mismo modo con el que se entrenó.",
         )
 
     def handle(self, *args, **options):

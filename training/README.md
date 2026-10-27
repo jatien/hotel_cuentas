@@ -32,10 +32,14 @@ después como cualquier otro, cambiando dos líneas del `.env`.
 ## Qué aprende el modelo
 
 Cada ejemplo es **exactamente** la petición que Django envía al modelo en producción (mismo prompt de
-sistema, mismo texto de las páginas, **una imagen por página**) y, como respuesta, el JSON con los
-valores **aprobados por una persona** (no los que dijo el modelo). Por eso:
+sistema, **una imagen por página**) y, como respuesta, el JSON correcto (aprobado por una persona, o
+del profesor sin incidencias). Por eso:
 
-- El modelo afinado se usa con `INVOICE_AGENT_VISION_MODE=always`, igual que al entrenar.
+- **Solo imagen** (por defecto, `INVOICE_AGENT_VISION_MODE=image_only`): el modelo lee las páginas como
+  imágenes, sin OCR y sin el texto del PDF (*image-to-text*). No hace falta Tesseract. El modelo afinado se
+  usa con el mismo modo con el que se entrenó; el `manifest.json` y `merged/factura_ia.json` lo guardan.
+- Con `always` el ejemplo lleva además el texto de cada página (PDF u OCR); queda como alternativa para
+  comparar más adelante, y necesita Tesseract para los escaneos.
 - Si cambias el prompt (`invoice_agent/prompts.py`, `PROMPT_VERSION`) o el esquema, hay que volver a
   exportar y a entrenar. El `manifest.json` y `merged/factura_ia.json` guardan las versiones.
 
@@ -93,7 +97,7 @@ valores **aprobados por una persona** (no los que dijo el modelo). Por eso:
    INVOICE_AGENT_MODEL=factura-qwen
    ```
    ```powershell
-   python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --vision-mode always --output base.json
+   python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --output base.json
    ```
    Para vLLM con `Ctrl+C` antes de entrenar (comparten GPU).
 8. **Entrenar**:
@@ -108,7 +112,7 @@ valores **aprobados por una persona** (no los que dijo el modelo). Por eso:
    QUANT=fp8 bash serve_vllm.sh /workspace/outputs/run1/merged   # como irá en la GPU de 16 GB
    ```
    ```powershell
-   python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --vision-mode always --output afinado.json
+   python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --output afinado.json
    ```
    Compara `base.json` y `afinado.json`: aciertos por campo, conciliación, tasa de revisión y latencia.
 10. Si mejora, **descargar** `/workspace/outputs/run1/merged` (~16 GB) al servidor de casa
@@ -125,7 +129,7 @@ vllm serve /ruta/merged-fp8 --served-model-name factura-qwen \
   --max-model-len 16384 --limit-mm-per-prompt '{"image":6,"video":0}' --api-key <clave>
 ```
 Y en el `.env` de Django: `INVOICE_AGENT_BASE_URL=http://<ip-servidor>:8000/v1`,
-`INVOICE_AGENT_MODEL=factura-qwen`, `INVOICE_AGENT_VISION_MODE=always`, `INVOICE_AGENT_PRICE_*=0`.
+`INVOICE_AGENT_MODEL=factura-qwen`, `INVOICE_AGENT_VISION_MODE=image_only` (el modo del entrenamiento), `INVOICE_AGENT_PRICE_*=0`.
 
 Alternativa con Ollama: convertir `merged/` a GGUF con `llama.cpp` (`convert_hf_to_gguf.py`, que
 genera también el fichero `mmproj` de visión) y cuantizar a `Q4_K_M`. Es más sencillo de mantener,
@@ -260,10 +264,10 @@ En el `.env` de Django (este PC o el del hotel, con `SERVE_BIND` en la IP de la 
 INVOICE_AGENT_BASE_URL=http://<ip-o-localhost>:8000/v1
 INVOICE_AGENT_API_KEY=<VLLM_API_KEY>
 INVOICE_AGENT_MODEL=factura-qwen
-INVOICE_AGENT_VISION_MODE=always
+INVOICE_AGENT_VISION_MODE=image_only
 ```
 
-y se mide igual que en RunPod: `invoice_agent_evaluate <dataset>/test --vision-mode always --output base.json`
+y se mide igual que en RunPod: `invoice_agent_evaluate <dataset>/test --output base.json`
 (y `afinado.json` con el modelo nuevo).
 
 - **Si se corta** (apagón, error de memoria a mitad): `TRAIN_ARGS=--resume` continúa desde el último checkpoint.

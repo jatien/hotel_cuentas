@@ -165,12 +165,22 @@ Las facturas aprobadas sirven como ejemplos de entrenamiento. Flujo completo en
 ```powershell
 python manage.py invoice_agent_import "C:\ruta\facturas" --empresa B07794803 --recursive   # carga por lotes
 python manage.py invoice_agent_export_dataset C:\datasets\dataset_facturas                   # train/val/test
-python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test --vision-mode always
+python manage.py invoice_agent_evaluate C:\datasets\dataset_facturas\test
 ```
 
-`INVOICE_AGENT_VISION_MODE` decide qué imágenes recibe el modelo: `auto` (solo páginas difíciles, lo
-mínimo para un proveedor externo), `always` (todas; obligatorio con el modelo afinado, que se entrenó
-así) o `never`.
+`INVOICE_AGENT_VISION_MODE` decide cómo ve el modelo cada factura:
+
+| Modo | Qué recibe el modelo | Tesseract |
+|---|---|---|
+| `image_only` (por defecto) | solo las imágenes de las páginas (*image-to-text*); así se entrena el modelo local | no |
+| `auto` | texto (PDF u OCR) + imagen de las páginas difíciles; lo mínimo para un proveedor externo | sí, en escaneos |
+| `always` | texto + todas las imágenes | sí, en escaneos |
+| `never` | solo texto (modelos sin visión) | sí, en escaneos |
+
+El modelo afinado se usa con el mismo modo con el que se entrenó (`merged/factura_ia.json`). En
+`image_only` el texto nativo de los PDF digitales se lee solo para localizar evidencias; no se envía.
+Las imágenes no se pueden anonimizar: IBAN o correos impresos llegan al modelo (con el modelo local no
+salen del equipo; con un proveedor externo, sí).
 
 ## Tests y evaluación
 
@@ -217,7 +227,7 @@ Ningún resultado depende de un modelo actuando de juez. Úsalo para fijar umbra
 - El enlace al original es un token firmado: quien tenga el enlace puede abrirlo hasta que caduque.
 - El gancho antivirus (`MALWARE_SCANNER`) no trae escáner: hay que conectar uno (p. ej. ClamAV).
 - Los tipos de IVA conocidos son una lista mantenida a mano; un tipo nuevo da solo un aviso.
-- El OCR depende de Tesseract con el idioma español instalado.
+- Los modos `auto`, `always` y `never` necesitan Tesseract con el idioma español para los escaneos; `image_only` no.
 - Los duplicados no se buscan entre empresas (a propósito: aislamiento).
 
 ## Lista de comprobación para producción

@@ -50,7 +50,7 @@ from invoice_agent.models import (
     EstadoDocumento,
     EventoRevision,
 )
-from invoice_agent.prompts import PROMPT_VERSION
+from invoice_agent.prompts import PROMPT_VERSION, PROMPT_VERSION_IMAGE
 from invoice_agent.schemas import (
     FIELD_TO_COLUMN,
     HEADER_FIELDS,
@@ -256,6 +256,18 @@ def exportable(include_pending: bool = False):
     return Borrador.objects.filter(condition).select_related("documento", "empresa", "extraccion").order_by("pk")
 
 
+def training_vision_mode() -> str:
+    """
+    Cómo ve las facturas el modelo entrenado: image_only (solo imágenes, por defecto) o always
+    (texto + imágenes). Sale de VISION_MODE para que entrenamiento y uso diario coincidan; con
+    auto/never se exporta como always, que era el comportamiento anterior.
+    """
+    from invoice_agent import conf
+
+    mode = conf.get("VISION_MODE")
+    return mode if mode in ("image_only", "always") else "always"
+
+
 def export_dataset(
     folder: Path,
     *,
@@ -277,6 +289,7 @@ def export_dataset(
     report = ExportReport(folder)
 
     borradores = exportable(include_pending)
+    mode = training_vision_mode()
     if empresa_ids is not None:
         borradores = borradores.filter(empresa_id__in=empresa_ids)
 
@@ -292,7 +305,7 @@ def export_dataset(
             group = _group_key(borrador, split_by)
             split = split_for(group, val, test)
             try:
-                prepared = prepare(source, documento.tipo_fuente, ocr_engine, vision_supported=True, vision_mode="always")
+                prepared = prepare(source, documento.tipo_fuente, ocr_engine, vision_supported=True, vision_mode=mode)
             except PreparationError as error:
                 report.skipped.append({"id": case_id, "motivo": error.message})
                 continue
@@ -340,9 +353,9 @@ def export_dataset(
     manifest = {
         "format": DATASET_FORMAT,
         "created": timezone.now().isoformat(),
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": PROMPT_VERSION_IMAGE if mode == "image_only" else PROMPT_VERSION,
         "schema_version": SCHEMA_VERSION,
-        "vision_mode": "always",
+        "vision_mode": mode,
         "vision_max_side_px": conf.get("VISION_MAX_SIDE_PX"),
         "split_by": split_by,
         "fractions": {"val": val, "test": test},

@@ -51,8 +51,10 @@ DEFAULTS = {
     "OCR_LANG": "spa",
     "OCR_MIN_MEAN_CONFIDENCE": 60,
     "ALLOW_VISION": True,
-    # auto = imagen solo de páginas difíciles; always = todas (modelo de visión afinado); never = solo texto
-    "VISION_MODE": "auto",
+    # image_only = el modelo de visión lee SOLO las imágenes de las páginas, sin OCR ni texto (por defecto;
+    # es como se entrena el modelo local). auto = texto + imagen de páginas difíciles; always = texto +
+    # todas las imágenes; never = solo texto. auto/always/never necesitan Tesseract para los escaneos.
+    "VISION_MODE": "image_only",
     "VISION_MAX_SIDE_PX": 1600,
     "MAX_TEXT_CHARS": 60_000,
     "REDACT_BEFORE_MODEL": True,

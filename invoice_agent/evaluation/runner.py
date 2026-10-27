@@ -51,7 +51,7 @@ class OracleProvider(ExtractionProvider):
 
     name = "oracle"
     model = "oracle"
-    supports_vision = False
+    supports_vision = True  # no envía nada; así sirve también en el modo solo imagen
 
     def __init__(self):
         self.truth: dict = {}

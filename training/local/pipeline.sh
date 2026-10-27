@@ -15,6 +15,11 @@ STAGE="${1:-todo}"
 
 [[ -f "$HERE/.env" ]] || { echo "Falta $HERE/.env (cópialo de .env.example)"; exit 1; }
 set -a; source "$HERE/.env"; set +a
+if grep -q "TU_USUARIO" "$HERE/.env"; then
+  echo "En $HERE/.env quedan rutas con TU_USUARIO. Cámbialas por tu usuario, p. ej.:"
+  echo "  sed -i 's#/home/TU_USUARIO/#/home/$(whoami)/#g' $HERE/.env"
+  exit 1
+fi
 
 : "${DATASET_DIR:?Define DATASET_DIR en .env}"
 : "${DRIVE_DIR:?Define DRIVE_DIR en .env}"
