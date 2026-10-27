@@ -149,3 +149,45 @@ class PipelineCommandTests(PipelineTestCase):
                          labels=str(self.work / "json"), max_extract=2, stdout=io.StringIO())
         self.assertEqual(len(teacher.requests), 2)
         self.assertEqual(Documento.objects.filter(estado="queued").count(), 1)
+
+
+class MissingTesseractTests(PipelineTestCase):
+    def test_missing_tesseract_is_retryable_not_unreadable(self):
+        from pytesseract import TesseractNotFoundError
+
+        from invoice_agent.services.preparation import PreparationError, prepare
+        from invoice_agent.tests.helpers import make_scanned_pdf
+
+        class NoTesseract(FakeOcr):
+            def read(self, image):
+                raise TesseractNotFoundError()
+
+        with self.assertRaises(PreparationError) as caught:
+            prepare(make_scanned_pdf(self.work / "escaneo.pdf"), "pdf", NoTesseract(), False, "auto")
+        self.assertEqual(caught.exception.code, "OCR_NOT_INSTALLED")
+        self.assertTrue(caught.exception.retryable)
+
+    def test_retry_failed_reloads_with_the_label(self):
+        drive, labels = self.work / "drive", self.work / "json"
+        drive.mkdir()
+        labels.mkdir()
+        make_pdf(drive / "FA-58.pdf", lines=INVOICE_LINES + ["58"])
+        (labels / "FA-58.json").write_text(model_json(invoice_number=field("FA-58")), encoding="utf-8")
+        args = dict(empresa=self.empresa.nif, labels=str(labels), no_extract=True, stdout=io.StringIO())
+
+        from invoice_agent.services.preparation import PreparationError
+
+        # Lo que pasaba antes con Tesseract ausente: error definitivo en la primera ejecución
+        broken = mock.Mock(side_effect=PreparationError("DOCUMENT_UNREADABLE", "No se puede leer", False))
+        with mock.patch(TESSERACT, FakeOcr), mock.patch("invoice_agent.services.worker.prepare", broken):
+            call_command("invoice_agent_pipeline", str(drive), **args)
+        self.assertEqual(Documento.objects.get().estado, "failed")
+
+        with mock.patch(TESSERACT, FakeOcr):
+            call_command("invoice_agent_pipeline", str(drive), **args)  # sin --retry-failed: sigue en error
+            self.assertEqual(Documento.objects.get().estado, "failed")
+            out = io.StringIO()
+            call_command("invoice_agent_pipeline", str(drive), retry_failed=True, **{**args, "stdout": out})
+        self.assertEqual(Documento.objects.get().estado, "pending_approval")
+        self.assertIn("1 facturas con error vuelven a la cola", out.getvalue())
+        self.assertEqual(Borrador.objects.get().numero_factura, "FA-58")

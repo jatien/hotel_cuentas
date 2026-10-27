@@ -6,7 +6,9 @@ Ciclo completo para entrenar el modelo local de facturas con un LLM grande como 
 
 Pasos (todos se pueden repetir: lo ya hecho no se vuelve a hacer ni a pagar):
   1. Importa los PDF/imágenes de la carpeta (subcarpetas incluidas). Los que ya estaban (mismo
-     SHA-256) se saltan. Los que tienen <nombre>.json en --labels se cargan con ese JSON.
+     SHA-256) se saltan. Los que tienen <nombre>.json en --labels se cargan con ese JSON, también
+     los que estaban en cola de ejecuciones anteriores. Con --retry-failed, los que quedaron en
+     «Error» (p. ej. faltaba Tesseract) vuelven a la cola antes.
   2. Los que no tienen JSON los etiqueta el profesor (INVOICE_AGENT_TEACHER_*; si no está
      definido, el modelo normal). --max-extract limita cuántos en esta ejecución (coste).
   3. Escribe en --labels el JSON de cada factura nueva etiquetada y de las corregidas por una
@@ -25,7 +27,11 @@ from django.db.models import Count
 
 from invoice_agent.models import Documento, Empresa, EstadoDocumento
 from invoice_agent.providers import get_teacher_provider
-from invoice_agent.services import worker
+from invoice_agent.providers.label import LabelProvider
+from invoice_agent.schemas import ReprocessIn
+from invoice_agent.services import review, worker
+from invoice_agent.services.access import system_context
+from invoice_agent.services.errors import ServiceError
 from invoice_agent.services.dataset import export_dataset
 from invoice_agent.services.labels import export_labels
 
@@ -42,6 +48,8 @@ class Command(BaseCommand):
         parser.add_argument("--max-extract", type=int, default=None,
                             help="Máximo de facturas a etiquetar con el profesor en esta ejecución.")
         parser.add_argument("--no-extract", action="store_true", help="No llamar al profesor (solo importar y exportar).")
+        parser.add_argument("--retry-failed", action="store_true",
+                            help="Volver a poner en cola las facturas en «Error» (tras instalar Tesseract, p. ej.).")
         parser.add_argument("--only-approved", action="store_true",
                             help="Exportar solo las aprobadas por una persona (sin etiquetas del profesor sin revisar).")
         parser.add_argument("--val", type=float, default=0.10)
@@ -57,8 +65,11 @@ class Command(BaseCommand):
             raise CommandError("Empresa no encontrada (créala en el admin o revisa el NIF).")
 
         self.stdout.write(self.style.MIGRATE_HEADING("1. Importar facturas y JSON"))
+        if options["retry_failed"]:
+            self.retry_failed()
         call_command("invoice_agent_import", str(folder), empresa=options["empresa"], recursive=True,
                      labels=str(labels), stdout=self.stdout, stderr=self.stderr)
+        self.apply_labels(labels)
 
         self.stdout.write(self.style.MIGRATE_HEADING("2. Etiquetar con el profesor las que no tienen JSON"))
         if options["no_extract"]:
@@ -86,6 +97,38 @@ class Command(BaseCommand):
             for item in exported.skipped:
                 self.stdout.write(self.style.WARNING(f"Omitida {item['id']}: {item['motivo']}"))
         self.summary()
+
+    def retry_failed(self) -> None:
+        ctx = system_context()
+        retried = 0
+        for documento in Documento.objects.filter(estado=EstadoDocumento.FAILED):
+            try:
+                review.request_reprocess(ctx, documento, ReprocessIn(comentario="invoice_agent_pipeline --retry-failed"))
+                retried += 1
+            except ServiceError as error:
+                self.stdout.write(self.style.WARNING(f"{documento.original_filename}: {error.message}"))
+        self.stdout.write(f"{retried} facturas con error vuelven a la cola.")
+
+    def apply_labels(self, labels: Path) -> None:
+        """Facturas en cola que ya tienen su JSON (de una ejecución anterior o reintentadas): se cargan con él."""
+        applied = 0
+        for documento in Documento.objects.filter(estado=EstadoDocumento.QUEUED).order_by("pk"):
+            label = labels / f"{Path(documento.original_filename).stem}.json"
+            if not label.is_file():
+                continue
+            claimed = worker.claim_next("pipeline-etiquetas", documento_id=documento.pk)
+            if claimed is None:  # p. ej. reintento programado más tarde
+                continue
+            worker.run_claimed(claimed, provider=LabelProvider(label.read_text(encoding="utf-8")))
+            documento.refresh_from_db()
+            applied += 1
+            if documento.estado == EstadoDocumento.FAILED or documento.estado == EstadoDocumento.QUEUED:
+                self.stdout.write(self.style.WARNING(
+                    f"{documento.original_filename}: no se pudo cargar con su JSON ({documento.error_code}: "
+                    f"{documento.error_message})"
+                ))
+        if applied:
+            self.stdout.write(f"{applied} facturas en cola cargadas con su JSON.")
 
     def extract(self, limit: int | None) -> None:
         teacher = get_teacher_provider()
@@ -116,4 +159,5 @@ class Command(BaseCommand):
                 "y vuelve a ejecutar este comando."
             ))
         if by_state.get(EstadoDocumento.FAILED):
-            self.stdout.write(self.style.WARNING("Las de «Error» se pueden reprocesar desde /facturas-ia/."))
+            self.stdout.write(self.style.WARNING(
+                "Las de «Error» se reintentan con --retry-failed (pipeline.sh: RETRY_FAILED=1) o desde /facturas-ia/."))

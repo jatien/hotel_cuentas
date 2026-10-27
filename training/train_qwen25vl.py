@@ -269,7 +269,7 @@ def main():
         model.save_pretrained_merged(str(merged_dir), processor, save_method="merged_16bit")
         (merged_dir / "factura_ia.json").write_text(
             json.dumps({"prompt_version": manifest["prompt_version"], "schema_version": manifest["schema_version"],
-                        "vision_mode": "always", "base_model": args.base_model,
+                        "vision_mode": manifest.get("vision_mode", "always"), "base_model": args.base_model,
                         "trained_4bit": args.load_in_4bit}, indent=2),
             encoding="utf-8",
         )

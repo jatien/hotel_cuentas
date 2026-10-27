@@ -4,6 +4,7 @@
 #   training/local/pipeline.sh           # todo: bajar de Drive, etiquetar, subir JSON, entrenar
 #   training/local/pipeline.sh datos     # solo bajar, etiquetar, subir JSON y exportar el dataset
 #   training/local/pipeline.sh entrenar  # solo entrenar con el dataset ya exportado (check, train, fp8)
+#   RETRY_FAILED=1 training/local/pipeline.sh datos   # reintenta también las que quedaron en «Error»
 #
 # Lee training/local/.env (rutas, RCLONE_REMOTE, EMPRESA_NIF…). Repetirlo es seguro: las facturas ya
 # importadas o etiquetadas no se vuelven a procesar ni a pagar.
@@ -14,6 +15,11 @@ STAGE="${1:-todo}"
 
 [[ -f "$HERE/.env" ]] || { echo "Falta $HERE/.env (cópialo de .env.example)"; exit 1; }
 set -a; source "$HERE/.env"; set +a
+if grep -q "TU_USUARIO" "$HERE/.env"; then
+  echo "En $HERE/.env quedan rutas con TU_USUARIO. Cámbialas por tu usuario, p. ej.:"
+  echo "  sed -i 's#/home/TU_USUARIO/#/home/$(whoami)/#g' $HERE/.env"
+  exit 1
+fi
 
 : "${DATASET_DIR:?Define DATASET_DIR en .env}"
 : "${DRIVE_DIR:?Define DRIVE_DIR en .env}"
@@ -40,6 +46,7 @@ datos() {
   echo "== Importar, etiquetar con el profesor y exportar el dataset"
   EXTRA=()
   [[ -n "${MAX_EXTRACT:-}" ]] && EXTRA+=(--max-extract "$MAX_EXTRACT")
+  [[ "${RETRY_FAILED:-}" == "1" ]] && EXTRA+=(--retry-failed)
   (cd "$REPO" && "$DJANGO_PY" manage.py invoice_agent_pipeline "$DRIVE_DIR" --empresa "$EMPRESA_NIF" \
       --labels "$LABELS_DIR" --dataset "$DATASET_DIR" "${EXTRA[@]}")
 

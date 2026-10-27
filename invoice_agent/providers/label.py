@@ -10,7 +10,7 @@ from invoice_agent.providers.base import ExtractionProvider, ModelRequest, Model
 class LabelProvider(ExtractionProvider):
     name = "etiqueta"
     model = "etiqueta-json"
-    supports_vision = False
+    supports_vision = True  # no envía nada a ningún sitio; así el modo solo imagen no necesita Tesseract
 
     def __init__(self, content: str):
         self.content = content

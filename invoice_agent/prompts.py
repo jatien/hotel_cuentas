@@ -14,6 +14,8 @@ from invoice_agent.services.preparation import PreparedDocument
 from invoice_agent.services.redaction import redact
 
 PROMPT_VERSION = "factura-ia/1.0"
+# Variante «solo imagen»: mismas instrucciones, pero el documento llega únicamente como imágenes.
+PROMPT_VERSION_IMAGE = "factura-ia/1.0-imagen"
 DOC_START = "<<<DOCUMENTO_NO_FIABLE>>>"
 DOC_END = "<<<FIN_DOCUMENTO>>>"
 
@@ -61,7 +63,21 @@ def build_system_prompt(empresa_nombre: str, empresa_nif: str) -> str:
     return SYSTEM_PROMPT.format(start=DOC_START, end=DOC_END, empresa_hint=hint)
 
 
+def prompt_version(prepared: PreparedDocument) -> str:
+    return PROMPT_VERSION_IMAGE if prepared.image_only else PROMPT_VERSION
+
+
+def build_image_only_text(prepared: PreparedDocument) -> str:
+    """Sin texto del documento: solo dice cuántas páginas hay y que van como imágenes, en orden."""
+    parts = [DOC_START, f"Factura de {len(prepared.pages)} página(s). Cada página va como una imagen adjunta, en orden."]
+    parts += [f"[[PÁGINA {page.number} · imagen {index}]]" for index, page in enumerate(prepared.pages, start=1)]
+    parts.append(DOC_END)
+    return "\n".join(parts)
+
+
 def build_document_text(prepared: PreparedDocument, max_chars: int, redact_text: bool) -> str:
+    if prepared.image_only:
+        return build_image_only_text(prepared)
     parts = [DOC_START]
     for page in prepared.pages:
         label = {"native": "texto del PDF", "ocr": "texto por OCR", "vision": "texto por OCR + imagen adjunta"}.get(

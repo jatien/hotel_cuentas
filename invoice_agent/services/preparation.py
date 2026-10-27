@@ -93,6 +93,7 @@ class PreparedPage:
 class PreparedDocument:
     pages: list[PreparedPage]
     method: str
+    image_only: bool = False  # el modelo recibe SOLO las imágenes de las páginas (sin texto)
 
     @property
     def images(self) -> list[tuple[int, bytes]]:
@@ -146,7 +147,7 @@ def _summary_method(pages: list[PreparedPage]) -> str:
     return MetodoExtraccion.MIXED
 
 
-VISION_MODES = ("auto", "always", "never")
+VISION_MODES = ("image_only", "auto", "always", "never")
 
 
 def prepare(
@@ -158,15 +159,26 @@ def prepare(
 ) -> PreparedDocument:
     """
     vision_mode (por defecto settings VISION_MODE):
+        image_only  (por defecto) el modelo de visión lee las páginas como imágenes y no recibe texto.
+                No usa Tesseract. El texto nativo de los PDF digitales se guarda solo para buscar
+                evidencias, no se envía.
         auto    imagen solo de las páginas con OCR pobre o giradas (mínimo de datos al proveedor)
         always  imagen de TODAS las páginas, también las de texto nativo. Es el modo para un
                 modelo de visión afinado: debe ver en producción lo mismo que vio al entrenar.
         never   solo texto
     """
-    engine = engine or TesseractEngine()
     vision_mode = vision_mode or conf.get("VISION_MODE")
     if vision_mode not in VISION_MODES:
         raise PreparationError("BAD_CONFIG", f"VISION_MODE no válido: {vision_mode!r}")
+    if vision_mode == "image_only":
+        if not (vision_supported and conf.get("ALLOW_VISION")):
+            raise PreparationError(
+                "VISION_REQUIRED",
+                "VISION_MODE=image_only necesita un modelo con visión (SUPPORTS_VISION y ALLOW_VISION). "
+                "Para un modelo solo de texto usa VISION_MODE=auto (requiere Tesseract).",
+            )
+        return _prepare_images_only(path, tipo_fuente)
+    engine = engine or TesseractEngine()
     allow_vision = bool(conf.get("ALLOW_VISION")) and vision_supported and vision_mode != "never"
     always = allow_vision and vision_mode == "always"
     min_native = int(conf.get("MIN_NATIVE_CHARS_PER_PAGE"))
@@ -198,15 +210,71 @@ def prepare(
                     pages.append(_ocr_page(index + 1, image, engine, allow_vision, always))
     except PreparationError:
         raise
-    except FileNotFoundError as error:
-        raise PreparationError("ORIGINAL_MISSING", "No se encuentra el fichero original.") from error
-    except (pdfium.PdfiumError, OSError) as error:
-        raise PreparationError("DOCUMENT_UNREADABLE", f"No se puede leer el documento: {type(error).__name__}") from error
     except Exception as error:
-        # p. ej. Tesseract no instalado: puede arreglarse y reintentarse.
+        if _is_tesseract_missing(error):
+            # TesseractNotFoundError hereda de OSError: sin esto se confundiría con un PDF dañado
+            # y el documento quedaría como error definitivo. Instalarlo lo arregla: se reintenta.
+            raise PreparationError(
+                "OCR_NOT_INSTALLED",
+                "Tesseract no está instalado o TESSERACT_CMD apunta a otro sitio "
+                "(Linux: sudo apt install tesseract-ocr tesseract-ocr-spa).",
+                True,
+            ) from error
+        if isinstance(error, FileNotFoundError):
+            raise PreparationError("ORIGINAL_MISSING", "No se encuentra el fichero original.") from error
+        if isinstance(error, (pdfium.PdfiumError, OSError)):
+            raise PreparationError("DOCUMENT_UNREADABLE", f"No se puede leer el documento: {type(error).__name__}") from error
+        # p. ej. un fallo de Tesseract: puede arreglarse y reintentarse.
         logger.exception("invoice_agent preparation failed")
         raise PreparationError("PREPARATION_FAILED", f"Fallo preparando el documento: {type(error).__name__}", True) from error
 
     if not any(p.chars for p in pages) and not any(p.image_jpeg for p in pages):
         raise PreparationError("NO_CONTENT", "No se ha podido obtener texto del documento ni enviarlo como imagen.")
     return PreparedDocument(pages=pages, method=_summary_method(pages))
+
+
+def _image_page(number: int, image: Image.Image, native_text: str = "") -> PreparedPage:
+    problems = []
+    width, height = image.size
+    if min(width, height) < 800:
+        problems.append(f"resolución baja ({width}×{height} px)")
+    text = native_text.strip()
+    page = PreparedPage(number, MetodoExtraccion.VISION, text, len(text), problems=problems)
+    page.image_jpeg = _downscale_jpeg(image)
+    return page
+
+
+def _prepare_images_only(path: Path, tipo_fuente: str) -> PreparedDocument:
+    """Cada página como imagen, sin OCR. Mismo tamaño de imagen que en los demás modos."""
+    pages: list[PreparedPage] = []
+    try:
+        if tipo_fuente == TipoFuente.PDF:
+            pdf = pdfium.PdfDocument(str(path))
+            try:
+                for index in range(len(pdf)):
+                    page = pdf[index]
+                    native = page.get_textpage().get_text_range()
+                    pages.append(_image_page(index + 1, page.render(scale=VISION_SCALE).to_pil(), native))
+            finally:
+                pdf.close()
+        else:
+            with Image.open(path) as source:
+                for index in range(getattr(source, "n_frames", 1)):
+                    source.seek(index)
+                    pages.append(_image_page(index + 1, ImageOps.exif_transpose(source.convert("RGB"))))
+    except FileNotFoundError as error:
+        raise PreparationError("ORIGINAL_MISSING", "No se encuentra el fichero original.") from error
+    except (pdfium.PdfiumError, OSError) as error:
+        raise PreparationError("DOCUMENT_UNREADABLE", f"No se puede leer el documento: {type(error).__name__}") from error
+    if not pages:
+        raise PreparationError("NO_CONTENT", "El documento no tiene páginas.")
+    return PreparedDocument(pages=pages, method=MetodoExtraccion.VISION, image_only=True)
+
+
+def _is_tesseract_missing(error: Exception) -> bool:
+    try:
+        from pytesseract import TesseractNotFoundError
+    except ImportError:
+        return False
+    return isinstance(error, TesseractNotFoundError)
+

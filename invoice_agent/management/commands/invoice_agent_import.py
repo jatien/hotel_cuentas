@@ -72,7 +72,8 @@ class Command(BaseCommand):
                 labelled += 1
                 if documento.estado not in (EstadoDocumento.NEEDS_REVIEW, EstadoDocumento.PENDING_APPROVAL):
                     self.stdout.write(self.style.WARNING(
-                        f"{path.name}: etiqueta no válida ({documento.error_code}); queda en cola para el modelo"
+                        f"{path.name}: no se pudo cargar con su JSON ({documento.error_code}: "
+                        f"{documento.error_message}) · estado: {documento.get_estado_display()}"
                     ))
         self.stdout.write(
             self.style.SUCCESS(
