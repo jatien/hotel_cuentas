@@ -131,6 +131,78 @@ Alternativa con Ollama: convertir `merged/` a GGUF con `llama.cpp` (`convert_hf_
 genera también el fichero `mmproj` de visión) y cuantizar a `Q4_K_M`. Es más sencillo de mantener,
 pero conviene volver a medir con `invoice_agent_evaluate`, porque 4 bits pierden algo más que FP8.
 
+## Ciclo con Google Drive: el LLM grande enseña al modelo local
+
+La idea («destilación»): un LLM grande (el **profesor**) lee cada factura y produce el JSON; el Qwen
+local (el **alumno**) aprende a producir el mismo JSON. La carpeta de Google Drive con los PDF y sus
+JSON es el conjunto de referencia: crece con cada factura nueva y desde ella se reconstruye todo.
+
+```
+ Google Drive: Invoices/ (PDF, con subcarpetas) + Invoices/Invoices_json/ (<nombre>.json)
+        │ rclone (bajar)                                          ▲ rclone (subir JSON nuevos)
+        ▼                                                         │
+ invoice_agent_pipeline ── 1 importar PDF (con su JSON si lo tiene)
+                          2 sin JSON → el profesor (INVOICE_AGENT_TEACHER_*) lo genera
+                          3 validar: sumas, IVA, NIF, fechas, duplicados
+                              ├─ todo cuadra → «Pendiente de aprobación» → ENTRA en el dataset
+                              └─ algo falla  → «Necesita revisión» → lo corriges en /facturas-ia/
+                          4 escribir los JSON nuevos/corregidos y exportar el dataset
+        │
+        ▼
+ training/local: check → train (QLoRA) → fp8 → serve → invoice_agent_evaluate
+```
+
+Los JSON que ya tienes en Drive (generados con un LLM grande) usan exactamente el esquema de la app
+(`factura-ia/1`), así que se cargan tal cual: **mismo nombre que el PDF** (`FA-79.pdf` ↔ `FA-79.json`),
+todos en `Invoices_json/`. Qué aprende a sacar el modelo (todo con su página y el texto de donde sale):
+
+| Grupo | Campos |
+|---|---|
+| Proveedor y cliente | nombre, **NIF/CIF**, dirección, país, NIF del cliente |
+| Factura | número, **fecha**, vencimiento, moneda, pedido, tipo (factura, abono, ticket) |
+| Totales | **base imponible**, descuentos, cargos, **cuota de IVA**, retenciones, **total con IVA**, importe a pagar |
+| Líneas | descripción, **cantidad, precio unitario**, descuento, **% IVA**, **importe sin IVA y con IVA** |
+| Impuestos | desglose por tipo (IVA, recargo, retención…): porcentaje, base y cuota |
+
+**Qué entra en el entrenamiento.** Las aprobadas por una persona y las que el profesor etiquetó sin
+ninguna incidencia (`label_source` = `human` / `teacher` en el dataset). Las que no cuadran no entran:
+entrenar con un JSON cuyas sumas no salen enseñaría el error. Corregir una en `/facturas-ia/` y volver
+a ejecutar el ciclo la incorpora, y su JSON corregido sustituye al de Drive.
+
+### Preparar (una vez, en el PC de la GPU)
+
+1. Django con su PostgreSQL en este PC (venv de `~/Projects/hotel_cuentas`, `python manage.py migrate`).
+   Esta base de datos solo sirve para preparar el entrenamiento: los datos de referencia están en Drive.
+2. En el `.env` de Django, el profesor (un modelo de visión grande; p. ej. vía OpenRouter):
+   ```
+   INVOICE_AGENT_TEACHER_BASE_URL=https://openrouter.ai/api/v1
+   INVOICE_AGENT_TEACHER_API_KEY=sk-or-...
+   INVOICE_AGENT_TEACHER_MODEL=<modelo>
+   INVOICE_AGENT_PRICE_INPUT_PER_MTOK=...    # opcional, para ver el coste por factura
+   ```
+   Así `INVOICE_AGENT_MODEL` puede ser ya el Qwen local sin que cambie quién etiqueta.
+3. rclone con acceso a tu Drive: `sudo apt install rclone && rclone config` (tipo `drive`, remoto
+   `gdrive`). Comprueba con `rclone lsd gdrive:Invoices`.
+4. En `training/local/.env`: `RCLONE_REMOTE`, `DRIVE_DIR`, `EMPRESA_NIF` (sección «Ciclo con Google
+   Drive» de `.env.example`), además de lo de la opción local.
+
+### Ejecutar
+
+```bash
+training/local/pipeline.sh datos      # Drive → etiquetar las nuevas → JSON a Drive → dataset
+#   revisa en /facturas-ia/ las de «Necesita revisión» y vuelve a ejecutar «datos» (opcional)
+training/local/pipeline.sh entrenar   # check → train → fp8 (cada ejecución en su carpeta con fecha)
+training/local/pipeline.sh            # las dos cosas seguidas
+```
+
+Facturas nuevas: súbelas a `Invoices/` en Drive (sin JSON) y vuelve a ejecutar. Solo se paga al
+profesor por las que no tienen JSON; `MAX_EXTRACT` limita cuántas por ejecución. Cada entrenamiento
+empieza desde el modelo base con **todas** las facturas: no se acumulan errores de afinados anteriores,
+y el conjunto de prueba sigue siendo el mismo, así que los resultados son comparables entre ejecuciones.
+
+Sin Docker ni rclone también funciona por partes:
+`python manage.py invoice_agent_pipeline <carpeta PDF> --empresa <NIF> --labels <carpeta JSON> --dataset <salida>`.
+
 ## Opción local: el PC con la RTX 5080 (16 GB, Docker)
 
 El PC nuevo (Ubuntu, RTX 5080 de 16 GB, 32 GB de RAM) puede hacer los pasos 4-11 sin alquilar GPU.

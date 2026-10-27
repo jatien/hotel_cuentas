@@ -30,6 +30,31 @@ def get_provider() -> ExtractionProvider:
     raise ValueError(f"Proveedor de IA desconocido: {kind!r}")
 
 
+def get_teacher_provider() -> ExtractionProvider:
+    """
+    El LLM grande que etiqueta facturas para entrenar (TEACHER_*). Sin TEACHER_MODEL es el
+    proveedor normal. La clave principal solo se reutiliza si el profesor está en el mismo servidor:
+    nunca se envía la clave de un servicio a otro.
+    """
+    if _override is not None:
+        return _override
+    model = conf.get("TEACHER_MODEL")
+    if not model:
+        return get_provider()
+    from invoice_agent.providers.openai_compat import OpenAICompatibleProvider
+
+    base_url = conf.get("TEACHER_BASE_URL")
+    api_key = conf.get("TEACHER_API_KEY") or (conf.get("API_KEY") if base_url == conf.get("BASE_URL") else "")
+    return OpenAICompatibleProvider(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=float(conf.get("REQUEST_TIMEOUT_SECONDS")),
+        supports_vision=True,
+        temperature=conf.get("TEMPERATURE"),
+    )
+
+
 @contextmanager
 def use_provider(provider: ExtractionProvider):
     global _override
