@@ -5,6 +5,7 @@ Ningún secreto vive en este fichero: claves, contraseñas y hosts vienen del
 .env (python-decouple). Plantilla con todas las variables en .env.example.
 """
 
+import sys
 from pathlib import Path
 
 from decouple import Csv, config
@@ -255,8 +256,13 @@ LOGGING = {
 
 # --- Configuración propia de las apps ------------------------------------------------
 
-# Ruta al ejecutable de Tesseract OCR (necesario en Windows si no está en el PATH)
-TESSERACT_CMD = config("TESSERACT_CMD", default=r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+# Ruta al ejecutable de Tesseract OCR. En Windows, la de su instalador si no está en el PATH; en Linux
+# y macOS, vacío = el «tesseract» del PATH (/usr/bin/tesseract con apt). Antes la ruta de Windows se
+# usaba en todos los sistemas y en Linux el OCR fallaba aunque Tesseract estuviera instalado.
+TESSERACT_CMD = config(
+    "TESSERACT_CMD",
+    default=r"C:\Program Files\Tesseract-OCR\tesseract.exe" if sys.platform == "win32" else "",
+)
 
 # Datos de la empresa para filtrar facturas propias (NIF y nombres)
 INVOICE_OWN_NIF = ("B07794803", "E07575970")
