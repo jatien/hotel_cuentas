@@ -1,5 +1,6 @@
 """
-Exportación del dataset de entrenamiento a partir de las facturas APROBADAS.
+Exportación del dataset de entrenamiento a partir de las facturas APROBADAS (y, con
+include_pending, de las PENDIENTES DE APROBACIÓN).
 
 Cada factura aprobada es un ejemplo verificado por una persona:
     entrada  = exactamente la petición que recibe el modelo en producción
@@ -7,6 +8,12 @@ Cada factura aprobada es un ejemplo verificado por una persona:
                construida con services.extraction.build_request
     salida   = el JSON del esquema ExtractionOutput con los valores APROBADOS
                (las correcciones del revisor, no lo que dijo el modelo)
+
+Con include_pending entran también las facturas «Pendiente de aprobación»: las etiquetó el LLM
+grande (profesor) o un JSON importado y pasaron TODAS las comprobaciones (sumas, impuestos, NIF,
+fechas, duplicados), pero nadie las ha mirado. Cada ejemplo lleva "label_source": "human"
+(aprobada) o "teacher" (pendiente), para poder medir aparte. Las de «Necesita revisión» nunca
+entran: alguna comprobación falló y el JSON probablemente tiene un error.
 
 Estructura de la carpeta exportada (se copia tal cual al pod de RunPod):
 
@@ -28,11 +35,13 @@ y hay que borrarla del pod al terminar.
 import hashlib
 import json
 import shutil
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from django.db.models import Q
 from django.utils import timezone
 
 from invoice_agent.models import (
@@ -231,6 +240,20 @@ class ExportReport:
     folder: Path
     counts: dict = field(default_factory=lambda: {"train": 0, "val": 0, "test": 0})
     skipped: list = field(default_factory=list)
+    label_sources: Counter = field(default_factory=Counter)
+
+
+def label_source(borrador: Borrador) -> str:
+    """«human» si una persona aprobó la factura; «teacher» si es la etiqueta del LLM grande sin revisar."""
+    return "human" if borrador.documento.estado == EstadoDocumento.APPROVED else "teacher"
+
+
+def exportable(include_pending: bool = False):
+    """Borradores que sirven como ejemplo de entrenamiento."""
+    condition = Q(documento__estado=EstadoDocumento.APPROVED, aprobado_en__isnull=False)
+    if include_pending:
+        condition |= Q(documento__estado=EstadoDocumento.PENDING_APPROVAL, extraccion__isnull=False)
+    return Borrador.objects.filter(condition).select_related("documento", "empresa", "extraccion").order_by("pk")
 
 
 def export_dataset(
@@ -242,6 +265,7 @@ def export_dataset(
     split_by: str = "invoice",
     ocr_engine=None,
     overwrite: bool = False,
+    include_pending: bool = False,
 ) -> ExportReport:
     folder = Path(folder)
     if folder.exists() and any(folder.iterdir()):
@@ -252,11 +276,7 @@ def export_dataset(
     (folder / "test").mkdir()
     report = ExportReport(folder)
 
-    borradores = (
-        Borrador.objects.filter(documento__estado=EstadoDocumento.APPROVED, aprobado_en__isnull=False)
-        .select_related("documento", "empresa", "extraccion")
-        .order_by("aprobado_en", "pk")
-    )
+    borradores = exportable(include_pending)
     if empresa_ids is not None:
         borradores = borradores.filter(empresa_id__in=empresa_ids)
 
@@ -278,11 +298,13 @@ def export_dataset(
                 continue
             pages_text = [(p.number, p.text) for p in prepared.pages]
             target = build_target(borrador, pages_text)
+            source_kind = label_source(borrador)
 
             if split == "test":
                 shutil.copy(source, folder / "test" / f"{case_id}{source.suffix.lower()}")
                 duplicate = group if group.startswith("invoice:") else None
                 truth = truth_for_evaluation(target, borrador, duplicate)
+                truth["label_source"] = source_kind
                 (folder / "test" / f"{case_id}.json").write_text(
                     json.dumps(truth, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
@@ -296,6 +318,7 @@ def export_dataset(
                 request.images = image_refs
                 record = {
                     "id": case_id,
+                    "label_source": source_kind,
                     "messages": [
                         {"role": "system", "content": [{"type": "text", "text": request.system}]},
                         {"role": "user", "content": _message_content(request)},
@@ -306,6 +329,7 @@ def export_dataset(
                 }
                 handles[split].write(json.dumps(record, ensure_ascii=False) + "\n")
             report.counts[split] += 1
+            report.label_sources[source_kind] += 1
     finally:
         for handle in handles.values():
             handle.close()
@@ -323,6 +347,8 @@ def export_dataset(
         "split_by": split_by,
         "fractions": {"val": val, "test": test},
         "counts": report.counts,
+        "include_pending": include_pending,
+        "label_sources": dict(report.label_sources),
         "skipped": report.skipped,
         "output_schema": strict_json_schema(ExtractionOutput),
     }

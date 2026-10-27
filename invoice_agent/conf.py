@@ -27,6 +27,12 @@ DEFAULTS = {
     "MALFORMED_OUTPUT_RETRIES": 1,  # reintentos si la salida no cumple el esquema
     "PRICE_INPUT_PER_MTOK": "0",  # coste por millón de tokens (para la métrica de coste); 0 = desconocido
     "PRICE_OUTPUT_PER_MTOK": "0",
+    # Modelo «profesor»: un LLM grande (OpenRouter, OpenAI…) que etiqueta las facturas nuevas para
+    # entrenar el modelo local (invoice_agent_pipeline). Vacío = el mismo que MODEL/BASE_URL/API_KEY,
+    # así el modelo de producción puede pasar a ser el local sin que el profesor cambie.
+    "TEACHER_MODEL": "",
+    "TEACHER_BASE_URL": "",
+    "TEACHER_API_KEY": "",
     # Cola y worker
     "JOB_MAX_ATTEMPTS": 3,
     "JOB_LEASE_SECONDS": 600,  # un trabajo "running" más antiguo se considera abandonado y se recupera

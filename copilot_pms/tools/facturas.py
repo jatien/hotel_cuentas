@@ -238,3 +238,41 @@ def documento_factura(p: DocumentoFacturaArgs, ctx):
         datos, avisos = _documento_ocr(int(ident), ctx)
         fuente = "Gestión de facturas (invoice_data)"
     return Resultado(datos=datos, fuente=fuente, fecha_datos=consultado_en(), avisos=avisos)
+
+
+# --------------------------------------------------------------------------- #
+class EstadoEntrenamientoArgs(_Args):
+    pass
+
+
+@herramienta(
+    "estado_entrenamiento_facturas",
+    descripcion="Cuántas facturas con IA hay listas para entrenar el modelo local de facturas: aprobadas por una "
+                "persona, etiquetadas por el LLM grande sin incidencias, pendientes de revisar (no se entrenan), "
+                "en cola o con error. Solo cuenta; no da datos de ninguna factura.",
+    argumentos=EstadoEntrenamientoArgs, dominio="facturas", permisos=PERMISO_IA,
+)
+def estado_entrenamiento_facturas(p: EstadoEntrenamientoArgs, ctx):
+    from django.db.models import Count
+
+    from invoice_agent.models import Documento, EstadoDocumento
+
+    por_estado = dict(
+        Documento.objects.filter(empresa_id__in=ctx.empresas_facturas)
+        .values_list("estado").annotate(n=Count("pk"))
+    )
+    n = lambda estado: por_estado.get(estado, 0)  # noqa: E731
+    datos = {
+        "listas_para_entrenar": n(EstadoDocumento.APPROVED) + n(EstadoDocumento.PENDING_APPROVAL),
+        "aprobadas_por_una_persona": n(EstadoDocumento.APPROVED),
+        "etiquetadas_por_el_llm_sin_incidencias": n(EstadoDocumento.PENDING_APPROVAL),
+        "necesitan_revision": n(EstadoDocumento.NEEDS_REVIEW),
+        "en_cola_o_procesando": n(EstadoDocumento.QUEUED) + n(EstadoDocumento.PROCESSING),
+        "con_error": n(EstadoDocumento.FAILED),
+        "rechazadas": n(EstadoDocumento.REJECTED),
+    }
+    avisos = []
+    if datos["necesitan_revision"]:
+        avisos.append("Las que necesitan revisión no entran en el entrenamiento hasta corregirlas en Facturas con IA.")
+    return Resultado(EstadoLlamada.OK if sum(por_estado.values()) else EstadoLlamada.VACIO, datos=datos,
+                     fuente="Facturas con IA (invoice_agent)", fecha_datos=consultado_en(), avisos=avisos)
