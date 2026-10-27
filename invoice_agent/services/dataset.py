@@ -12,8 +12,12 @@ Cada factura aprobada es un ejemplo verificado por una persona:
 Con include_pending entran también las facturas «Pendiente de aprobación»: las etiquetó el LLM
 grande (profesor) o un JSON importado y pasaron TODAS las comprobaciones (sumas, impuestos, NIF,
 fechas, duplicados), pero nadie las ha mirado. Cada ejemplo lleva "label_source": "human"
-(aprobada) o "teacher" (pendiente), para poder medir aparte. Las de «Necesita revisión» nunca
-entran: alguna comprobación falló y el JSON probablemente tiene un error.
+(aprobada) o "teacher" (pendiente), para poder medir aparte.
+
+De las de «Necesita revisión» entran solo las que esperan revisión únicamente por avisos de
+CONTEXTO (TRAINING_CONTEXT_CODES): dicen algo de la contabilidad (factura antigua, va a otra
+empresa del grupo…), no de que el JSON esté mal leído. Si queda cualquier otro aviso o error
+(sumas que no cuadran, confianza baja, campo obligatorio ausente…), no entran.
 
 Estructura de la carpeta exportada (se copia tal cual al pod de RunPod):
 
@@ -243,17 +247,42 @@ class ExportReport:
     label_sources: Counter = field(default_factory=Counter)
 
 
+# Avisos que no indican un error de lectura: el JSON describe bien el documento aunque la factura
+# necesite una decisión contable. No impiden usarla para entrenar.
+TRAINING_CONTEXT_CODES = frozenset({
+    "OLD_DATE",                # más de seis años: el documento se leyó bien
+    "CUSTOMER_OTHER_COMPANY",  # va a otra empresa del grupo: es lo que pone el documento
+    "DUE_BEFORE_ISSUE",        # fechas tal como están impresas
+    "SIMPLIFIED_INVOICE",      # es un ticket: tipo de documento, no un error
+    "POSSIBLE_DUPLICATE",      # repetida: en el reparto train/val/test van juntas
+})
+
+
+def trainable(borrador: Borrador) -> bool:
+    """¿Sirve su JSON para entrenar? Sin incidencias pendientes, o solo con avisos de contexto."""
+    from invoice_agent.services.validation import pending_blockers
+
+    pending = pending_blockers(borrador.incidencias or [], borrador.avisos_aceptados or [])
+    return all(issue["severity"] == "warning" and issue["code"] in TRAINING_CONTEXT_CODES for issue in pending)
+
+
 def label_source(borrador: Borrador) -> str:
     """«human» si una persona aprobó la factura; «teacher» si es la etiqueta del LLM grande sin revisar."""
     return "human" if borrador.documento.estado == EstadoDocumento.APPROVED else "teacher"
 
 
-def exportable(include_pending: bool = False):
-    """Borradores que sirven como ejemplo de entrenamiento."""
+def exportable(include_pending: bool = False, empresa_ids=None) -> list[Borrador]:
+    """Borradores que sirven como ejemplo de entrenamiento (ver docstring del módulo)."""
     condition = Q(documento__estado=EstadoDocumento.APPROVED, aprobado_en__isnull=False)
     if include_pending:
-        condition |= Q(documento__estado=EstadoDocumento.PENDING_APPROVAL, extraccion__isnull=False)
-    return Borrador.objects.filter(condition).select_related("documento", "empresa", "extraccion").order_by("pk")
+        condition |= Q(
+            documento__estado__in=[EstadoDocumento.PENDING_APPROVAL, EstadoDocumento.NEEDS_REVIEW],
+            extraccion__isnull=False,
+        )
+    borradores = Borrador.objects.filter(condition).select_related("documento", "empresa", "extraccion").order_by("pk")
+    if empresa_ids is not None:
+        borradores = borradores.filter(empresa_id__in=empresa_ids)
+    return [b for b in borradores if b.documento.estado == EstadoDocumento.APPROVED or trainable(b)]
 
 
 def training_vision_mode() -> str:
@@ -288,10 +317,8 @@ def export_dataset(
     (folder / "test").mkdir()
     report = ExportReport(folder)
 
-    borradores = exportable(include_pending)
+    borradores = exportable(include_pending, empresa_ids)
     mode = training_vision_mode()
-    if empresa_ids is not None:
-        borradores = borradores.filter(empresa_id__in=empresa_ids)
 
     handles = {name: open(folder / f"{name}.jsonl", "w", encoding="utf-8") for name in ("train", "val")}
     try:

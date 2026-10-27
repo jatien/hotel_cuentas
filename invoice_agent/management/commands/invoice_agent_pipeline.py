@@ -25,14 +25,14 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count
 
-from invoice_agent.models import Documento, Empresa, EstadoDocumento
+from invoice_agent.models import Borrador, Documento, Empresa, EstadoDocumento
 from invoice_agent.providers import get_teacher_provider
 from invoice_agent.providers.label import LabelProvider
 from invoice_agent.schemas import ReprocessIn
 from invoice_agent.services import review, worker
 from invoice_agent.services.access import system_context
 from invoice_agent.services.errors import ServiceError
-from invoice_agent.services.dataset import export_dataset
+from invoice_agent.services.dataset import TRAINING_CONTEXT_CODES, export_dataset, trainable
 from invoice_agent.services.labels import export_labels
 
 
@@ -154,10 +154,19 @@ class Command(BaseCommand):
             if by_state.get(state):
                 self.stdout.write(f"  {label}: {by_state[state]}")
         if by_state.get(EstadoDocumento.NEEDS_REVIEW):
-            self.stdout.write(self.style.WARNING(
-                "Las de «Necesita revisión» no se entrenan: alguna comprobación falló. Corrígelas en /facturas-ia/ "
-                "y vuelve a ejecutar este comando."
-            ))
+            review = Borrador.objects.filter(documento__estado=EstadoDocumento.NEEDS_REVIEW).select_related("documento")
+            context_only = sum(1 for b in review if trainable(b))
+            blocked = by_state[EstadoDocumento.NEEDS_REVIEW] - context_only
+            if context_only:
+                self.stdout.write(
+                    f"De las de «Necesita revisión», {context_only} solo tienen avisos de contexto "
+                    f"({', '.join(sorted(TRAINING_CONTEXT_CODES))}): sí se entrenan."
+                )
+            if blocked:
+                self.stdout.write(self.style.WARNING(
+                    f"{blocked} no se entrenan: alguna comprobación indica un posible error de lectura. "
+                    "Corrígelas en /facturas-ia/ y vuelve a ejecutar este comando."
+                ))
         if by_state.get(EstadoDocumento.FAILED):
             self.stdout.write(self.style.WARNING(
                 "Las de «Error» se reintentan con --retry-failed (pipeline.sh: RETRY_FAILED=1) o desde /facturas-ia/."))

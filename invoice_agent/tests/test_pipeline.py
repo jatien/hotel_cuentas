@@ -191,3 +191,26 @@ class MissingTesseractTests(PipelineTestCase):
         self.assertEqual(Documento.objects.get().estado, "pending_approval")
         self.assertIn("1 facturas con error vuelven a la cola", out.getvalue())
         self.assertEqual(Borrador.objects.get().numero_factura, "FA-58")
+
+
+class ContextWarningsTests(PipelineTestCase):
+    """Avisos contables (factura antigua…) no impiden entrenar; los de posible error de lectura, sí."""
+
+    def test_old_invoice_is_trainable_but_low_confidence_is_not(self):
+        from invoice_agent.services.dataset import exportable, trainable
+
+        old = self.extracted("vieja.pdf", model_json(invoice_number=field("V-1"), invoice_date=field("2015-03-01")))
+        doubtful = self.extracted("dudosa.pdf", model_json(
+            invoice_number=field("D-1"), invoice_date=field("2026-09-21"),
+            supplier_tax_id=field("B12345674", confidence="low")))
+        self.assertEqual(old.documento.estado, "needs_review")
+        self.assertEqual({i["code"] for i in old.incidencias if i["blocking"]}, {"OLD_DATE"})
+        self.assertEqual(doubtful.documento.estado, "needs_review")
+        self.assertTrue(trainable(old))
+        self.assertFalse(trainable(doubtful))
+        self.assertEqual([b.pk for b in exportable(include_pending=True)], [old.pk])
+        self.assertEqual(exportable(include_pending=False), [])  # sin la opción, solo aprobadas
+
+        report = export_dataset(self.work / "d", val=0, test=0, ocr_engine=FakeOcr(), include_pending=True)
+        self.assertEqual(report.counts["train"], 1)
+        self.assertEqual(export_labels(self.work / "json").written, ["vieja.json"])
