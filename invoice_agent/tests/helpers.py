@@ -153,6 +153,7 @@ class IsolatedTestCase(TestCase):
             "PRIVATE_STORAGE_ROOT": cls._tmp,
             "BACKOFF_BASE_SECONDS": 0,
             "JOB_RETRY_DELAY_SECONDS": 0,
+            "VISION_MODE": "auto",  # los tests existentes cubren el camino con OCR; image_only tiene los suyos
             "REQUIRE_LOGIN": False,
             **cls.agent_settings,
         }

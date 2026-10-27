@@ -271,7 +271,7 @@ INVOICE_AGENT = {
     "MODEL": config("INVOICE_AGENT_MODEL", default="gpt-4.1-mini"),
     "SUPPORTS_VISION": config("INVOICE_AGENT_SUPPORTS_VISION", default=True, cast=bool),
     "ALLOW_VISION": config("INVOICE_AGENT_ALLOW_VISION", default=True, cast=bool),
-    "VISION_MODE": config("INVOICE_AGENT_VISION_MODE", default="auto"),
+    "VISION_MODE": config("INVOICE_AGENT_VISION_MODE", default="image_only"),
     "PRICE_INPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_INPUT_PER_MTOK", default="0"),
     "PRICE_OUTPUT_PER_MTOK": config("INVOICE_AGENT_PRICE_OUTPUT_PER_MTOK", default="0"),
     "TEACHER_MODEL": config("INVOICE_AGENT_TEACHER_MODEL", default=""),

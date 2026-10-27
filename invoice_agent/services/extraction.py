@@ -23,6 +23,7 @@ from invoice_agent.prompts import (
     PROMPT_VERSION,
     build_document_text,
     build_system_prompt,
+    prompt_version,
 )
 from invoice_agent.providers.base import ExtractionProvider, ModelRequest, ProviderError
 from invoice_agent.schemas import SCHEMA_VERSION, ExtractionOutput, strict_json_schema
@@ -121,6 +122,9 @@ def run_extraction(
     provider: ExtractionProvider,
     sleep=time.sleep,
 ) -> ExtractionResult:
+    if prepared.image_only and not provider.supports_vision:
+        # Sin imágenes el modelo no vería nada del documento: nunca se envía una petición vacía.
+        raise ExtractionFailed("VISION_REQUIRED", "El modo solo imagen necesita un modelo con visión.", False)
     base_request = build_request(prepared, empresa_nombre, empresa_nif, provider.supports_vision)
     stats = CallStats()
     request = base_request
@@ -137,7 +141,8 @@ def run_extraction(
         else:
             try:
                 output = ExtractionOutput.model_validate_json(response.content)
-                return ExtractionResult(output=output, raw=output.model_dump(mode="json"), stats=stats)
+                return ExtractionResult(output=output, raw=output.model_dump(mode="json"), stats=stats,
+                                        prompt_version=prompt_version(prepared))
             except ValidationError as error:
                 last_problem = _validation_summary(error)
         log_event("provider.malformed_output", provider=provider.name, attempt=attempt + 1, problem=last_problem)
