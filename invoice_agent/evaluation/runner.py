@@ -12,6 +12,8 @@ Cada caso son dos ficheros con el mismo nombre:
           "reconciles": true,             # false si la factura original NO cuadra a propósito
           "duplicate_group": "g1"         # opcional: casos que son la misma factura
         }
+    o bien el JSON completo de la factura (esquema factura-ia/1, el de las etiquetas de Google Drive):
+    se convierte solo a la verdad de arriba. Así basta con copiar pares PDF + JSON a una carpeta.
 
 No escribe nada en la base de datos: prepara, llama al modelo y valida en memoria.
 """
@@ -32,13 +34,32 @@ from invoice_agent.services.validation import ValidationContext, validate
 DOCUMENT_SUFFIXES = (".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp")
 
 
+def truth_from_label(label: dict) -> dict:
+    """JSON de factura (esquema factura-ia/1) → verdad de evaluación (solo lo que el documento muestra)."""
+    from invoice_agent.schemas import HEADER_FIELDS
+
+    fields = {}
+    for name in HEADER_FIELDS:
+        item = label.get(name) or {}
+        fields[name] = item.get("value") if item.get("status") == "present" else None
+    return {
+        "fields": fields,
+        "lines": len(label.get("line_items") or []),
+        "taxes": [{k: t.get(k) for k in ("kind", "rate", "base", "amount")} for t in label.get("tax_breakdown") or []],
+        "reconciles": True,
+    }
+
+
 def load_cases(folder: Path) -> list[tuple[str, Path, dict]]:
     cases = []
     for truth_path in sorted(folder.glob("*.json")):
         document = next((truth_path.with_suffix(s) for s in DOCUMENT_SUFFIXES if truth_path.with_suffix(s).exists()), None)
         if document is None:
             continue
-        cases.append((truth_path.stem, document, json.loads(truth_path.read_text(encoding="utf-8"))))
+        truth = json.loads(truth_path.read_text(encoding="utf-8"))
+        if "fields" not in truth and "document_type" in truth:
+            truth = truth_from_label(truth)
+        cases.append((truth_path.stem, document, truth))
     return cases
 
 

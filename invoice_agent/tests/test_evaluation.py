@@ -58,3 +58,19 @@ class EvaluationTests(SimpleTestCase):
             data = json.loads(truth.read_text(encoding="utf-8"))
             self.assertIn("fields", data)
             self.assertTrue((self.folder / f"{truth.stem}.pdf").exists())
+
+
+class DriveLabelCasesTests(SimpleTestCase):
+    """Una carpeta con pares PDF + JSON de Google Drive (esquema factura-ia/1) se evalúa tal cual."""
+
+    def test_drive_label_is_converted_and_oracle_scores_perfectly(self):
+        from invoice_agent.tests.helpers import field, make_pdf, model_json
+
+        folder = Path(tempfile.mkdtemp(prefix="invoice_agent_eval_drive_"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        make_pdf(folder / "FA-1.pdf")
+        (folder / "FA-1.json").write_text(model_json(due_date=field(None)), encoding="utf-8")
+        report = evaluate_folder(folder, OracleProvider(), ocr_engine=FakeOcr())
+        self.assertEqual((report["documents"], report["failures"]), (1, 0))
+        self.assertEqual(report["fields"]["gross_total"]["exact_match"], 1.0)
+        self.assertEqual(report["fields"]["supplier_tax_id"]["exact_match"], 1.0)
