@@ -36,7 +36,7 @@ openai>=1.40                 # cliente para OpenAI o servidores compatibles (Oll
 python-decouple>=3.8         # lee las claves del fichero .env (ver .env.example)
 
 # Exportar tablas de contabilidad a Excel (cuadro_cuentas)
-openpyxl>=3.1
+openpyxl>=3.1.5
 
 # Lectura de .xlsx (analisis). Más tolerante que openpyxl con exports defectuosos
 python-calamine>=0.5
