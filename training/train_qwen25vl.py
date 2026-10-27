@@ -1,12 +1,16 @@
 """
 Afinado LoRA de Qwen2.5-VL-7B-Instruct para extraer facturas con el esquema de invoice_agent.
 
-Se ejecuta en el pod de RunPod (GPU), con el dataset exportado por
+Se ejecuta en una GPU (pod de RunPod o el PC con la RTX 5080), con el dataset exportado por
 `python manage.py invoice_agent_export_dataset`:
 
+    # RunPod
     source /workspace/venv-train/bin/activate
     export HF_HOME=/workspace/hf-cache
     python train_qwen25vl.py --data /workspace/dataset_facturas --output /workspace/outputs/run1
+
+    # PC local con 16 GB (Docker, ver training/local/)
+    docker compose -f training/local/compose.yaml run --rm train
 
 Qué hace:
   1. Carga el modelo base (16 bits; con --load-in-4bit, QLoRA para GPUs de 24 GB).
@@ -46,10 +50,12 @@ def parse_args():
     p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--grad-accum", type=int, default=8, help="Ejemplos por paso de optimización (lote efectivo).")
     p.add_argument("--max-seq-len", type=int, default=12288, help="Ejemplos más largos se descartan.")
-    p.add_argument("--load-in-4bit", action="store_true", help="QLoRA: para GPUs de 24 GB.")
+    p.add_argument("--load-in-4bit", action="store_true", help="QLoRA: para GPUs de 16-24 GB.")
     p.add_argument("--vision-layers", action="store_true", help="Afinar también el codificador de imágenes.")
     p.add_argument("--eval-generate", type=int, default=20, help="Ejemplos de val a generar al final (0 = ninguno).")
     p.add_argument("--no-merge", action="store_true", help="No guardar el modelo fusionado de 16 bits.")
+    p.add_argument("--resume", action="store_true",
+                   help="Continuar desde el último checkpoint de <output>/checkpoints (si se cortó).")
     p.add_argument("--seed", type=int, default=3407)
     return p.parse_args()
 
@@ -156,9 +162,10 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((args.data / "manifest.json").read_text(encoding="utf-8"))
 
-    from trl import SFTConfig, SFTTrainer
+    # Unsloth tiene que importarse ANTES que trl/transformers para aplicar sus parches.
     from unsloth import FastVisionModel, is_bf16_supported
     from unsloth.trainer import UnslothVisionDataCollator
+    from trl import SFTConfig, SFTTrainer
 
     train = load_split(args.data, "train", args.max_seq_len)
     val = load_split(args.data, "val", args.max_seq_len)
@@ -231,7 +238,11 @@ def main():
         args=SFTConfig(**config_kwargs),
     )
     started = time.monotonic()
-    result = trainer.train()
+    checkpoints = args.output / "checkpoints"
+    resume = args.resume and any(checkpoints.glob("checkpoint-*"))
+    if args.resume and not resume:
+        print("No hay checkpoints previos: se empieza desde el principio.")
+    result = trainer.train(resume_from_checkpoint=True if resume else None)
     history = [row for row in trainer.state.log_history if "loss" in row or "eval_loss" in row]
 
     lora_dir = args.output / "lora"
@@ -258,10 +269,11 @@ def main():
         model.save_pretrained_merged(str(merged_dir), processor, save_method="merged_16bit")
         (merged_dir / "factura_ia.json").write_text(
             json.dumps({"prompt_version": manifest["prompt_version"], "schema_version": manifest["schema_version"],
-                        "vision_mode": "always", "base_model": args.base_model}, indent=2),
+                        "vision_mode": "always", "base_model": args.base_model,
+                        "trained_4bit": args.load_in_4bit}, indent=2),
             encoding="utf-8",
         )
-        print(f"Modelo fusionado en {merged_dir} (servir con serve_vllm.sh)")
+        print(f"Modelo fusionado en {merged_dir} (en 16 GB: cuantizar_fp8.py y luego servir)")
 
 
 if __name__ == "__main__":
