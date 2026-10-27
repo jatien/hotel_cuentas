@@ -96,3 +96,15 @@ class FacturasTests(TestCase):
             r = self.run_tool("documento_factura", referencia=ref)
             self.assertEqual(r.estado, EstadoLlamada.NO_DISPONIBLE, ref)
         self.assertEqual(self.run_tool("documento_factura", referencia="https://x").estado, EstadoLlamada.INVALIDO)
+
+    def test_estado_entrenamiento_cuenta_solo_las_empresas_del_contexto(self):
+        self._factura(self.hotel, "P-1", Decimal("10.00"))
+        Documento.objects.filter(borrador__numero_factura="P-1").update(estado="pending_approval")
+        self._factura(self.hotel, "R-1", Decimal("11.00"))
+        Documento.objects.filter(borrador__numero_factura="R-1").update(estado="needs_review")
+        r = self.run_tool("estado_entrenamiento_facturas")
+        self.assertEqual(r.estado, EstadoLlamada.OK)
+        self.assertEqual(r.datos["listas_para_entrenar"], 2)  # la de la otra empresa no cuenta
+        self.assertEqual(r.datos["aprobadas_por_una_persona"], 1)
+        self.assertEqual(r.datos["necesitan_revision"], 1)
+        self.assertTrue(r.avisos)
