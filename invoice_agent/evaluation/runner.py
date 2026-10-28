@@ -59,6 +59,7 @@ def load_cases(folder: Path) -> list[tuple[str, Path, dict]]:
         truth = json.loads(truth_path.read_text(encoding="utf-8"))
         if "fields" not in truth and "document_type" in truth:
             truth = truth_from_label(truth)
+        truth.setdefault("documento", document.name)
         cases.append((truth_path.stem, document, truth))
     return cases
 
@@ -131,7 +132,8 @@ def evaluate_folder(
         except (PreparationError, ExtractionFailed) as error:
             results.append(
                 CaseResult(name, {}, truth.get("fields", {}), [], 0, truth.get("lines"), [], None,
-                           latency_ms=int((time.monotonic() - started) * 1000), error=f"{error.code}: {error.message}")
+                           latency_ms=int((time.monotonic() - started) * 1000), error=f"{error.code}: {error.message}",
+                           title=truth.get("documento"))
             )
             continue
         data = from_model_output(extraction.output)
@@ -158,6 +160,7 @@ def evaluate_folder(
                 input_tokens=stats.input_tokens,
                 output_tokens=stats.output_tokens,
                 cost=stats.cost(),
+                title=truth.get("documento"),
             )
         )
     report = summarize(results)

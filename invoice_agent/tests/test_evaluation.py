@@ -74,3 +74,58 @@ class DriveLabelCasesTests(SimpleTestCase):
         self.assertEqual((report["documents"], report["failures"]), (1, 0))
         self.assertEqual(report["fields"]["gross_total"]["exact_match"], 1.0)
         self.assertEqual(report["fields"]["supplier_tax_id"]["exact_match"], 1.0)
+
+
+class CompareReportsTests(SimpleTestCase):
+    """Base frente a afinado, los dos contra el JSON de referencia; solo informes, nada se guarda."""
+
+    def setUp(self):
+        from invoice_agent.tests.helpers import field, make_pdf, model_json
+
+        self.folder = Path(tempfile.mkdtemp(prefix="invoice_agent_cmp_"))
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        for name in ("FA-1", "FA-2"):
+            make_pdf(self.folder / f"{name}.pdf")
+            (self.folder / f"{name}.json").write_text(model_json(due_date=field(None)), encoding="utf-8")
+        self.field, self.model_json = field, model_json
+
+    def run_model(self, answers):
+        from invoice_agent.providers.fake import FakeProvider
+
+        return evaluate_folder(self.folder, FakeProvider(answers, model="factura-qwen"), ocr_engine=FakeOcr())
+
+    def test_diffs_fixed_regressed_and_html(self):
+        from invoice_agent.evaluation.compare import compare, render_html, render_text
+
+        right, f = self.model_json(due_date=self.field(None)), self.field
+        # base: FA-1 con el total mal · afinado: FA-1 bien, FA-2 con el NIF mal
+        base = self.run_model([self.model_json(due_date=f(None), gross_total=f("999.00")), right])
+        trained = self.run_model([right, self.model_json(due_date=f(None), supplier_tax_id=f("B00000000"))])
+        doc = next(d for d in base["per_document"] if d["name"] == "FA-1")
+        self.assertEqual(doc["title"], "FA-1.pdf")
+        self.assertEqual(doc["diffs"]["gross_total"], {"expected": "121.00", "predicted": "999.00"})
+
+        c = compare(base, trained)
+        self.assertEqual(c["documents"], 2)
+        self.assertEqual([d["title"] for d in c["fixed"]], ["FA-1.pdf"])
+        self.assertEqual([(d["title"], d["fields"]) for d in c["regressed"]], [("FA-2.pdf", ["supplier_tax_id"])])
+        self.assertEqual(c["regressed"][0]["diffs"]["supplier_tax_id"]["predicted"], "B00000000")
+        gross = next(r for r in c["fields"] if r["field"] == "gross_total")
+        self.assertEqual((gross["base"], gross["trained"], gross["delta"]), (50.0, 100.0, 50.0))
+        self.assertIn("Total con IVA", render_text(c))
+        page = render_html(c)
+        self.assertIn("B00000000", page)
+        self.assertIn("Nada de este informe se ha guardado", page)
+
+    def test_command_writes_reports(self):
+        import json as _json
+
+        right = self.model_json(due_date=self.field(None))
+        for name in ("base", "afinado"):
+            (self.folder / f"{name}.json").write_text(_json.dumps(self.run_model([right, right])), encoding="utf-8")
+        out = io.StringIO()
+        call_command("invoice_agent_compare", str(self.folder / "base.json"), str(self.folder / "afinado.json"),
+                     html=str(self.folder / "informe.html"), json=str(self.folder / "c.json"), stdout=out)
+        self.assertIn("Facturas de prueba: 2", out.getvalue())
+        self.assertTrue((self.folder / "informe.html").is_file())
+        self.assertEqual(_json.loads((self.folder / "c.json").read_text())["perfect"]["trained"], 2)

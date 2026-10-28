@@ -65,6 +65,11 @@ class CaseResult:
     output_tokens: int = 0
     cost: Decimal = Decimal(0)
     error: str | None = None
+    title: str | None = None  # nombre legible (fichero original), si la verdad lo trae
+
+
+def _text(value) -> str | None:
+    return None if value in (None, "") else str(value)
 
 
 @dataclass
@@ -163,15 +168,21 @@ def summarize(results: list[CaseResult]) -> Report:
         "cost_total": str(total_cost),
         "cost_per_document": str((total_cost / len(results)).quantize(Decimal("0.000001"))) if results else "0",
     }
-    report.per_document = [
-        {
+    report.per_document = []
+    for r in results:
+        wrong = sorted(
+            n for n in HEADER_FIELDS if n in r.expected and comparable(n, r.expected.get(n)) != comparable(n, r.predicted.get(n))
+        )
+        report.per_document.append({
             "name": r.name,
+            "title": r.title or r.name,
             "error": r.error,
             "blocking": sorted({i["code"] for i in r.issues if i["blocking"]}),
-            "wrong_fields": sorted(
-                n for n in HEADER_FIELDS if n in r.expected and comparable(n, r.expected.get(n)) != comparable(n, r.predicted.get(n))
-            ),
-        }
-        for r in results
-    ]
+            "wrong_fields": wrong,
+            # valor de la verdad (p. ej. el JSON del modelo grande) frente al del modelo evaluado
+            "diffs": {} if r.error else {
+                n: {"expected": _text(r.expected.get(n)), "predicted": _text(r.predicted.get(n))} for n in wrong
+            },
+            "lines": {"expected": r.lines_expected, "predicted": None if r.error else r.lines_predicted},
+        })
     return report
