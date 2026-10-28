@@ -207,6 +207,7 @@ def truth_for_evaluation(target: dict, borrador: Borrador, duplicate_group: str 
         "reconciles": True,  # aprobada: sin errores de conciliación pendientes
         "duplicate_group": duplicate_group,
         "empresa": {"nombre": borrador.empresa.nombre, "nif": borrador.empresa.nif},
+        "documento": borrador.documento.original_filename,  # para leer los informes (el caso se llama por su id)
     }
 
 

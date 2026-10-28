@@ -195,9 +195,26 @@ a ejecutar el ciclo la incorpora, y su JSON corregido sustituye al de Drive.
 ```bash
 training/local/pipeline.sh datos      # Drive → etiquetar las nuevas → JSON a Drive → dataset
 #   revisa en /facturas-ia/ las de «Necesita revisión» y vuelve a ejecutar «datos» (opcional)
-training/local/pipeline.sh entrenar   # check → train → fp8 (cada ejecución en su carpeta con fecha)
-training/local/pipeline.sh            # las dos cosas seguidas
+training/local/pipeline.sh entrenar   # check → train → fp8 → evaluar (cada ejecución en su carpeta con fecha)
+training/local/pipeline.sh evaluar    # solo evaluar el último afinado (o RUN=run-… para otro)
+training/local/pipeline.sh            # todo seguido
 ```
+
+**Evaluar** (al final de `entrenar`, o solo con `evaluar`; `SKIP_EVAL=1` lo omite): arranca vLLM con el
+modelo base, mide las facturas de `dataset_facturas/test` (nunca entrenadas) contra sus JSON de referencia
+(del modelo grande o aprobados), repite con el afinado y compara. La medida del base se guarda en
+`OUTPUTS_DIR/linea-base/` y se reutiliza mientras el conjunto de prueba no cambie. Resultado en
+`OUTPUTS_DIR/<RUN>/`:
+
+| Fichero | Qué es |
+|---|---|
+| `informe.html` | Aciertos por campo (base, afinado, mejora), facturas que mejoran o empeoran y cada discrepancia: valor de referencia frente al del afinado. `xdg-open` para verlo |
+| `comparacion.json` | Lo mismo en JSON |
+| `base.json`, `afinado.json` (+ `.log`) | Los informes de `invoice_agent_evaluate` de cada modelo |
+
+Solo mide: no cambia el `.env` de Django, ni Drive, ni la base de datos. El afinado pasa a producción
+cuando tú cambias `INVOICE_AGENT_BASE_URL`/`INVOICE_AGENT_MODEL`. Las discrepancias son la lista de
+facturas que conviene revisar antes de la siguiente ronda: a veces se equivoca el modelo y a veces el JSON.
 
 Facturas nuevas: súbelas a `Invoices/` en Drive (sin JSON) y vuelve a ejecutar. Solo se paga al
 profesor por las que no tienen JSON; `MAX_EXTRACT` limita cuántas por ejecución. Cada entrenamiento
