@@ -2,20 +2,16 @@
 
 from django import template
 
+from mysite.formato import numero_es
+
 register = template.Library()
-
-
-def _es(numero: float, decimales: int) -> str:
-    """1234567.8 -> «1.234.567,80» (separador de miles punto, decimal coma)."""
-    texto = f"{numero:,.{decimales}f}"
-    return texto.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
 
 
 @register.filter
 def euros(valor, decimales=2):
     if valor in (None, ""):
         return "—"
-    return f"{_es(float(valor), int(decimales))} €"
+    return f"{numero_es(float(valor), int(decimales))} €"
 
 
 @register.filter
@@ -23,14 +19,14 @@ def importe(valor, decimales=2):
     """Importe sin símbolo; los ceros se muestran vacíos para que la tabla respire."""
     if valor in (None, "") or float(valor) == 0:
         return ""
-    return _es(float(valor), int(decimales))
+    return numero_es(float(valor), int(decimales))
 
 
 @register.filter
 def pct(valor, decimales=1):
     if valor in (None, ""):
         return "—"
-    return f"{_es(float(valor), int(decimales))} %"
+    return f"{numero_es(float(valor), int(decimales))} %"
 
 
 @register.filter

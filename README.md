@@ -37,7 +37,8 @@ El panel principal (`/`) enlaza con todas las apps.
 | `invoice_agent` | `/facturas-ia/` | Facturas con IA: extracción con un modelo, validación en Python y aprobación humana |
 | `copilot_pms` | `/copilot/` | PMS Copilot: preguntas en lenguaje natural sobre saldos, facturas e informes (solo lectura) |
 
-`albaranes` y `reservas` existen en el repositorio pero todavía no están activadas en `INSTALLED_APPS`.
+Los albaranes se importan dentro de `analisis` (departamento de cada albarán). La rama de reservas del
+inicio aún no tiene app: se creará cuando se conecte el motor de reservas.
 
 ### Nóminas (`nominas`)
 - Importación del desglose mensual de nóminas desde CSV (web o `import_nomina_mes`). El mes y el año

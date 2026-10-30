@@ -226,13 +226,6 @@ class DocumentOut(ApiModel):
     duplicado: bool = False
 
 
-class DocumentPage(ApiModel):
-    count: int
-    page: int
-    page_size: int
-    results: list[DocumentOut]
-
-
 class IssueOut(ApiModel):
     code: str
     severity: Literal["error", "warning", "info"]
