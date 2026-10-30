@@ -411,7 +411,6 @@ def calcular_resumen(anio: int, mes: int | None = None, incluir_previsto: bool =
                      con_iva: bool = False, hoy: date | None = None) -> dict:
     hoy = hoy or date.today()
     en_periodo = (lambda m: m == mes) if mes else (lambda m: True)
-    filtro_mes = {"fecha__month": mes} if mes else {}
 
     # --- Ingresos
     ing, agencias, canales_mes = _ingresos_reservas(anio, hoy, incluir_previsto, mes, con_iva)

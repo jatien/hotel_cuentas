@@ -7,7 +7,7 @@ inicial de un año sale del asiento de apertura y no se mezcla con el cierre del
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, F, Prefetch, Q, Sum
+from django.db.models import Count, F, Q, Sum
 
 from .models import LONGITUD_SUBCUENTA, NIVELES, Apunte, Asiento, CuentaContable
 

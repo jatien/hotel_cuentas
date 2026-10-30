@@ -71,13 +71,6 @@ class CajaMes(models.Model):
     def dias_del_mes(self):
         return calendar.monthrange(self.anio, self.mes)[1]
 
-    def crear_dias(self):
-        """Crea las filas vacías que falten (una por día del mes). Devuelve cuántas ha creado."""
-        existentes = set(self.dias.values_list("dia", flat=True))
-        nuevos = [CajaDia(caja_mes=self, dia=d) for d in range(1, self.dias_del_mes + 1) if d not in existentes]
-        CajaDia.objects.bulk_create(nuevos)
-        return len(nuevos)
-
 
 class CajaDia(models.Model):
     caja_mes = models.ForeignKey(CajaMes, on_delete=models.CASCADE, related_name="dias")
