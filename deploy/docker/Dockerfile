@@ -1,6 +1,6 @@
 # Imagen de la app para el servidor Debian (Gunicorn). Construir desde la raíz del repositorio:
 #   docker compose -f deploy/docker/compose.yaml build
-FROM python:3.14-slim AS base
+FROM python:3.15-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
