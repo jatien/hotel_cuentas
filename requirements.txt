@@ -14,7 +14,7 @@ cryptography>=50.0.2
 pyrage>=1.2                  # age en Python, sin instalar binarios (también en Windows)
 
 # Lectura de PDFs e imágenes (invoice_data)
-pypdfium2>=4.30
+pypdfium2>=5.14.0
 Pillow>=13.0.0
 
 # OCR (invoice_data/services/ocr.py y extractor.py)
